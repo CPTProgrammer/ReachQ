@@ -13,6 +13,7 @@
 
 	const languages = [
 		{ code: 'en', name: 'English', subtitle: 'English' },
+		{ code: 'zh', name: '中文', subtitle: 'Chinese' },
 		{ code: 'de', name: 'Deutsch', subtitle: 'German' },
 		{ code: 'fr', name: 'Français', subtitle: 'French' },
 		{ code: 'el', name: 'Ελληνικά', subtitle: 'Greek' },
@@ -81,6 +82,9 @@
 						<rect width="60" height="13.33" fill="#fff"/>
 						<rect y="13.33" width="60" height="13.34" fill="#00966E"/>
 						<rect y="26.67" width="60" height="13.33" fill="#D62612"/>
+					{:else if lang.code === 'zh'}
+						<!-- China -->
+						<rect width="60" height="40" fill="#DE2910"/>
 					{:else if lang.code === 'ru'}
 						<!-- Russia -->
 						<rect width="60" height="13.33" fill="#fff"/>
