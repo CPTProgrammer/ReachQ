@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Terminal } from '@xterm/xterm';
 	import { FitAddon } from '@xterm/addon-fit';
 	import { WebglAddon } from '@xterm/addon-webgl';
@@ -10,7 +11,7 @@
 	import { sshSend, sshResize, sshConnect, type SshConnectParams } from '$lib/ipc/ssh';
 	import { registerBufferReader, unregisterBufferReader } from '$lib/state/terminal-buffer.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
-	import { getTerminalTheme } from '$lib/data/terminal-themes';
+	import { getTerminalTheme, type ITheme } from '$lib/data/terminal-themes';
 	import { trieMatch } from '$lib/state/snippets.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -139,12 +140,10 @@
 		}
 	}
 
-	function createTerminal(): Terminal {
-		const appSettings = getSettings();
-		const theme = getTerminalTheme(appSettings.terminalTheme);
+	function createTerminal(fontFamily: string, fontSize: number, theme: ITheme): Terminal {
 		return new Terminal({
-			fontFamily: appSettings.fontFamily || 'monospace',
-			fontSize: appSettings.fontSize ?? 14,
+			fontFamily,
+			fontSize,
 			cursorBlink: true,
 			cursorStyle: 'bar',
 			scrollback: 10000,
@@ -411,14 +410,24 @@
 	$effect(() => {
 		if (!containerEl) return;
 
-		const term = createTerminal();
+		// Untrack all settings reads — this effect must only re-run when
+		// containerEl is created/destroyed. Font and theme live updates
+		// are handled by separate $effect blocks below.
+		const { font, fontSize, theme } = untrack(() => {
+			const s = getSettings();
+			return {
+				font: s.fontFamily || 'monospace',
+				fontSize: s.fontSize ?? 14,
+				theme: getTerminalTheme(s.terminalTheme)
+			};
+		});
+
+		const term = createTerminal(font, fontSize, theme);
 		const fit = new FitAddon();
-		const font = getSettings().fontFamily || 'monospace';
 
 		loadAddons(term, fit);
 
 		// Wait for font to load before opening (canvas needs the font ready)
-		const fontSize = getSettings().fontSize ?? 14;
 		Promise.all([
 			document.fonts.load(`${fontSize}px "${font}"`),
 			document.fonts.load(`bold ${fontSize}px "${font}"`)
@@ -495,6 +504,7 @@
 
 	// Live font family updates from settings (size is changed via Ctrl+Wheel directly)
 	const appSettings = getSettings();
+
 	$effect(() => {
 		const family = appSettings.fontFamily;
 		const term = terminal;
@@ -512,6 +522,31 @@
 			term.clearTextureAtlas();
 			safeFitAndResize(term, fit, el);
 		});
+	});
+
+	// Live font size updates from settings
+	$effect(() => {
+		const size = appSettings.fontSize;
+		const term = terminal;
+		const fit = fitAddon;
+		const el = containerEl;
+		if (!term || !fit || !el || !size) return;
+		if (term.options.fontSize === size) return;
+
+		term.options.fontSize = size;
+		term.clearTextureAtlas();
+		safeFitAndResize(term, fit, el);
+	});
+
+	// Live terminal theme updates from settings — apply to running terminal
+	// without destroying the instance (preserves scrollback buffer).
+	$effect(() => {
+		const themeName = appSettings.terminalTheme;
+		const term = terminal;
+		if (!term || !themeName) return;
+		const theme = getTerminalTheme(themeName);
+		term.options.theme = theme;
+		term.clearTextureAtlas();
 	});
 
 	// Auto-focus xterm AND re-fit when this tab becomes active (Ctrl+Tab, click, sidebar switch).
