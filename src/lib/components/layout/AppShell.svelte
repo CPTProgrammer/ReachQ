@@ -19,7 +19,6 @@
 
 	let { children }: Props = $props();
 
-	let sidebarCollapsed = $state(false);
 	let activeTab = $derived(getActiveTab());
 	let activeConnectionId = $derived(activeTab?.connectionId);
 </script>
@@ -29,7 +28,7 @@
 	<TabBar />
 
 	<div class="app-body">
-		<Sidebar bind:collapsed={sidebarCollapsed} connectionId={activeConnectionId} />
+		<Sidebar connectionId={activeConnectionId} />
 		<main class="main-content">
 			{@render children()}
 		</main>

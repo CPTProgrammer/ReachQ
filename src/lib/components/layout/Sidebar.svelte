@@ -5,42 +5,18 @@
 	import PluginPanel from '$lib/components/plugin/PluginPanel.svelte';
 	import SnippetPanel from '$lib/components/snippets/SnippetPanel.svelte';
 	import { t } from '$lib/state/i18n.svelte';
+	import { sidebarState, MIN_WIDTH, MAX_WIDTH, COLLAPSED_WIDTH } from '$lib/state/sidebar.svelte';
 
 	type Section = 'sessions' | 'explorer' | 'tunnels' | 'snippets' | 'plugins';
 
-	const STORAGE_KEY = 'reach-sidebar-width';
-	const MIN_WIDTH = 160;
-	const MAX_WIDTH = 600;
-	const DEFAULT_WIDTH = 240;
-	const COLLAPSED_WIDTH = 48;
-
 	interface Props {
-		collapsed: boolean;
 		connectionId?: string;
 	}
 
-	let { collapsed = $bindable(false), connectionId }: Props = $props();
+	let { connectionId }: Props = $props();
 
 	let activeSection = $state<Section>('sessions');
-	let sidebarWidth = $state(loadWidth());
 	let dragging = $state(false);
-
-	function loadWidth(): number {
-		try {
-			const saved = localStorage.getItem(STORAGE_KEY);
-			if (saved) {
-				const n = parseInt(saved, 10);
-				if (n >= MIN_WIDTH && n <= MAX_WIDTH) return n;
-			}
-		} catch {}
-		return DEFAULT_WIDTH;
-	}
-
-	function saveWidth(w: number): void {
-		try {
-			localStorage.setItem(STORAGE_KEY, String(w));
-		} catch {}
-	}
 
 	let sections = $derived<Array<{ id: Section; label: string; icon: string; beta?: boolean; isNew?: boolean }>>([
 		{
@@ -74,36 +50,35 @@
 	]);
 
 	function handleSectionClick(sectionId: Section): void {
-		if (collapsed) {
-			collapsed = false;
+		if (sidebarState.collapsed) {
+			sidebarState.collapsed = false;
 			activeSection = sectionId;
 		} else if (activeSection === sectionId) {
-			collapsed = true;
+			sidebarState.collapsed = true;
 		} else {
 			activeSection = sectionId;
 		}
 	}
 
 	function toggleCollapsed(): void {
-		collapsed = !collapsed;
+		sidebarState.collapsed = !sidebarState.collapsed;
 	}
 
 	function startResize(e: MouseEvent): void {
 		e.preventDefault();
-		dragging = true;
+		sidebarState.dragging = true;
 		const startX = e.clientX;
-		const startW = sidebarWidth;
+		const startW = sidebarState.width;
 
 		function onMove(ev: MouseEvent): void {
 			const w = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + ev.clientX - startX));
-			sidebarWidth = w;
+			sidebarState.width = w;
 		}
 
 		function onUp(): void {
-			dragging = false;
+			sidebarState.dragging = false;
 			document.removeEventListener('mousemove', onMove);
 			document.removeEventListener('mouseup', onUp);
-			saveWidth(sidebarWidth);
 		}
 
 		document.addEventListener('mousemove', onMove);
@@ -111,12 +86,12 @@
 	}
 </script>
 
-<aside class="sidebar {collapsed ? "sidebar-collapsed" : ""}" class:no-transition={dragging} style:width="{collapsed ? COLLAPSED_WIDTH : sidebarWidth}px">
+<aside class="sidebar" class:sidebar-collapsed={sidebarState.collapsed} class:no-transition={sidebarState.dragging} style:width="{sidebarState.collapsed ? COLLAPSED_WIDTH : sidebarState.width}px">
 	<nav class="sidebar-nav">
 		{#each sections as section (section.id)}
 			<button
 				class="nav-btn"
-				class:active={activeSection === section.id && !collapsed}
+				class:active={activeSection === section.id && !sidebarState.collapsed}
 				onclick={() => handleSectionClick(section.id)}
 				title={section.label}
 				aria-label={section.label}
@@ -131,7 +106,7 @@
 					/>
 				</svg>
 
-				{#if !collapsed}
+				{#if !sidebarState.collapsed}
 					<span class="nav-label">{section.label}</span>
 					{#if section.beta || section.isNew}
 						<span class="badge-group">
@@ -144,7 +119,7 @@
 		{/each}
 	</nav>
 
-	{#if !collapsed}
+	{#if !sidebarState.collapsed}
 		<div class="sidebar-content">
 			<div class="section-header">
 				{sections.find((s) => s.id === activeSection)?.label ?? ''}
@@ -169,10 +144,10 @@
 		<button
 			class="toggle-btn"
 			onclick={toggleCollapsed}
-			aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+			aria-label={sidebarState.collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
 		>
 			<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-				{#if collapsed}
+				{#if sidebarState.collapsed}
 					<path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
 				{:else}
 					<path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
@@ -181,7 +156,7 @@
 		</button>
 	</div>
 
-	{#if !collapsed}
+	{#if !sidebarState.collapsed}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="resize-handle" onmousedown={startResize}></div>
 	{/if}

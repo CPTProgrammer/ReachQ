@@ -3,6 +3,7 @@
 	import { getActivePage, setActivePage, type Page } from '$lib/state/navigation.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import DistroIcon from '$lib/components/sessions/DistroIcon.svelte';
+	import { sidebarState, COLLAPSED_WIDTH } from '$lib/state/sidebar.svelte';
 
 	let tabs = $derived(getTabs());
 	let activeTab = $derived(getActiveTab());
@@ -29,7 +30,7 @@
 </script>
 
 <nav class="tabbar">
-	<div class="page-switcher">
+	<div class="page-switcher" class:no-transition={sidebarState.dragging} style:min-width="{sidebarState.collapsed ? COLLAPSED_WIDTH : sidebarState.width}px">
 		{#each pages as page (page.id)}
 			<button
 				class="page-btn"
@@ -109,6 +110,11 @@
 		gap: 2px;
 		padding: 0 8px;
 		flex-shrink: 0;
+		transition: min-width var(--duration-default) var(--ease-default);
+	}
+
+	.page-switcher.no-transition {
+		transition: none;
 	}
 
 	.page-btn {
