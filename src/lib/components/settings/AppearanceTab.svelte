@@ -430,7 +430,7 @@
 	/* Terminal theme cards */
 	.terminal-theme-cards {
 		display: grid;
-		grid-template-columns: 1fr;
+		grid-template-columns: repeat(2, 1fr);
 		gap: 10px;
 	}
 
@@ -493,6 +493,7 @@
 		gap: 0;
 		padding: 6px 10px;
 		border-radius: 6px;
+		outline: 1px solid var(--color-border);
 		font-family: var(--font-mono, 'monospace');
 		font-size: 0.6875rem;
 		line-height: 1;
