@@ -485,13 +485,21 @@
 			}
 			termEl.addEventListener('wheel', onWheel, { passive: false });
 
-			// Click to copy: if text is selected, clicking copies it
-			function onClick(e: MouseEvent) {
-				if (term.hasSelection()) {
+			// Click to copy: if text is selected, clicking copies it.
+			// Only fires for real clicks (no mouse drag), otherwise
+			// it would steal the selection right after the user finishes
+			// selecting with the mouse.
+			let mouseMoved = false;
+			function onMouseDown() { mouseMoved = false; }
+			function onMouseMove() { mouseMoved = true; }
+			function onClick() {
+				if (!mouseMoved && term.hasSelection()) {
 					navigator.clipboard.writeText(term.getSelection());
 					term.clearSelection();
 				}
 			}
+			termEl.addEventListener('mousedown', onMouseDown);
+			termEl.addEventListener('mousemove', onMouseMove);
 			termEl.addEventListener('click', onClick);
 
 			terminal = term;
