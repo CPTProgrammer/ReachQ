@@ -10,6 +10,7 @@
 	import { sshSend, sshResize, sshConnect, type SshConnectParams } from '$lib/ipc/ssh';
 	import { registerBufferReader, unregisterBufferReader } from '$lib/state/terminal-buffer.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
+	import { getTerminalTheme } from '$lib/data/terminal-themes';
 	import { trieMatch } from '$lib/state/snippets.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -140,6 +141,7 @@
 
 	function createTerminal(): Terminal {
 		const appSettings = getSettings();
+		const theme = getTerminalTheme(appSettings.terminalTheme);
 		return new Terminal({
 			fontFamily: appSettings.fontFamily || 'monospace',
 			fontSize: appSettings.fontSize ?? 14,
@@ -147,30 +149,7 @@
 			cursorStyle: 'bar',
 			scrollback: 10000,
 			allowProposedApi: true,
-			theme: {
-				background: '#0a0a0a',
-				foreground: '#f5f5f7',
-				cursor: '#0a84ff',
-				cursorAccent: '#0a0a0a',
-				selectionBackground: 'rgba(10, 132, 255, 0.3)',
-				selectionForeground: '#f5f5f7',
-				black: '#1d1f21',
-				red: '#ff453a',
-				green: '#30d158',
-				yellow: '#ffd60a',
-				blue: '#0a84ff',
-				magenta: '#bf5af2',
-				cyan: '#64d2ff',
-				white: '#f5f5f7',
-				brightBlack: '#6e6e73',
-				brightRed: '#ff6961',
-				brightGreen: '#4ae06a',
-				brightYellow: '#ffe566',
-				brightBlue: '#409cff',
-				brightMagenta: '#da8fff',
-				brightCyan: '#8be8ff',
-				brightWhite: '#ffffff'
-			}
+			theme
 		});
 	}
 

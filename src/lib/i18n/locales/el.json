@@ -385,6 +385,7 @@
   "settings.system_startup_desc": "Αυτόματη εκκίνηση του Reach κατά τη σύνδεση",
   "settings.font_size_desc": "Μέγεθος κειμένου τερματικού ({{size}}px)",
   "settings.font_desc": "Γραμματοσειρά που χρησιμοποιείται στον εξομοιωτή τερματικού",
+  "settings.terminal_theme": "Θέμα τερματικού",
 
   "security.master_password_status": "Κατάσταση Κύριου Κωδικού",
   "security.set_password": "Ορισμός Κωδικού",

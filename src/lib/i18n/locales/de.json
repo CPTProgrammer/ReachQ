@@ -385,6 +385,7 @@
   "settings.system_startup_desc": "Reach automatisch beim Anmelden starten",
   "settings.font_size_desc": "Terminal-Textgröße ({{size}}px)",
   "settings.font_desc": "Schriftart, die im Terminal-Emulator verwendet wird",
+  "settings.terminal_theme": "Terminal-Design",
 
   "security.master_password_status": "Master-Passwort-Status",
   "security.set_password": "Passwort festlegen",

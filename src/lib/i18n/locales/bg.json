@@ -385,6 +385,7 @@
   "settings.system_startup_desc": "Стартирай Reach автоматично при влизане в системата",
   "settings.font_size_desc": "Размер на текста в терминала ({{size}}px)",
   "settings.font_desc": "Шрифт, използван в емулатора на терминала",
+  "settings.terminal_theme": "Тема на терминала",
 
   "security.master_password_status": "Състояние на главната парола",
   "security.set_password": "Задай парола",

@@ -385,6 +385,7 @@
   "settings.system_startup_desc": "登录时自动启动 Reach",
   "settings.font_size_desc": "终端文字大小（{{size}}px）",
   "settings.font_desc": "终端模拟器使用的字体",
+  "settings.terminal_theme": "终端主题",
 
   "security.master_password_status": "主密码状态",
   "security.set_password": "设置密码",

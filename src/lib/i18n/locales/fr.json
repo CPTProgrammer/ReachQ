@@ -385,6 +385,7 @@
   "settings.system_startup_desc": "Lancer Reach automatiquement a la connexion",
   "settings.font_size_desc": "Taille du texte du terminal ({{size}}px)",
   "settings.font_desc": "Police utilisee dans l'emulateur de terminal",
+  "settings.terminal_theme": "Thème du terminal",
 
   "security.master_password_status": "Etat du mot de passe principal",
   "security.set_password": "Definir le mot de passe",

@@ -385,6 +385,7 @@
   "settings.system_startup_desc": "Avvia Reach automaticamente all'accesso",
   "settings.font_size_desc": "Dimensione del testo nel terminale ({{size}}px)",
   "settings.font_desc": "Font utilizzato nell'emulatore di terminale",
+  "settings.terminal_theme": "Tema del terminale",
 
   "security.master_password_status": "Stato Password Principale",
   "security.set_password": "Imposta Password",

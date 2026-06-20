@@ -6,6 +6,7 @@ export interface Settings {
 	theme: 'dark' | 'light' | 'system';
 	fontSize: number;
 	fontFamily: string;
+	terminalTheme: string;
 	defaultShell: string;
 	openLastSession: boolean;
 	locale: string;
@@ -29,6 +30,7 @@ const defaults: Settings = {
 	theme: 'dark',
 	fontSize: 14,
 	fontFamily: 'monospace',
+	terminalTheme: 'Default',
 	defaultShell: '/bin/bash',
 	openLastSession: false,
 	locale: 'en',
@@ -70,6 +72,7 @@ export function loadSettings(): void {
 			settings.theme = parsed.theme ?? defaults.theme;
 			settings.fontSize = parsed.fontSize ?? defaults.fontSize;
 			settings.fontFamily = parsed.fontFamily ?? defaults.fontFamily;
+			settings.terminalTheme = parsed.terminalTheme ?? defaults.terminalTheme;
 			settings.defaultShell = parsed.defaultShell ?? defaults.defaultShell;
 			settings.openLastSession = parsed.openLastSession ?? defaults.openLastSession;
 			settings.locale = parsed.locale ?? defaults.locale;
@@ -210,6 +213,10 @@ export async function restoreLocalSettingsFromVault(): Promise<void> {
 		}
 		if (typeof vaultSettings.fontFamily === 'string') {
 			settings.fontFamily = vaultSettings.fontFamily;
+			changed = true;
+		}
+		if (typeof vaultSettings.terminalTheme === 'string') {
+			settings.terminalTheme = vaultSettings.terminalTheme;
 			changed = true;
 		}
 		if (typeof vaultSettings.locale === 'string') {

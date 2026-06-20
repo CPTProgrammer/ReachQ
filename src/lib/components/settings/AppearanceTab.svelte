@@ -2,6 +2,7 @@
 	import { getSettings, updateSetting } from '$lib/state/settings.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import { listSystemFonts } from '$lib/ipc/settings';
+	import { TERMINAL_THEMES, ANSI_COLORS, type ITheme } from '$lib/data/terminal-themes';
 
 	const settings = getSettings();
 	let currentFont = $derived(settings.fontFamily || 'monospace');
@@ -77,6 +78,10 @@
 		pvFont = value;
 		fontDropdownOpen = false;
 		fontSearch = '';
+	}
+
+	function selectTerminalTheme(name: string): void {
+		updateSetting('terminalTheme', name);
 	}
 </script>
 
@@ -202,6 +207,43 @@
 			></iframe>
 		</div>
 	{/key}
+
+	<div class="setting-section">
+		<span class="section-label">{t('settings.terminal_theme')}</span>
+		<div class="terminal-theme-cards">
+			{#each TERMINAL_THEMES as themeDef (themeDef.name)}
+				<button
+					class="terminal-theme-card"
+					class:active={settings.terminalTheme === themeDef.name}
+					onclick={() => selectTerminalTheme(themeDef.name)}
+				>
+					<div class="terminal-theme-header">
+						<span class="terminal-theme-name">{themeDef.name}</span>
+						<div class="color-dots">
+							{#each ANSI_COLORS as entry}
+								{@const color = themeDef.theme[entry.key as keyof ITheme] as string | undefined}
+								<span
+									class="color-dot"
+									title="{entry.label}: {color ?? '—'}"
+									style:background-color={color ?? 'transparent'}
+								></span>
+							{/each}
+						</div>
+					</div>
+					<!-- Command line preview -->
+					<div class="terminal-theme-preview" style:background-color={themeDef.theme.background ?? '#000'}>
+						<span class="prompt-user" style:color={themeDef.theme.green ?? '#0f0'}>user</span>
+						<span class="prompt-at" style:color={themeDef.theme.foreground ?? '#fff'}>@</span>
+						<span class="prompt-host" style:color={themeDef.theme.blue ?? '#00f'}>server</span>
+						<span class="prompt-colon" style:color={themeDef.theme.foreground ?? '#fff'}>:</span>
+						<span class="prompt-path" style:color={themeDef.theme.cyan ?? '#0ff'}>~</span>
+						<span class="prompt-dollar" style:color={themeDef.theme.foreground ?? '#fff'}>$ </span>
+						<span class="prompt-cursor" style:background-color={themeDef.theme.cursor ?? '#fff'}>&nbsp;</span>
+					</div>
+				</button>
+			{/each}
+		</div>
+	</div>
 </div>
 
 <style>
@@ -383,5 +425,88 @@
 	.preview-iframe {
 		width: 100%; height: 160px; border: none; display: block;
 		border-radius: 0 0 8px 8px; overflow: hidden;
+	}
+
+	/* Terminal theme cards */
+	.terminal-theme-cards {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 10px;
+	}
+
+	.terminal-theme-card {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 10px 12px;
+		background: transparent;
+		border: 2px solid var(--color-border);
+		border-radius: var(--radius-card);
+		cursor: pointer;
+		text-align: left;
+		transition: border-color var(--duration-default) var(--ease-default), background-color var(--duration-default) var(--ease-default);
+		font-family: var(--font-sans);
+	}
+
+	.terminal-theme-card:hover {
+		background-color: rgba(255, 255, 255, 0.04);
+	}
+
+	.terminal-theme-card.active {
+		border-color: var(--color-accent);
+		background-color: rgba(10, 132, 255, 0.08);
+	}
+
+	.terminal-theme-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.terminal-theme-name {
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--color-text-primary);
+		flex-shrink: 0;
+	}
+
+	.color-dots {
+		display: grid;
+		grid-template-columns: repeat(8, 1fr);
+		grid-template-rows: repeat(2, 1fr);
+		gap: 3px;
+		flex-shrink: 0;
+	}
+
+	.color-dot {
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		border: 1px solid rgba(255, 255, 255, 0.15);
+	}
+
+	.terminal-theme-preview {
+		display: flex;
+		align-items: center;
+		gap: 0;
+		padding: 6px 10px;
+		border-radius: 6px;
+		font-family: var(--font-mono, 'monospace');
+		font-size: 0.6875rem;
+		line-height: 1;
+		overflow: hidden;
+	}
+
+	.prompt-cursor {
+		display: inline-block;
+		width: 0.45em;
+		height: 1em;
+		vertical-align: text-bottom;
+	}
+
+	@keyframes cursorBlink {
+		50% { opacity: 0; }
 	}
 </style>
