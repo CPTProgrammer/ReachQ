@@ -44,7 +44,7 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 secrecy = { version = "0.10", features = ["serde"] }
 
 # Vault storage
-libsql = "0.6"
+libsql = "0.9.30"
 dirs = "5"
 sha2 = "0.10"
 # Keychain/credential storage
