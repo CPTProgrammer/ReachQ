@@ -33,6 +33,8 @@
   "terminal.reconnecting": "Reconnecting...",
   "terminal.reconnected": "Reconnected",
   "terminal.reconnect_failed": "Reconnect failed",
+  "terminal.paste_confirm_title": "Paste multi-line content?",
+  "terminal.paste_confirm_body": "The clipboard contains line breaks. Pasting this may execute multiple commands. Do you want to continue?",
 
   "session.connect": "Connect",
   "session.disconnect": "Disconnect",

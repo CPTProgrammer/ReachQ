@@ -29,6 +29,8 @@
   "terminal.reconnecting": "Переподключение...",
   "terminal.reconnected": "Переподключено",
   "terminal.reconnect_failed": "Ошибка переподключения",
+  "terminal.paste_confirm_title": "Вставить многострочное содержимое?",
+  "terminal.paste_confirm_body": "Буфер обмена содержит переводы строк. Вставка может выполнить несколько команд. Продолжить?",
   "session.connect": "Подключиться",
   "session.disconnect": "Отключиться",
   "session.edit": "Редактировать",

@@ -33,6 +33,8 @@
   "terminal.reconnecting": "Riconnessione...",
   "terminal.reconnected": "Riconnesso",
   "terminal.reconnect_failed": "Riconnessione fallita",
+  "terminal.paste_confirm_title": "Incollare contenuto multi-riga?",
+  "terminal.paste_confirm_body": "Gli appunti contengono interruzioni di riga. Incollare potrebbe eseguire più comandi. Vuoi continuare?",
 
   "session.connect": "Connetti",
   "session.disconnect": "Disconnetti",

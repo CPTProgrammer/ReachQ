@@ -33,6 +33,8 @@
   "terminal.reconnecting": "Verbindung wird hergestellt...",
   "terminal.reconnected": "Neu verbunden",
   "terminal.reconnect_failed": "Neuverbindung fehlgeschlagen",
+  "terminal.paste_confirm_title": "Mehrzeiligen Inhalt einfügen?",
+  "terminal.paste_confirm_body": "Die Zwischenablage enthält Zeilenumbrüche. Das Einfügen könnte mehrere Befehle ausführen. Möchten Sie fortfahren?",
 
   "session.connect": "Verbinden",
   "session.disconnect": "Trennen",

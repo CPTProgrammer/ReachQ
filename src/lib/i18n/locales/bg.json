@@ -33,6 +33,8 @@
   "terminal.reconnecting": "Свързване...",
   "terminal.reconnected": "Свързан отново",
   "terminal.reconnect_failed": "Неуспешно свързване",
+  "terminal.paste_confirm_title": "Поставяне на многоредово съдържание?",
+  "terminal.paste_confirm_body": "Клипбордът съдържа нови редове. Поставянето може да изпълни няколко команди. Искате ли да продължите?",
 
   "session.connect": "Свържи",
   "session.disconnect": "Прекъсни",

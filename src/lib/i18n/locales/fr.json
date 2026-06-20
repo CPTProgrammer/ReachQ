@@ -33,6 +33,8 @@
   "terminal.reconnecting": "Reconnexion...",
   "terminal.reconnected": "Reconnecté",
   "terminal.reconnect_failed": "Reconnexion échouée",
+  "terminal.paste_confirm_title": "Coller du contenu multi-lignes ?",
+  "terminal.paste_confirm_body": "Le presse-papiers contient des sauts de ligne. Coller ce contenu pourrait exécuter plusieurs commandes. Voulez-vous continuer ?",
 
   "session.connect": "Connecter",
   "session.disconnect": "Deconnecter",

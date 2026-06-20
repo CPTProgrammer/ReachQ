@@ -33,6 +33,8 @@
   "terminal.reconnecting": "Επανασύνδεση...",
   "terminal.reconnected": "Επανασυνδέθηκε",
   "terminal.reconnect_failed": "Η επανασύνδεση απέτυχε",
+  "terminal.paste_confirm_title": "Επικόλληση περιεχομένου πολλών γραμμών;",
+  "terminal.paste_confirm_body": "Το πρόχειρο περιέχει αλλαγές γραμμής. Η επικόλληση μπορεί να εκτελέσει πολλές εντολές. Θέλετε να συνεχίσετε;",
 
   "session.connect": "Σύνδεση",
   "session.disconnect": "Αποσύνδεση",

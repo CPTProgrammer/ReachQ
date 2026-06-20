@@ -12,6 +12,9 @@
 	import { getSettings, updateSetting } from '$lib/state/settings.svelte';
 	import { trieMatch } from '$lib/state/snippets.svelte';
 	import { t } from '$lib/state/i18n.svelte';
+	import { readText } from '@tauri-apps/plugin-clipboard-manager';
+	import Modal from '$lib/components/shared/Modal.svelte';
+	import Button from '$lib/components/shared/Button.svelte';
 
 	interface Props {
 		ptyId: string;
@@ -51,6 +54,35 @@
 	let suggestion = $state<{ command: string; name: string; ghost: string } | null>(null);
 	let ghostDecoration: { dispose: () => void } | undefined;
 	let ghostMarker: { dispose: () => void } | undefined;
+
+	// Paste confirmation when clipboard contains potentially dangerous content
+	let showPasteConfirm = $state(false);
+	let pendingPasteText = $state('');
+	let pasteTarget: Terminal | undefined;
+
+	/** Check clipboard text for newlines (could execute commands); show confirm dialog if dangerous. */
+	function checkAndPaste(term: Terminal, text: string): void {
+		if (text.includes('\n') || text.includes('\r')) {
+			pendingPasteText = text;
+			pasteTarget = term;
+			showPasteConfirm = true;
+		} else {
+			term.paste(text);
+		}
+	}
+
+	function confirmPaste(): void {
+		if (pasteTarget && pendingPasteText) {
+			pasteTarget.paste(pendingPasteText);
+		}
+		closePasteConfirm();
+	}
+
+	function closePasteConfirm(): void {
+		showPasteConfirm = false;
+		pendingPasteText = '';
+		pasteTarget = undefined;
+	}
 
 	let ghostEl: HTMLDivElement | undefined;
 
@@ -315,8 +347,8 @@
 
 			if (event.ctrlKey && event.key === 'v') {
 				event.preventDefault();
-				navigator.clipboard.readText().then((text) => {
-					if (text) term.paste(text);
+				readText().then((text) => {
+					if (text) checkAndPaste(term, text);
 				});
 				return false;
 			}
@@ -432,8 +464,8 @@
 			const termEl = containerEl!;
 			function onContextMenu(e: MouseEvent) {
 				e.preventDefault();
-				navigator.clipboard.readText().then((text) => {
-					if (text) term.paste(text);
+				readText().then((text) => {
+					if (text) checkAndPaste(term, text);
 				});
 			}
 			termEl.addEventListener('contextmenu', onContextMenu);
@@ -567,6 +599,21 @@
 	{/if}
 </div>
 
+{#if showPasteConfirm}
+	<Modal
+		open={showPasteConfirm}
+		onclose={closePasteConfirm}
+		title={t('terminal.paste_confirm_title')}
+	>
+		<p class="paste-confirm-text">{t('terminal.paste_confirm_body')}</p>
+			<pre class="paste-preview"><code style="font-family: {getSettings().fontFamily}, monospace">{pendingPasteText}</code></pre>
+		{#snippet actions()}
+			<Button variant="ghost" onclick={closePasteConfirm}>{t('common.cancel')}</Button>
+			<Button variant="primary" onclick={confirmPaste}>{t('common.confirm')}</Button>
+		{/snippet}
+	</Modal>
+{/if}
+
 <style>
 	.terminal-wrapper {
 		width: 100%;
@@ -659,5 +706,25 @@
 	.reconnect-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.paste-preview {
+		margin: 12px 0 0;
+		padding: 10px 12px;
+		background: var(--bg-primary, rgba(0,0,0,0.3));
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		max-height: 180px;
+		overflow-y: auto;
+		font-size: 0.78rem;
+		line-height: 1.45;
+		white-space: pre-wrap;
+		word-break: break-all;
+	}
+
+	.paste-preview code {
+		background: none;
+		padding: 0;
+		font-size: inherit;
 	}
 </style>

@@ -33,6 +33,8 @@
   "terminal.reconnecting": "正在重连...",
   "terminal.reconnected": "已重新连接",
   "terminal.reconnect_failed": "重连失败",
+  "terminal.paste_confirm_title": "粘贴多行内容？",
+  "terminal.paste_confirm_body": "剪贴板中包含换行符，粘贴后可能会执行多条命令。是否继续？",
 
   "session.connect": "连接",
   "session.disconnect": "断开",
