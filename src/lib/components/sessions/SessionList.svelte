@@ -848,6 +848,7 @@
 		gap: 4px;
 		flex: 1;
 		padding: 5px 8px;
+		padding-right: 10px;
 		font-family: var(--font-sans);
 		font-size: 0.6875rem;
 		font-weight: 500;
@@ -856,6 +857,8 @@
 		transition:
 			background-color var(--duration-default) var(--ease-default),
 			color var(--duration-default) var(--ease-default);
+		justify-content: center;
+		white-space: nowrap;
 	}
 
 	.quick-connect-btn {
@@ -872,6 +875,7 @@
 		color: var(--color-text-secondary);
 		background: transparent;
 		border: 1px solid var(--color-border);
+		position: relative;
 	}
 
 	.save-session-btn:hover {
@@ -882,6 +886,12 @@
 	.quick-connect-btn:active,
 	.save-session-btn:active {
 		transform: scale(0.98);
+	}
+
+	.save-session-btn > .beta-badge {
+	    position: absolute;
+		top: 3px;
+		right: 3px;
 	}
 
 	.search-row {

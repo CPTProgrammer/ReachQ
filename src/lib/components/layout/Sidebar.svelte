@@ -111,7 +111,7 @@
 	}
 </script>
 
-<aside class="sidebar" class:no-transition={dragging} style:width="{collapsed ? COLLAPSED_WIDTH : sidebarWidth}px">
+<aside class="sidebar {collapsed ? "sidebar-collapsed" : ""}" class:no-transition={dragging} style:width="{collapsed ? COLLAPSED_WIDTH : sidebarWidth}px">
 	<nav class="sidebar-nav">
 		{#each sections as section (section.id)}
 			<button
@@ -232,6 +232,10 @@
 			color var(--duration-default) var(--ease-default);
 	}
 
+	.sidebar-collapsed .nav-btn {
+	    justify-content: center;
+	}
+
 	.nav-btn:hover {
 		background-color: rgba(255, 255, 255, 0.06);
 		color: var(--color-text-primary);
@@ -306,6 +310,7 @@
 	.sidebar-footer {
 		padding: 6px;
 		border-top: 1px solid var(--color-border);
+		margin-top: auto;
 	}
 
 	.toggle-btn {
