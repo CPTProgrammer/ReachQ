@@ -26,6 +26,7 @@
     "dialog:allow-confirm",
     "process:allow-restart",
     "process:allow-exit",
-    "clipboard-manager:allow-read-text"
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text"
   ]
 }

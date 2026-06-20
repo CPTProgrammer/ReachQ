@@ -12,7 +12,7 @@
 	import { getSettings, updateSetting } from '$lib/state/settings.svelte';
 	import { trieMatch } from '$lib/state/snippets.svelte';
 	import { t } from '$lib/state/i18n.svelte';
-	import { readText } from '@tauri-apps/plugin-clipboard-manager';
+	import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 
@@ -340,8 +340,8 @@
 			}
 
 			if (event.ctrlKey && event.key === 'c' && term.hasSelection()) {
-				navigator.clipboard.writeText(term.getSelection());
-				term.clearSelection();
+				const sel = term.getSelection();
+				writeText(sel).then(() => term.clearSelection());
 				return false;
 			}
 
@@ -460,14 +460,26 @@
 				onTitleChange?.(title);
 			});
 
-			// Right-click pastes from clipboard
+			// Snapshot selection on mousedown (capture phase, before xterm
+			// clears it). Used by right-click to decide copy vs paste.
+			let selectionBefore: string | undefined;
+			function onMouseDown() {
+				selectionBefore = term.hasSelection() ? term.getSelection() : undefined;
+			}
+
+			// Right-click: copy if selection exists, otherwise paste
 			const termEl = containerEl!;
 			function onContextMenu(e: MouseEvent) {
 				e.preventDefault();
-				readText().then((text) => {
-					if (text) checkAndPaste(term, text);
-				});
+				if (selectionBefore) {
+					writeText(selectionBefore).then(() => term.clearSelection());
+				} else {
+					readText().then((text) => {
+						if (text) checkAndPaste(term, text);
+					});
+				}
 			}
+			termEl.addEventListener('mousedown', onMouseDown, true);
 			termEl.addEventListener('contextmenu', onContextMenu);
 
 			// Ctrl+Wheel zooms terminal font size
@@ -484,23 +496,6 @@
 				}
 			}
 			termEl.addEventListener('wheel', onWheel, { passive: false });
-
-			// Click to copy: if text is selected, clicking copies it.
-			// Only fires for real clicks (no mouse drag), otherwise
-			// it would steal the selection right after the user finishes
-			// selecting with the mouse.
-			let mouseMoved = false;
-			function onMouseDown() { mouseMoved = false; }
-			function onMouseMove() { mouseMoved = true; }
-			function onClick() {
-				if (!mouseMoved && term.hasSelection()) {
-					navigator.clipboard.writeText(term.getSelection());
-					term.clearSelection();
-				}
-			}
-			termEl.addEventListener('mousedown', onMouseDown);
-			termEl.addEventListener('mousemove', onMouseMove);
-			termEl.addEventListener('click', onClick);
 
 			terminal = term;
 			fitAddon = fit;
