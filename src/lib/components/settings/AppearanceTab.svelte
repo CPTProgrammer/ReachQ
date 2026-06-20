@@ -155,7 +155,7 @@
 			<iframe
 				title="Font Preview"
 				class="preview-iframe"
-				srcdoc={`<!DOCTYPE html><html><head><style>*{margin:0;padding:0;background:#0a0a0a;color:#f5f5f7;}html,body{overflow:hidden;width:100%;height:100%;}pre{overflow:hidden;}</style></head><body><pre style="font-family:'${pvFont}',monospace;font-size:${currentSize}px;padding:12px;line-height:1.5;white-space:pre;">user@server:~$ ls -la\ntotal 42\ndrwxr-xr-x  2 root root 4096 Mar 20 08:00 .\n0123456789 ABCDEF abcdef</pre></body></html>`}
+				srcdoc={`<!DOCTYPE html><html><head><style>*{margin:0;padding:0;background:#0a0a0a;color:#f5f5f7;}html,body{overflow:hidden;width:100%;height:100%;}pre{overflow:hidden;}</style></head><body><pre style="font-family:'${pvFont}',monospace;font-size:${currentSize}px;padding:12px;line-height:1.5;white-space:pre;">user@server:~$ ls -la\ntotal 42\ndrwxr-xr-x  2 root root 4096 Mar 20 08:00 .\n0123456789 ABCDEF abcdef\n[ Hello World! ]\n[ 你好，世界！ ]</pre></body></html>`}
 			></iframe>
 		</div>
 	{/key}
