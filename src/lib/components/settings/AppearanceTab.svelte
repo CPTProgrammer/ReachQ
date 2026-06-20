@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getSettings, updateSetting } from '$lib/state/settings.svelte';
 	import { t } from '$lib/state/i18n.svelte';
+	import { listSystemFonts } from '$lib/ipc/settings';
 
 	const settings = getSettings();
 	let currentFont = $derived(settings.fontFamily || 'monospace');
@@ -33,7 +34,7 @@
 	}
 
 
-	const SYSTEM_FONTS = [
+	const COMMON_FONTS = [
 		{ name: 'System Default', value: 'monospace' },
 		{ name: 'SF Mono', value: 'SF Mono' },
 		{ name: 'Cascadia Code', value: 'Cascadia Code' },
@@ -45,11 +46,31 @@
 
 	let fontSearch = $state('');
 	let fontDropdownOpen = $state(false);
+	let systemFonts = $state<string[]>([]);
+	let fontsLoading = $state(false);
 
 	let filteredFonts = $derived.by(() => {
 		const q = fontSearch.toLowerCase();
-		return SYSTEM_FONTS.filter(f => f.name.toLowerCase().includes(q));
+		const common = COMMON_FONTS.filter(f => f.name.toLowerCase().includes(q));
+		const system = systemFonts
+			.filter(f => f.toLowerCase().includes(q))
+			.filter(f => !COMMON_FONTS.some(c => c.name.toLowerCase() === f.toLowerCase()));
+		return { common, system };
 	});
+
+	async function openFontDropdown(): Promise<void> {
+		fontDropdownOpen = !fontDropdownOpen;
+		if (fontDropdownOpen && systemFonts.length === 0 && !fontsLoading) {
+			fontsLoading = true;
+			try {
+				systemFonts = await listSystemFonts();
+			} catch {
+				// Silently ignore — system font listing is best-effort
+			} finally {
+				fontsLoading = false;
+			}
+		}
+	}
 
 	function selectFont(value: string): void {
 		updateSetting('fontFamily', value);
@@ -115,7 +136,7 @@
 				<button
 					class="font-picker-btn"
 					style="font-family: '{currentFont}', monospace"
-					onclick={() => (fontDropdownOpen = !fontDropdownOpen)}
+					onclick={openFontDropdown}
 				>
 					{currentFont}
 					<svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="chevron" class:open={fontDropdownOpen}>
@@ -132,16 +153,34 @@
 							bind:value={fontSearch}
 						/>
 						<div class="font-list">
-							{#each filteredFonts as font (font.value)}
-								<button
-									class="font-option"
-									class:active={currentFont === font.value}
-									style:font-family="'{font.value}', monospace"
-									onclick={() => selectFont(font.value)}
-								>
-									{font.name}
-								</button>
-							{/each}
+							{#if filteredFonts.common.length > 0}
+								<div class="font-group-label">Common</div>
+								{#each filteredFonts.common as font (font.value)}
+									<button
+										class="font-option"
+										class:active={currentFont === font.value}
+										style:font-family="'{font.value}', monospace"
+										onclick={() => selectFont(font.value)}
+									>
+										{font.name}
+									</button>
+								{/each}
+							{/if}
+							{#if fontsLoading}
+								<div class="font-loading">Loading system fonts…</div>
+							{:else if filteredFonts.system.length > 0}
+								<div class="font-group-label">System Fonts</div>
+								{#each filteredFonts.system as font (font)}
+									<button
+										class="font-option"
+										class:active={currentFont === font}
+										style:font-family="'{font}', monospace"
+										onclick={() => selectFont(font)}
+									>
+										{font}
+									</button>
+								{/each}
+							{/if}
 						</div>
 					</div>
 				{/if}
@@ -287,6 +326,11 @@
 	.font-option:hover { background-color: rgba(255, 255, 255, 0.06); }
 	.font-option.active { background-color: rgba(10, 132, 255, 0.12); color: var(--color-accent); }
 
+	.font-loading {
+		padding: 12px; font-size: 0.75rem; color: var(--color-text-secondary);
+		font-family: var(--font-sans); font-style: italic;
+	}
+
 	/* Preview box */
 	.font-preview-box {
 		margin-top: 12px;
@@ -303,7 +347,7 @@
 	}
 
 	.preview-iframe {
-		width: 100%; height: 120px; border: none; display: block;
+		width: 100%; height: 160px; border: none; display: block;
 		border-radius: 0 0 8px 8px; overflow: hidden;
 	}
 </style>

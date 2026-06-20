@@ -71,6 +71,9 @@ toml = "0.8"
 zip = "2.3"
 tauri-plugin-process = "2.3.1"
 
+# System font enumeration
+fontdb = { version = "0.22", default-features = false, features = ["memmap"] }
+
 # PTY, Serial, Autostart, Updater (desktop only)
 [target.'cfg(not(target_os = "android"))'.dependencies]
 portable-pty = "0.8"

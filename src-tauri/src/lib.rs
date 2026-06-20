@@ -169,6 +169,7 @@ pub fn run() {
             settings_set,
             settings_delete,
             settings_save_all,
+            list_system_fonts,
             // Vault commands
             vault_init_identity,
             vault_unlock,
@@ -371,6 +372,7 @@ pub fn run() {
             settings_set,
             settings_delete,
             settings_save_all,
+            list_system_fonts,
             // Vault commands
             vault_init_identity,
             vault_unlock,

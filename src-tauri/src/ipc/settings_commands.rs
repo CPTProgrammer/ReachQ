@@ -223,3 +223,31 @@ async fn ensure_settings_vault(
 fn get_settings_vault_id_if_exists(manager: &crate::vault::VaultManager) -> Option<String> {
     manager.get_vault_id_by_name(SETTINGS_VAULT_NAME)
 }
+
+/// Enumerate system fonts.
+///
+/// Uses the fontdb crate to scan system font directories and return
+/// a deduplicated, sorted list of font family names.
+#[tauri::command]
+#[tracing::instrument]
+pub fn list_system_fonts() -> Result<Vec<String>, String> {
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+
+    let mut families: Vec<String> = db
+        .faces()
+        .map(|face| {
+            face.families
+                .first()
+                .map(|(name, _lang)| name.to_string())
+                .unwrap_or_default()
+        })
+        .filter(|name| !name.is_empty())
+        .collect();
+
+    families.sort_unstable();
+    families.dedup();
+
+    tracing::info!("Found {} system font families", families.len());
+    Ok(families)
+}

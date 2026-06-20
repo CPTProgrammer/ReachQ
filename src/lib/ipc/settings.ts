@@ -43,3 +43,8 @@ export async function remove(key: string): Promise<void> {
 export async function saveAll(settings: Partial<AppSettings>): Promise<void> {
 	return invoke('settings_save_all', { settings });
 }
+
+/** Enumerate system fonts. Returns deduplicated, sorted font family names. */
+export async function listSystemFonts(): Promise<string[]> {
+	return invoke<string[]>('list_system_fonts');
+}
