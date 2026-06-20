@@ -115,6 +115,7 @@ pub async fn ai_chat(request: AiChatRequest) -> Result<String, String> {
 #[serde(rename_all = "camelCase")]
 pub struct AiFetchModelsRequest {
     pub api_key: String,
+    pub base_url: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -123,7 +124,7 @@ pub struct ModelInfo {
     pub name: String,
     pub description: String,
     pub context_length: u64,
-    pub pricing: ModelPricing,
+    pub pricing: Option<ModelPricing>,
 }
 
 #[derive(Debug, Serialize)]
@@ -159,8 +160,9 @@ pub async fn ai_fetch_models(request: AiFetchModelsRequest) -> Result<Vec<ModelI
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
+    let models_url = format!("{}/models", request.base_url.trim_end_matches('/'));
     let res = client
-        .get("https://openrouter.ai/api/v1/models")
+        .get(&models_url)
         .header("Authorization", format!("Bearer {}", request.api_key))
         .send()
         .await
@@ -182,10 +184,10 @@ pub async fn ai_fetch_models(request: AiFetchModelsRequest) -> Result<Vec<ModelI
             name: m.name.unwrap_or_default(),
             description: m.description.unwrap_or_default(),
             context_length: m.context_length.unwrap_or(0),
-            pricing: ModelPricing {
-                prompt: m.pricing.as_ref().and_then(|p| p.prompt.clone()).unwrap_or_else(|| "0".to_string()),
-                completion: m.pricing.as_ref().and_then(|p| p.completion.clone()).unwrap_or_else(|| "0".to_string()),
-            },
+            pricing: m.pricing.map(|p| ModelPricing {
+                prompt: p.prompt.unwrap_or_else(|| "0".to_string()),
+                completion: p.completion.unwrap_or_else(|| "0".to_string()),
+            }),
         })
         .collect())
 }

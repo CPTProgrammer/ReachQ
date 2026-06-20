@@ -468,6 +468,8 @@
   "ai_settings.enable_desc": "Connettiti a OpenRouter per funzionalità basate su AI come suggerimenti di comandi e l'analisi del server.",
   "ai_settings.api_key": "Chiave API",
   "ai_settings.api_key_desc": "La tua chiave API di OpenRouter per accedere ai modelli AI.",
+  "ai_settings.base_url": "URL Base Personalizzato",
+  "ai_settings.base_url_desc": "Opzionale. URL base API personalizzato per provider compatibili OpenAI (es. https://openrouter.ai/api/v1). Lascia vuoto per usare OpenRouter predefinito.",
   "ai_settings.validating": "Validazione...",
   "ai_settings.validate": "Valida",
   "ai_settings.saving_encrypted": "Salvataggio crittografato...",

@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import {
 	getOpenRouterApiKey,
 	setOpenRouterApiKey,
+	getOpenRouterUrl,
+	setOpenRouterUrl,
 	getDefaultAiModel,
 	setDefaultAiModel,
 	loadSecureSettings
@@ -10,6 +12,7 @@ import {
 export interface AISettings {
 	enabled: boolean;
 	apiKey: string;
+	baseUrl: string;
 	selectedModel: string;
 }
 
@@ -18,12 +21,12 @@ export interface OpenRouterModel {
 	name: string;
 	description: string;
 	context_length: number;
-	pricing: { prompt: string; completion: string };
+	pricing: { prompt: string; completion: string } | null;
 }
 
 const STORAGE_KEY = 'reach-ai-settings';
 
-let aiSettings = $state<AISettings>({ enabled: false, apiKey: '', selectedModel: '' });
+let aiSettings = $state<AISettings>({ enabled: false, apiKey: '', baseUrl: '', selectedModel: '' });
 let models = $state<OpenRouterModel[]>([]);
 let modelsLoading = $state(false);
 let modelsError = $state<string | undefined>();
@@ -43,6 +46,10 @@ export async function updateAISetting<K extends keyof AISettings>(
 	if (key === 'apiKey') {
 		// Store API key encrypted in vault (O(1))
 		await setOpenRouterApiKey(value as string);
+	} else if (key === 'baseUrl') {
+		// Store base URL encrypted in vault
+		await setOpenRouterUrl(value as string);
+		saveLocalSettings();
 	} else if (key === 'selectedModel') {
 		// Store model in vault too for encryption
 		await setDefaultAiModel(value as string);
@@ -59,9 +66,12 @@ export function loadAISettings(): void {
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (raw) {
-			const parsed = JSON.parse(raw) as Partial<{ enabled: boolean; selectedModel: string }>;
+			const parsed = JSON.parse(raw) as Partial<{ enabled: boolean; baseUrl: string; selectedModel: string }>;
 			aiSettings.enabled = parsed.enabled ?? false;
-			// selectedModel loaded from vault, but fallback to localStorage for migration
+			// baseUrl and selectedModel loaded from vault, but fallback to localStorage for migration
+			if (!aiSettings.baseUrl && parsed.baseUrl) {
+				aiSettings.baseUrl = parsed.baseUrl;
+			}
 			if (!aiSettings.selectedModel && parsed.selectedModel) {
 				aiSettings.selectedModel = parsed.selectedModel;
 			}
@@ -78,9 +88,11 @@ export async function loadSecureAISettings(): Promise<void> {
 	try {
 		await loadSecureSettings();
 		const apiKey = getOpenRouterApiKey();
+		const baseUrl = getOpenRouterUrl();
 		const model = getDefaultAiModel();
 
 		if (apiKey) aiSettings.apiKey = apiKey;
+		if (baseUrl) aiSettings.baseUrl = baseUrl;
 		if (model) aiSettings.selectedModel = model;
 
 		secureLoaded = true;
@@ -92,6 +104,7 @@ export async function loadSecureAISettings(): Promise<void> {
 /** Clear secure settings (on vault lock). */
 export function clearSecureAISettings(): void {
 	aiSettings.apiKey = '';
+	aiSettings.baseUrl = '';
 	secureLoaded = false;
 }
 
@@ -103,6 +116,7 @@ function saveLocalSettings(): void {
 			STORAGE_KEY,
 			JSON.stringify({
 				enabled: aiSettings.enabled,
+				baseUrl: aiSettings.baseUrl,
 				selectedModel: aiSettings.selectedModel
 			})
 		);
@@ -134,17 +148,22 @@ export async function fetchModels(): Promise<void> {
 	modelsError = undefined;
 	try {
 		const result = await invoke<Array<{ id: string; name: string; description: string; context_length: number; pricing: { prompt: string; completion: string } }>>('ai_fetch_models', {
-			request: { apiKey: aiSettings.apiKey }
+			request: {
+				apiKey: aiSettings.apiKey,
+				baseUrl: aiSettings.baseUrl || 'https://openrouter.ai/api/v1'
+			}
 		});
 		models = result.map((m) => ({
 			id: m.id,
 			name: m.name,
 			description: m.description,
 			context_length: m.context_length,
-			pricing: {
-				prompt: m.pricing.prompt,
-				completion: m.pricing.completion
-			}
+			pricing: m.pricing
+				? {
+					prompt: m.pricing.prompt,
+					completion: m.pricing.completion
+				}
+				: null
 		}));
 	} catch (e) {
 		modelsError = String(e);

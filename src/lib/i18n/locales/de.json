@@ -468,6 +468,8 @@
   "ai_settings.enable_desc": "Verbinde dich mit OpenRouter für AI-gestützte Funktionen wie Playbook-Generierung und Serveranalyse.",
   "ai_settings.api_key": "API-Schlüssel",
   "ai_settings.api_key_desc": "Dein OpenRouter-API-Schlüssel für den Zugriff auf AI-Modelle.",
+  "ai_settings.base_url": "Benutzerdefinierte Basis-URL",
+  "ai_settings.base_url_desc": "Optional. Benutzerdefinierte API-Basis-URL für OpenAI-kompatible Anbieter (z. B. https://openrouter.ai/api/v1). Leer lassen für OpenRouter-Standard.",
   "ai_settings.validating": "Wird überprüft...",
   "ai_settings.validate": "Überprüfen",
   "ai_settings.saving_encrypted": "Wird verschlüsselt gespeichert...",

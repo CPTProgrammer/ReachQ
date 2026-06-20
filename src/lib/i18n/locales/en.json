@@ -468,6 +468,8 @@
   "ai_settings.enable_desc": "Connect to OpenRouter for AI-powered features like command suggestions and server analysis.",
   "ai_settings.api_key": "API Key",
   "ai_settings.api_key_desc": "Your OpenRouter API key for accessing AI models.",
+  "ai_settings.base_url": "Custom Base URL",
+  "ai_settings.base_url_desc": "Optional. Custom API base URL for OpenAI-compatible providers (e.g., https://openrouter.ai/api/v1). Leave empty to use OpenRouter default.",
   "ai_settings.validating": "Validating...",
   "ai_settings.validate": "Validate",
   "ai_settings.saving_encrypted": "Saving encrypted...",

@@ -468,6 +468,8 @@
   "ai_settings.enable_desc": "Σύνδεση στο OpenRouter για λειτουργίες που υποστηρίζονται από AI, όπως προτάσεις εντολών και ανάλυση διακομιστή.",
   "ai_settings.api_key": "Κλειδί API",
   "ai_settings.api_key_desc": "Το κλειδί API σας στο OpenRouter για πρόσβαση σε μοντέλα AI.",
+  "ai_settings.base_url": "Προσαρμοσμένο Βασικό URL",
+  "ai_settings.base_url_desc": "Προαιρετικό. Προσαρμοσμένο βασικό URL API για παρόχους συμβατούς με OpenAI (π.χ. https://openrouter.ai/api/v1). Αφήστε κενό για προεπιλογή OpenRouter.",
   "ai_settings.validating": "Επικύρωση...",
   "ai_settings.validate": "Επικύρωση",
   "ai_settings.saving_encrypted": "Αποθήκευση κρυπτογραφημένου...",

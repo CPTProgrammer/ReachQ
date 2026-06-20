@@ -62,9 +62,10 @@ async function aiInvoke(apiMessages: { role: string; content: string }[]): Promi
 		throw new Error('AI is not configured.');
 	}
 
+	const baseUrl = settings.baseUrl || 'https://openrouter.ai/api/v1';
 	return invoke<string>('ai_chat', {
 		request: {
-			url: 'https://openrouter.ai/api/v1/chat/completions',
+			url: baseUrl.replace(/\/+$/, '') + '/chat/completions',
 			apiKey: settings.apiKey,
 			model: settings.selectedModel,
 			messages: apiMessages

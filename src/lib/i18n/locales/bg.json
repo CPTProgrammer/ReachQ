@@ -468,6 +468,8 @@
   "ai_settings.enable_desc": "Свържете се с OpenRouter за AI функции като генериране на плейбуци и анализ на сървъри.",
   "ai_settings.api_key": "API Ключ",
   "ai_settings.api_key_desc": "Вашият OpenRouter API ключ за достъп до AI модели.",
+  "ai_settings.base_url": "Персонализиран базов URL",
+  "ai_settings.base_url_desc": "По избор. Персонализиран базов URL за OpenAI-съвместими доставчици (напр. https://openrouter.ai/api/v1). Оставете празно за OpenRouter по подразбиране.",
   "ai_settings.validating": "Валидиране...",
   "ai_settings.validate": "Валидирай",
   "ai_settings.saving_encrypted": "Запазване в криптиран вид...",

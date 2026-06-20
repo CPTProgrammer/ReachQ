@@ -468,6 +468,8 @@
   "ai_settings.enable_desc": "连接到 OpenRouter 以使用 AI 驱动的功能，如命令建议和服务器分析。",
   "ai_settings.api_key": "API 密钥",
   "ai_settings.api_key_desc": "您的 OpenRouter API 密钥，用于访问 AI 模型。",
+  "ai_settings.base_url": "自定义基础 URL",
+  "ai_settings.base_url_desc": "可选。为 OpenAI 兼容的提供商设置自定义 API 基础 URL（例如 https://openrouter.ai/api/v1）。留空则使用 OpenRouter 默认值。",
   "ai_settings.validating": "正在验证...",
   "ai_settings.validate": "验证",
   "ai_settings.saving_encrypted": "正在加密保存...",

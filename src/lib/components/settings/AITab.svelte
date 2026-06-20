@@ -17,6 +17,7 @@
 
 	let searchQuery = $state('');
 	let savingApiKey = $state(false);
+	let savingBaseUrl = $state(false);
 	let apiKeyError = $state<string | null>(null);
 
 	// Load secure settings when vault is unlocked
@@ -52,6 +53,16 @@
 		}
 	}
 
+	async function onBaseUrlInput(e: Event & { currentTarget: HTMLInputElement }) {
+		const value = e.currentTarget.value;
+		savingBaseUrl = true;
+		try {
+			await updateAISetting('baseUrl', value);
+		} finally {
+			savingBaseUrl = false;
+		}
+	}
+
 	async function onValidate() {
 		await fetchModels();
 	}
@@ -61,14 +72,16 @@
 	}
 
 	function formatContext(length: number): string {
+		if (!length) return '';
 		if (length >= 1_000_000) return `${Math.round(length / 1_000_000)}M`;
 		if (length >= 1000) return `${Math.round(length / 1000)}K`;
 		return String(length);
 	}
 
-	function formatPricing(prompt: string, completion: string): string {
-		const p = parseFloat(prompt) * 1_000_000;
-		const c = parseFloat(completion) * 1_000_000;
+	function formatPricing(pricing: { prompt: string; completion: string } | null): string {
+		if (!pricing) return '';
+		const p = parseFloat(pricing.prompt) * 1_000_000;
+		const c = parseFloat(pricing.completion) * 1_000_000;
 		if (p === 0 && c === 0) return 'free';
 		const fmt = (v: number) => (v < 0.01 ? v.toFixed(4) : v.toFixed(2));
 		return `$${fmt(p)} / $${fmt(c)}`;
@@ -134,6 +147,24 @@
 		</div>
 	</div>
 
+	<!-- Custom Base URL section -->
+	<div class="ai-section" class:disabled-section={!aiSettings.enabled}>
+		<div class="base-url-section">
+			<span class="setting-label">{t('ai_settings.base_url')}</span>
+			<span class="setting-description">{t('ai_settings.base_url_desc')}</span>
+			<Input
+				type="text"
+				value={aiSettings.baseUrl}
+				placeholder="https://openrouter.ai/api/v1"
+				disabled={!aiSettings.enabled}
+				oninput={onBaseUrlInput}
+			/>
+			{#if savingBaseUrl}
+				<span class="status-hint">{t('ai_settings.saving_encrypted')}</span>
+			{/if}
+		</div>
+	</div>
+
 	<!-- Model Browser section -->
 	<div class="ai-section" class:disabled-section={!aiSettings.enabled}>
 		<div class="section-header">
@@ -169,13 +200,17 @@
 					>
 						<div class="model-info">
 							<span class="model-name">{model.name || model.id}</span>
-							<span class="model-meta">
-								{formatContext(model.context_length)} ctx
-							</span>
+							{#if formatContext(model.context_length)}
+								<span class="model-meta">
+									{formatContext(model.context_length)} ctx
+								</span>
+							{/if}
 						</div>
-						<span class="model-pricing">
-							{formatPricing(model.pricing.prompt, model.pricing.completion)}
-						</span>
+						{#if formatPricing(model.pricing)}
+							<span class="model-pricing">
+								{formatPricing(model.pricing)}
+							</span>
+						{/if}
 					</button>
 				{/each}
 			{/if}
@@ -301,6 +336,15 @@
 
 	.status-error {
 		color: #ff453a;
+	}
+
+	/* Custom Base URL section */
+	.base-url-section {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		padding: 10px 0;
+		border-bottom: 1px solid var(--color-border);
 	}
 
 	/* Model Browser */

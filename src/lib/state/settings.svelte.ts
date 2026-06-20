@@ -122,9 +122,9 @@ export function getOpenRouterApiKey(): string | null {
 	return secureSettings.openrouterApiKey;
 }
 
-/** Get OpenRouter URL (with default). */
+/** Get OpenRouter base URL (with default). */
 export function getOpenRouterUrl(): string {
-	return secureSettings.openrouterUrl ?? 'https://openrouter.ai/api/v1/chat/completions';
+	return secureSettings.openrouterUrl ?? 'https://openrouter.ai/api/v1';
 }
 
 /** Get default AI model (with default). */
