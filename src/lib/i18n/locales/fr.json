@@ -52,7 +52,6 @@
   "session.auth_key": "Cle",
   "session.auth_agent": "Agent",
   "session.auth_pw_label": "MDP",
-  "session.folder": "Dossier",
   "session.save": "Enregistrer",
   "session.cancel": "Annuler",
   "session.no_sessions": "Aucune session enregistree",

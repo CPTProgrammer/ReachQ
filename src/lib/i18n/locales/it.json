@@ -52,7 +52,6 @@
   "session.auth_key": "Chiave",
   "session.auth_agent": "Agente",
   "session.auth_pw_label": "PW",
-  "session.folder": "Cartella",
   "session.save": "Salva",
   "session.cancel": "Annulla",
   "session.no_sessions": "Nessuna sessione salvata",

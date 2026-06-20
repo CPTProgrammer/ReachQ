@@ -52,7 +52,6 @@
   "session.auth_key": "Κλειδί",
   "session.auth_agent": "Πράκτορας",
   "session.auth_pw_label": "ΚΠ",
-  "session.folder": "Φάκελος",
   "session.save": "Αποθήκευση",
   "session.cancel": "Ακύρωση",
   "session.no_sessions": "Δεν υπάρχουν αποθηκευμένες συνεδρίες",

@@ -52,7 +52,6 @@
   "session.auth_key": "密钥",
   "session.auth_agent": "代理",
   "session.auth_pw_label": "密码",
-  "session.folder": "文件夹",
   "session.save": "保存",
   "session.cancel": "取消",
   "session.no_sessions": "暂无保存的会话",

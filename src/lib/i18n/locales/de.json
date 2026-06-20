@@ -52,7 +52,6 @@
   "session.auth_key": "Schlüssel",
   "session.auth_agent": "Agent",
   "session.auth_pw_label": "PW",
-  "session.folder": "Ordner",
   "session.save": "Speichern",
   "session.cancel": "Abbrechen",
   "session.no_sessions": "Keine gespeicherten Sitzungen",

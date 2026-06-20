@@ -52,7 +52,6 @@
   "session.auth_key": "Ключ",
   "session.auth_agent": "Агент",
   "session.auth_pw_label": "ПР",
-  "session.folder": "Папка",
   "session.save": "Запази",
   "session.cancel": "Отказ",
   "session.no_sessions": "Няма запазени сесии",
