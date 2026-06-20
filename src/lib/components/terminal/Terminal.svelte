@@ -9,7 +9,7 @@
 	import { ptyWrite, ptyResize } from '$lib/ipc/pty';
 	import { sshSend, sshResize, sshConnect, type SshConnectParams } from '$lib/ipc/ssh';
 	import { registerBufferReader, unregisterBufferReader } from '$lib/state/terminal-buffer.svelte';
-	import { getSettings, updateSetting } from '$lib/state/settings.svelte';
+	import { getSettings } from '$lib/state/settings.svelte';
 	import { trieMatch } from '$lib/state/snippets.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -481,21 +481,6 @@
 			}
 			termEl.addEventListener('mousedown', onMouseDown, true);
 			termEl.addEventListener('contextmenu', onContextMenu);
-
-			// Ctrl+Wheel zooms terminal font size
-			function onWheel(e: WheelEvent) {
-				if (!e.ctrlKey) return;
-				e.preventDefault();
-				const current = term.options.fontSize ?? 14;
-				const next = e.deltaY < 0 ? Math.min(current + 1, 32) : Math.max(current - 1, 8);
-				if (next !== current) {
-					term.options.fontSize = next;
-					term.clearTextureAtlas();
-					safeFitAndResize(term, fit, termEl);
-					updateSetting('fontSize', next);
-				}
-			}
-			termEl.addEventListener('wheel', onWheel, { passive: false });
 
 			terminal = term;
 			fitAddon = fit;

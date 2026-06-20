@@ -119,10 +119,14 @@
 	<div class="setting-row">
 		<div class="setting-info">
 			<span class="setting-label">{t('settings.font_size')}</span>
-			<span class="setting-description">Current: {settings.fontSize}px — Use Ctrl + Mouse Wheel in terminal to adjust</span>
+			<span class="setting-description">{t('settings.font_size_desc', { size: String(settings.fontSize) })}</span>
 		</div>
 		<div class="setting-control">
-			<span class="font-size-badge">{settings.fontSize}px</span>
+			<div class="font-size-stepper">
+				<button class="stepper-btn" onclick={() => updateSetting('fontSize', Math.max(8, settings.fontSize - 1))} disabled={settings.fontSize <= 8}>−</button>
+				<span class="font-size-badge">{settings.fontSize}px</span>
+				<button class="stepper-btn" onclick={() => updateSetting('fontSize', Math.min(32, settings.fontSize + 1))} disabled={settings.fontSize >= 32}>+</button>
+			</div>
 		</div>
 	</div>
 
@@ -194,7 +198,7 @@
 			<iframe
 				title="Font Preview"
 				class="preview-iframe"
-				srcdoc={`<!DOCTYPE html><html><head><style>*{margin:0;padding:0;background:#0a0a0a;color:#f5f5f7;}html,body{overflow:hidden;width:100%;height:100%;}pre{overflow:hidden;}</style></head><body><pre style="font-family:'${pvFont}',monospace;font-size:${currentSize}px;padding:12px;line-height:1.5;white-space:pre;">user@server:~$ ls -la\ntotal 42\ndrwxr-xr-x  2 root root 4096 Mar 20 08:00 .\n0123456789 ABCDEF abcdef\n[ Hello World! ]\n[ 你好，世界！ ]</pre></body></html>`}
+				srcdoc={`<!DOCTYPE html><html><head><style>*{margin:0;padding:0;background:#0a0a0a;color:#f5f5f7;}html,body{overflow:hidden;width:100%;height:100%;}body{overflow:auto}body::-webkit-scrollbar{width: 6px;}body::-webkit-scrollbar-track {background: transparent;}body::-webkit-scrollbar-thumb {background-color: rgba(255, 255, 255, 0.15);border-radius: 3px;}body::-webkit-scrollbar-thumb:hover {background-color: rgba(255, 255, 255, 0.25);}pre{overflow:hidden;}</style></head><body><pre style="font-family:'${pvFont}',monospace;font-size:${currentSize}px;padding:12px;line-height:1.5;white-space:pre;">user@server:~$ ls -la\ntotal 42\ndrwxr-xr-x  2 root root 4096 Mar 20 08:00 .\n0123456789 ABCDEF abcdef\n[ Hello World! ]\n[ 你好，世界！ ]</pre></body></html>`}
 			></iframe>
 		</div>
 	{/key}
@@ -272,6 +276,36 @@
 		font-weight: 600;
 		color: var(--color-accent);
 		font-variant-numeric: tabular-nums;
+	}
+
+	.font-size-stepper {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.stepper-btn {
+		width: 28px;
+		height: 28px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		background: var(--color-bg-elevated);
+		color: var(--color-text-primary);
+		font-size: 1rem;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+
+	.stepper-btn:hover:not(:disabled) {
+		background: var(--color-border);
+	}
+
+	.stepper-btn:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
 	}
 
 	/* Font picker */
