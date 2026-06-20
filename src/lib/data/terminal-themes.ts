@@ -1,7 +1,12 @@
 /**
  * Xterm.js terminal theme definitions.
- * The ITheme interface mirrors xterm.js ITerminalOptions.theme.
+ * Themes are auto-discovered from ./themes/*.ts via Vite's import.meta.glob.
+ * Add a new theme by dropping a .ts file in the themes/ directory.
+ *
+ * Each theme file must export a named `theme` of type TerminalThemeDef,
+ * e.g.: `export const theme: TerminalThemeDef = { name: 'My Theme', theme: {...} };`
  */
+
 export interface ITheme {
 	/** The default foreground color */
 	foreground?: string;
@@ -61,6 +66,8 @@ export interface TerminalThemeDef {
 	theme: ITheme;
 }
 
+export { DEFAULT_FOREGROUND, DEFAULT_BACKGROUND, DEFAULT_CURSOR, DEFAULT_CURSOR_ACCENT, DEFAULT_SELECTION } from './theme-constants';
+
 /** ANSI color labels in display order */
 export const ANSI_COLORS = [
 	{ key: 'black', label: 'Black' },
@@ -81,7 +88,7 @@ export const ANSI_COLORS = [
 	{ key: 'brightWhite', label: 'Bright White' },
 ] as const;
 
-export const DEFAULT_THEME: ITheme = {
+const DEFAULT_THEME: ITheme = {
 	background: '#0a0a0a',
 	foreground: '#f5f5f7',
 	cursor: '#0a84ff',
@@ -106,10 +113,17 @@ export const DEFAULT_THEME: ITheme = {
 	brightWhite: '#ffffff',
 };
 
-/** All available terminal themes */
-export const TERMINAL_THEMES: TerminalThemeDef[] = [
-	{ name: 'Default', theme: DEFAULT_THEME },
-];
+// Auto-discover all theme files in the themes/ directory at build time.
+// Each file must export: `export const theme: TerminalThemeDef = {...};`
+const themeModules = import.meta.glob<{ theme: TerminalThemeDef }>(
+	'./themes/*.ts',
+	{ eager: true }
+);
+
+/** All available terminal themes, sorted alphabetically by filename. */
+export const TERMINAL_THEMES: TerminalThemeDef[] = Object.entries(themeModules)
+	.map(([, mod]) => mod.theme)
+	.sort((a, b) => a.name.localeCompare(b.name));
 
 /** Look up a terminal theme by name. Returns the Default theme if not found. */
 export function getTerminalTheme(name: string): ITheme {
