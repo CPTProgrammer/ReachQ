@@ -570,7 +570,12 @@
 		};
 		focusNow();
 		requestAnimationFrame(() => {
-			if (fit && el) safeFitAndResize(term, fit, el);
+			if (fit && el) {
+				safeFitAndResize(term, fit, el);
+				// Rebuild texture atlas — display:none may have
+				// invalidated WebGL textures, causing garbled colors
+				term.clearTextureAtlas();
+			}
 			focusNow();
 			queueMicrotask(focusNow);
 		});
