@@ -1,0 +1,10 @@
+{
+  "languages": {
+    "Svelte": {
+      "hard_tabs": true
+    },
+    "TypeScript": {
+      "hard_tabs": true
+    }
+  }
+}
