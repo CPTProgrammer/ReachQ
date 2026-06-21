@@ -274,10 +274,10 @@
 			<Input label={t('session.passphrase_optional')} bind:value={keyPassphrase} type="password" placeholder="Stored encrypted in vault" disabled={saving} />
 		{/if}
 
-		<div class="jump-section">
-			<label class="jump-toggle">
+		<div class="jump-section section">
+			<label class="jump-toggle toggle">
 				<input type="checkbox" bind:checked={jumpEnabled} disabled={saving} />
-				<span class="jump-toggle-text">{t('session.jump_host_enable')}</span>
+				<span class="jump-toggle-text toggle-text">{t('session.jump_host_enable')}</span>
 				<span class="beta-badge">BETA</span>
 			</label>
 
@@ -339,10 +339,10 @@
 			{/if}
 		</div>
 
-		<div class="proxy-section">
-			<label class="proxy-toggle">
+		<div class="proxy-section section">
+			<label class="proxy-toggle toggle">
 				<input type="checkbox" bind:checked={proxyEnabled} disabled={saving} />
-				<span class="proxy-toggle-text">Connect via Proxy</span>
+				<span class="proxy-toggle-text toggle-text">Connect via Proxy</span>
 			</label>
 
 			{#if proxyEnabled}
@@ -381,6 +381,13 @@
 			{/if}
 		</div>
 
+		<div class="colorize-section section">
+			<label class="colorize-toggle toggle">
+				<input type="checkbox" bind:checked={colorInit} disabled={saving} />
+				<span class="colorize-toggle-text toggle-text">Auto colorize shell</span>
+			</label>
+		</div>
+
 		<Input label={t('session.tags')} bind:value={tagsStr} placeholder="production, web, linux" disabled={saving} />
 
 		{#if folders.length > 0}
@@ -394,11 +401,6 @@
 				</select>
 			</div>
 		{/if}
-
-		<label class="jump-toggle">
-			<input type="checkbox" bind:checked={colorInit} disabled={saving} />
-			<span class="jump-toggle-text">Auto colorize shell</span>
-		</label>
 
 		{#if error}
 			<div class="error-message">{error}</div>
@@ -563,31 +565,29 @@
 		}
 	}
 
-	.proxy-section {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		padding-top: 4px;
-	}
-
-	.proxy-toggle {
+	.toggle {
 		display: flex;
 		align-items: center;
 		gap: 8px;
 		cursor: pointer;
 	}
-
-	.proxy-toggle input[type="checkbox"] {
+	.toggle input[type="checkbox"] {
 		width: 14px;
 		height: 14px;
 		accent-color: var(--color-accent);
 		cursor: pointer;
 	}
-
-	.proxy-toggle-text {
+	.toggle-text {
 		font-size: 0.75rem;
 		font-weight: 500;
 		color: var(--color-text-primary);
+	}
+
+	.section {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		padding-top: 4px;
 	}
 
 	.proxy-fields {
@@ -635,32 +635,6 @@
 		font-size: 0.625rem;
 		color: var(--color-text-secondary);
 		opacity: 0.7;
-	}
-
-	.jump-section {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		padding-top: 4px;
-	}
-
-	.jump-toggle {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		cursor: pointer;
-	}
-
-	.jump-toggle input {
-		width: 14px;
-		height: 14px;
-		accent-color: var(--color-accent);
-	}
-
-	.jump-toggle-text {
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--color-text-primary);
 	}
 
 	.beta-badge {
