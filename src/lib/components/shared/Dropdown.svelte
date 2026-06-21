@@ -8,6 +8,7 @@
 		options: DropdownOption[];
 		selected?: string;
 		placeholder?: string;
+		disabled?: boolean;
 		onchange?: (value: string) => void;
 	}
 
@@ -15,17 +16,37 @@
 		options,
 		selected = $bindable(''),
 		placeholder = 'Select...',
+		disabled = false,
 		onchange
 	}: Props = $props();
 
 	let isOpen = $state(false);
+	let dropUp = $state(false);
 	let dropdownEl: HTMLDivElement | undefined = $state();
 
 	let selectedLabel = $derived(
 		options.find((o) => o.value === selected)?.label ?? placeholder
 	);
 
+	function getScrollableContainer(el: HTMLElement): HTMLElement | null {
+		let p: HTMLElement | null = el.parentElement;
+		while (p) {
+			const s = getComputedStyle(p);
+			if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && p.scrollHeight > p.clientHeight) {
+				return p;
+			}
+			p = p.parentElement;
+		}
+		return null;
+	}
+
 	function toggleOpen() {
+		if (!isOpen && dropdownEl) {
+			const spaceBelow = window.innerHeight - dropdownEl.getBoundingClientRect().bottom;
+			// const scrollable = getScrollableContainer(dropdownEl);
+			// console.log(scrollable && (scrollable.getBoundingClientRect().bottom - dropdownEl.getBoundingClientRect().bottom));
+			dropUp = spaceBelow < 220;
+		}
 		isOpen = !isOpen;
 	}
 
@@ -67,6 +88,7 @@
 		onclick={toggleOpen}
 		aria-haspopup="listbox"
 		aria-expanded={isOpen}
+		{disabled}
 	>
 		<span class="dropdown-text">{selectedLabel}</span>
 		<svg class="dropdown-chevron" class:open={isOpen} width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -75,7 +97,7 @@
 	</button>
 
 	{#if isOpen}
-		<ul class="dropdown-list" role="listbox">
+		<ul class="dropdown-list" class:drop-up={dropUp} role="listbox">
 			{#each options as option (option.value)}
 				<li
 					class="dropdown-item"
@@ -128,6 +150,11 @@
 	.dropdown-trigger.open {
 		border-color: var(--color-accent);
 		box-shadow: 0 0 0 1px var(--color-accent);
+	}
+
+	.dropdown-trigger:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	.dropdown-text {
@@ -201,5 +228,22 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
+	}
+
+	@keyframes dropdownInUp {
+		from {
+			opacity: 0;
+			transform: translateY(4px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	.dropdown-list.drop-up {
+		top: auto;
+		bottom: calc(100% + 4px);
+		animation: dropdownInUp var(--duration-default) var(--ease-default);
 	}
 </style>

@@ -7,6 +7,7 @@
 	import ProxySection from './form/ProxySection.svelte';
 	import JumpSection from './form/JumpSection.svelte';
 	import Toggle from '$lib/components/shared/Toggle.svelte';
+	import Dropdown from '$lib/components/shared/Dropdown.svelte';
 	import { sessionCreate, sessionUpdate, type SessionConfig, type AuthMethod, type JumpHostConfig, type Folder } from '$lib/ipc/sessions';
 	import { t } from '$lib/state/i18n.svelte';
 
@@ -222,12 +223,15 @@
 		{#if folders.length > 0}
 			<div class="folder-section">
 				<span class="folder-label">{t('session.folder')}</span>
-				<select class="folder-select" bind:value={folderIdStr} disabled={saving}>
-					<option value="">{t('session.no_folder')}</option>
-					{#each folders as folder (folder.id)}
-						<option value={folder.id}>{folder.name}</option>
-					{/each}
-				</select>
+				<Dropdown
+					options={[
+						{ label: t('session.no_folder'), value: '' },
+						...folders.map(f => ({ label: f.name, value: f.id }))
+					]}
+					bind:selected={folderIdStr}
+					placeholder={t('session.no_folder')}
+					disabled={saving}
+				/>
 			</div>
 		{/if}
 
@@ -270,21 +274,6 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--color-text-secondary);
-	}
-
-	.folder-select {
-		padding: 6px 10px;
-		background: var(--color-bg-primary);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-btn);
-		color: var(--color-text-primary);
-		font-family: var(--font-sans);
-		font-size: 0.75rem;
-		outline: none;
-	}
-
-	.folder-select:focus {
-		border-color: var(--color-accent);
 	}
 
 	.error-message {
