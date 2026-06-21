@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use russh::ChannelMsg;
+use russh::{Channel, ChannelMsg};
 use tauri::Emitter;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -24,6 +24,28 @@ fn expand_tilde(path: &str) -> PathBuf {
         }
     }
     PathBuf::from(trimmed)
+}
+
+async fn init_color(channel: &Channel<russh::client::Msg>) -> Result<(), SshError> {
+    // Inject color initialization for remote shells that may lack color config
+    // (e.g. root on Debian/Ubuntu ships with a minimal .bashrc without colors).
+    // stty -echo hides the commands; clear wipes any artifacts afterward.
+    let color_init = concat!(
+        r#"stty -echo; export COLORTERM=truecolor; "#,
+        r#"[ -z "$LS_COLORS" ] && eval "$(dircolors -b 2>/dev/null)"; "#,
+        r#"alias ls='ls --color=auto' 2>/dev/null; "#,
+        r#"alias grep='grep --color=auto' 2>/dev/null; "#,
+        r#"alias diff='diff --color=auto' 2>/dev/null; "#,
+        r#"if [ -n "$BASH" ]; then "#,
+        r#"case "$PS1" in *033*|*\\e\[*) ;; *) "#,
+        r#"_c=32; [ "${EUID:-$(id -u)}" = "0" ] && _c=31; "#,
+        r#"PS1="\\[\\033[01;${_c}m\\]\\u@\\h\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ "; "#,
+        r#"unset _c; esac; fi; stty echo; clear"#,
+        "\n"
+    );
+    channel.data(color_init.as_bytes()).await
+        .map_err(|e| SshError::ChannelError(format!("Color init failed: {}", e)))?;
+    Ok(())
 }
 
 /// Attempt to authenticate via the local SSH agent (OpenSSH agent or Pageant
@@ -312,74 +334,18 @@ impl SshManager {
 
             // Authenticate using a cascading strategy: configured key → agent → password.
             // The first method the server accepts wins. Mirrors OpenSSH's progressive auth.
-            if !cascade_authenticate(&mut handle, username, &auth).await? {
-                return Err(SshError::AuthFailed);
-            }
+            Self::authenticate_handle(&mut handle, username, &auth).await?;
 
             tracing::info!("SSH authenticated for {}@{}:{}", username, host, port);
 
-            let channel = handle.channel_open_session().await
-                .map_err(|e| SshError::ChannelError(format!("Failed to open session: {}", e)))?;
-
-            channel.request_pty(false, "xterm-256color", cols as u32, rows as u32, 0, 0, &[]).await
-                .map_err(|e| SshError::ChannelError(format!("PTY request failed: {}", e)))?;
-
-            channel.request_shell(false).await
-                .map_err(|e| SshError::ChannelError(format!("Shell request failed: {}", e)))?;
-
-            tracing::info!("SSH shell opened for {}@{}:{}", username, host, port);
-
-            Ok((handle, channel))
+            Ok(handle)
         };
 
-        let (handle, channel) = tokio::time::timeout(timeout_duration, connect_future)
+        let handle = tokio::time::timeout(timeout_duration, connect_future)
             .await
             .map_err(|_| SshError::ConnectionFailed("Connection timed out".into()))??;
 
-        // Inject color initialization for remote shells that may lack color config
-        // (e.g. root on Debian/Ubuntu ships with a minimal .bashrc without colors).
-        // stty -echo hides the commands; clear wipes any artifacts afterward.
-        let color_init = concat!(
-            r#"stty -echo; export COLORTERM=truecolor; "#,
-            r#"[ -z "$LS_COLORS" ] && eval "$(dircolors -b 2>/dev/null)"; "#,
-            r#"alias ls='ls --color=auto' 2>/dev/null; "#,
-            r#"alias grep='grep --color=auto' 2>/dev/null; "#,
-            r#"alias diff='diff --color=auto' 2>/dev/null; "#,
-            r#"if [ -n "$BASH" ]; then "#,
-            r#"case "$PS1" in *033*|*\\e\[*) ;; *) "#,
-            r#"_c=32; [ "${EUID:-$(id -u)}" = "0" ] && _c=31; "#,
-            r#"PS1="\\[\\033[01;${_c}m\\]\\u@\\h\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ "; "#,
-            r#"unset _c; esac; fi; stty echo; clear"#,
-            "\n"
-        );
-        channel.data(color_init.as_bytes()).await
-            .map_err(|e| SshError::ChannelError(format!("Color init failed: {}", e)))?;
-
-        let info = ConnectionInfo {
-            id: id.to_string(),
-            host: host.to_string(),
-            port,
-            username: username.to_string(),
-        };
-
-        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-
-        let task_id = id.to_string();
-        let task_handle = app_handle.clone();
-        tokio::spawn(async move {
-            ssh_session_task(channel, cmd_rx, task_id, task_handle).await;
-        });
-
-        let shared_handle = Arc::new(tokio::sync::Mutex::new(handle));
-
-        self.connections.insert(id.to_string(), ActiveConnection {
-            cmd_tx,
-            info: info.clone(),
-            handle: shared_handle,
-            jump_handles: Vec::new(),
-        });
-
-        Ok(info)
+        self.open_session_and_register(id, host, port, username, handle, cols, rows, app_handle, Vec::new()).await
     }
 
     /// Connect to a target host through one or more jump hosts (ProxyJump).
@@ -662,8 +628,41 @@ impl SshManager {
             target_username, target_host, target_port
         );
 
-        // Open session, request PTY and shell on target
-        let channel = target_handle
+        self.open_session_and_register(
+            id, target_host, target_port, target_username,
+            target_handle, cols, rows, app_handle, jump_handles,
+        ).await
+    }
+
+    /// Authenticate on a russh handle by cascading through the configured
+    /// methods. Thin wrapper around [`cascade_authenticate`] that returns
+    /// [`SshError::AuthFailed`] when no method succeeds.
+    async fn authenticate_handle(
+        handle: &mut russh::client::Handle<SshClientHandler>,
+        username: &str,
+        auth: &AuthParams,
+    ) -> Result<(), SshError> {
+        if !cascade_authenticate(handle, username, auth).await? {
+            return Err(SshError::AuthFailed);
+        }
+        Ok(())
+    }
+
+    /// Open session, request PTY and shell, then register the connection for I/O.
+    /// This is the common tail shared by [`connect`] and [`connect_via_jump`].
+    async fn open_session_and_register(
+        &mut self,
+        id: &str,
+        host: &str,
+        port: u16,
+        username: &str,
+        handle: russh::client::Handle<SshClientHandler>,
+        cols: u16,
+        rows: u16,
+        app_handle: tauri::AppHandle,
+        jump_handles: Vec<SharedHandle>,
+    ) -> Result<ConnectionInfo, SshError> {
+        let channel = handle
             .channel_open_session()
             .await
             .map_err(|e| SshError::ChannelError(format!("Failed to open session: {}", e)))?;
@@ -678,35 +677,15 @@ impl SshManager {
             .await
             .map_err(|e| SshError::ChannelError(format!("Shell request failed: {}", e)))?;
 
-        tracing::info!(
-            "SSH shell opened for {}@{}:{} (via jump)",
-            target_username, target_host, target_port
-        );
+        tracing::info!("SSH shell opened for {}@{}:{}", username, host, port);
 
-        // Inject color initialization (same as direct connect)
-        let color_init = concat!(
-            r#"stty -echo; export COLORTERM=truecolor; "#,
-            r#"[ -z "$LS_COLORS" ] && eval "$(dircolors -b 2>/dev/null)"; "#,
-            r#"alias ls='ls --color=auto' 2>/dev/null; "#,
-            r#"alias grep='grep --color=auto' 2>/dev/null; "#,
-            r#"alias diff='diff --color=auto' 2>/dev/null; "#,
-            r#"if [ -n "$BASH" ]; then "#,
-            r#"case "$PS1" in *033*|*\\e\[*) ;; *) "#,
-            r#"_c=32; [ "${EUID:-$(id -u)}" = "0" ] && _c=31; "#,
-            r#"PS1="\\[\\033[01;${_c}m\\]\\u@\\h\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ "; "#,
-            r#"unset _c; esac; fi; stty echo; clear"#,
-            "\n"
-        );
-        channel
-            .data(color_init.as_bytes())
-            .await
-            .map_err(|e| SshError::ChannelError(format!("Color init failed: {}", e)))?;
+        init_color(&channel).await?;
 
         let info = ConnectionInfo {
             id: id.to_string(),
-            host: target_host.to_string(),
-            port: target_port,
-            username: target_username.to_string(),
+            host: host.to_string(),
+            port,
+            username: username.to_string(),
         };
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
@@ -717,7 +696,7 @@ impl SshManager {
             ssh_session_task(channel, cmd_rx, task_id, task_handle).await;
         });
 
-        let shared_handle = Arc::new(tokio::sync::Mutex::new(target_handle));
+        let shared_handle = Arc::new(tokio::sync::Mutex::new(handle));
 
         self.connections.insert(
             id.to_string(),
@@ -730,20 +709,6 @@ impl SshManager {
         );
 
         Ok(info)
-    }
-
-    /// Authenticate on a russh handle by cascading through the configured
-    /// methods. Used by jump hosts; the direct connect path uses the same
-    /// `cascade_authenticate` free function.
-    async fn authenticate_handle(
-        handle: &mut russh::client::Handle<SshClientHandler>,
-        username: &str,
-        auth: &AuthParams,
-    ) -> Result<(), SshError> {
-        if !cascade_authenticate(handle, username, auth).await? {
-            return Err(SshError::AuthFailed);
-        }
-        Ok(())
     }
 
     pub fn send_data(&self, id: &str, data: &[u8]) -> Result<(), SshError> {
