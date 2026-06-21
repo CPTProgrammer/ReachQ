@@ -62,17 +62,21 @@ pub async fn ssh_connect(
     rows: u16,
     jump_chain: Option<Vec<JumpHostConnectParams>>,
     proxy: Option<crate::state::ProxyConfig>,
+    color_init: Option<bool>,
 ) -> Result<String, String> {
     tracing::info!(
-        "ssh_connect IPC: id={}, host={}, port={}, user={}, auth_method='{}', has_key_path={}, has_password={}, has_passphrase={}, has_proxy={}, has_jump={}",
+        "ssh_connect IPC: id={}, host={}, port={}, user={}, auth_method='{}', has_key_path={}, has_password={}, has_passphrase={}, has_proxy={}, has_jump={}, color_init={}",
         id, host, port, username, auth_method,
         key_path.as_deref().map(|p| !p.is_empty()).unwrap_or(false),
         password.as_deref().map(|p| !p.is_empty()).unwrap_or(false),
         key_passphrase.as_deref().map(|p| !p.is_empty()).unwrap_or(false),
         proxy.is_some(),
         jump_chain.as_ref().map(|c| c.len()).unwrap_or(0),
+        color_init.unwrap_or(true),
     );
     let auth = build_auth(&auth_method, password, key_path, key_passphrase)?;
+
+    let color_init = color_init.unwrap_or(true);
 
     let mut manager = state.ssh_manager.lock().await;
 
@@ -80,7 +84,7 @@ pub async fn ssh_connect(
         if chain.is_empty() {
             // No jump hosts, connect directly
             manager
-                .connect(&id, &host, port, &username, auth, cols, rows, app.clone(), proxy)
+                .connect(&id, &host, port, &username, auth, cols, rows, color_init, app.clone(), proxy)
                 .await
                 .map_err(|e| e.to_string())?
         } else {
@@ -113,6 +117,7 @@ pub async fn ssh_connect(
                     jump_params?,
                     cols,
                     rows,
+                    color_init,
                     app.clone(),
                 )
                 .await
@@ -120,7 +125,7 @@ pub async fn ssh_connect(
         }
     } else {
         manager
-            .connect(&id, &host, port, &username, auth, cols, rows, app.clone(), proxy)
+            .connect(&id, &host, port, &username, auth, cols, rows, color_init, app.clone(), proxy)
             .await
             .map_err(|e| e.to_string())?
     };

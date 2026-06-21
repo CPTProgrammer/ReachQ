@@ -51,7 +51,13 @@ pub struct SessionConfig {
     /// Proxy configuration (SOCKS5, SOCKS4, HTTP CONNECT)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy: Option<ProxyConfig>,
+    /// Inject color initialization into the remote shell on connect.
+    /// Default true; disable for servers where shell init behaves unexpectedly.
+    #[serde(default = "default_color_init")]
+    pub color_init: bool,
 }
+
+fn default_color_init() -> bool { true }
 
 /// Proxy configuration for SSH connections (Tor, SOCKS5, HTTP CONNECT).
 #[derive(Debug, Clone, Serialize, Deserialize)]

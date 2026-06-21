@@ -31,6 +31,7 @@ export interface SshConnectParams {
   rows: number;
   jumpChain?: JumpHostConnectParams[];
   proxy?: ProxyConfig;
+  colorInit?: boolean;
 }
 
 export interface ConnectionInfo {
@@ -54,6 +55,7 @@ export async function sshConnect(params: SshConnectParams): Promise<string> {
     rows: params.rows,
     jumpChain: params.jumpChain ?? null,
     proxy: params.proxy ?? null,
+    colorInit: params.colorInit ?? null,
   });
 }
 

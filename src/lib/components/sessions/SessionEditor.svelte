@@ -36,6 +36,7 @@
 	let proxyPassword = $state('');
 	let saving = $state(false);
 	let error = $state<string | undefined>();
+	let colorInit = $state(true);
 
 	let isEditing = $derived(!!editSession);
 	let canSave = $derived(name.trim().length > 0 && host.trim().length > 0 && username.trim().length > 0 && !saving);
@@ -68,16 +69,17 @@
 				jumpEnabled = false;
 				jumpHops = [];
 			}
-		if (editSession.proxy) {
-			proxyEnabled = true;
-			proxyType = (editSession.proxy.proxy_type as 'socks5' | 'socks4' | 'http') ?? 'socks5';
-			proxyHost = editSession.proxy.host ?? '127.0.0.1';
-			proxyPort = String(editSession.proxy.port ?? 9050);
-			proxyUsername = editSession.proxy.username ?? '';
-			proxyPassword = editSession.proxy.password ?? '';
-		} else {
-			proxyEnabled = false;
-		}
+			if (editSession.proxy) {
+				proxyEnabled = true;
+				proxyType = (editSession.proxy.proxy_type as 'socks5' | 'socks4' | 'http') ?? 'socks5';
+				proxyHost = editSession.proxy.host ?? '127.0.0.1';
+				proxyPort = String(editSession.proxy.port ?? 9050);
+				proxyUsername = editSession.proxy.username ?? '';
+				proxyPassword = editSession.proxy.password ?? '';
+			} else {
+				proxyEnabled = false;
+			}
+			colorInit = editSession.color_init ?? true;
 		} else {
 			name = '';
 			host = '';
@@ -97,6 +99,7 @@
 			proxyPort = '9050';
 			proxyUsername = '';
 			proxyPassword = '';
+			colorInit = true;
 		}
 		error = undefined;
 	});
@@ -151,6 +154,7 @@
 					tags,
 					jump_chain: jumpChain ?? editSession.jump_chain ?? null,
 					proxy: proxyConfig,
+					color_init: colorInit,
 				});
 			} else {
 				await sessionCreate({
@@ -164,6 +168,7 @@
 					vaultId,
 					jumpChain: jumpChain ?? null,
 					proxy: proxyConfig,
+					colorInit: colorInit,
 				});
 			}
 			onsave?.();
@@ -389,6 +394,11 @@
 				</select>
 			</div>
 		{/if}
+
+		<label class="jump-toggle">
+			<input type="checkbox" bind:checked={colorInit} disabled={saving} />
+			<span class="jump-toggle-text">Auto colorize shell</span>
+		</label>
 
 		{#if error}
 			<div class="error-message">{error}</div>

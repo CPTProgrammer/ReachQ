@@ -335,6 +335,7 @@ impl SshManager {
         auth: AuthParams,
         cols: u16,
         rows: u16,
+        color_init: bool,
         app_handle: tauri::AppHandle,
         proxy: Option<ProxyConfig>,
     ) -> Result<ConnectionInfo, SshError> {
@@ -370,7 +371,7 @@ impl SshManager {
             .await
             .map_err(|_| SshError::ConnectionFailed("Connection timed out".into()))??;
 
-        self.open_session_and_register(id, host, port, username, handle, cols, rows, app_handle, Vec::new()).await
+        self.open_session_and_register(id, host, port, username, handle, cols, rows, color_init, app_handle, Vec::new()).await
     }
 
     /// Connect to a target host through one or more jump hosts (ProxyJump).
@@ -462,6 +463,7 @@ impl SshManager {
         jump_chain: Vec<JumpHostParams>,
         cols: u16,
         rows: u16,
+        color_init: bool,
         app_handle: tauri::AppHandle,
     ) -> Result<ConnectionInfo, SshError> {
         tracing::info!(
@@ -655,7 +657,7 @@ impl SshManager {
 
         self.open_session_and_register(
             id, target_host, target_port, target_username,
-            target_handle, cols, rows, app_handle, jump_handles,
+            target_handle, cols, rows, color_init, app_handle, jump_handles,
         ).await
     }
 
@@ -684,6 +686,7 @@ impl SshManager {
         handle: russh::client::Handle<SshClientHandler>,
         cols: u16,
         rows: u16,
+        color_init: bool,
         app_handle: tauri::AppHandle,
         jump_handles: Vec<SharedHandle>,
     ) -> Result<ConnectionInfo, SshError> {
@@ -694,8 +697,13 @@ impl SshManager {
 
         // Disable echo in PTY modes so the color-init commands sent below
         // are invisible to the user; we re-enable echo via `stty echo` at
-        // the end of the init script.
-        let pty_modes: &[(russh::Pty, u32)] = &[(russh::Pty::ECHO, 0)];
+        // the end of the init script. When color_init is disabled there are
+        // no commands to hide, so we skip the ECHO=0 mode.
+        let pty_modes: &[(russh::Pty, u32)] = if color_init {
+            &[(russh::Pty::ECHO, 0)]
+        } else {
+            &[]
+        };
         channel
             .request_pty(false, "xterm-256color", cols as u32, rows as u32, 0, 0, pty_modes)
             .await
@@ -708,7 +716,9 @@ impl SshManager {
 
         tracing::info!("SSH shell opened for {}@{}:{}", username, host, port);
 
-        init_color(&channel).await?;
+        if color_init {
+            init_color(&channel).await?;
+        }
 
         let info = ConnectionInfo {
             id: id.to_string(),

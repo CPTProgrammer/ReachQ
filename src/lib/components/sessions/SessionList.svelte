@@ -335,6 +335,7 @@
 					username: session.proxy.username ?? undefined,
 					password: session.proxy.password ?? undefined,
 				} : undefined,
+				colorInit: session.color_init ?? true,
 			};
 			await sshConnect(connectParams);
 
