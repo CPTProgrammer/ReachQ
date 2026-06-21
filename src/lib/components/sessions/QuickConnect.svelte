@@ -2,6 +2,11 @@
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import Input from '$lib/components/shared/Input.svelte';
+	import HostPortRow from './form/HostPortRow.svelte';
+	import AuthFields from './form/AuthFields.svelte';
+	import ProxySection from './form/ProxySection.svelte';
+	import JumpSection from './form/JumpSection.svelte';
+	import Toggle from '$lib/components/shared/Toggle.svelte';
 	import { sshConnect, type JumpHostConnectParams } from '$lib/ipc/ssh';
 	import { createTab } from '$lib/state/tabs.svelte';
 	import { t } from '$lib/state/i18n.svelte';
@@ -20,13 +25,7 @@
 	let keyPath = $state('');
 	let keyPassphrase = $state('');
 	let jumpEnabled = $state(false);
-	let jumpHost = $state('');
-	let jumpPortStr = $state('22');
-	let jumpUsername = $state('root');
-	let jumpAuthMethod = $state<'password' | 'key'>('password');
-	let jumpPassword = $state('');
-	let jumpKeyPath = $state('');
-	let jumpKeyPassphrase = $state('');
+	let jumpHops = $state<Array<{host: string; port: string; username: string; authType: string; password: string; keyPath: string; keyPassphrase: string}>>([]);
 	let proxyEnabled = $state(false);
 	let proxyType = $state<'socks5' | 'socks4' | 'http'>('socks5');
 	let proxyHost = $state('127.0.0.1');
@@ -48,16 +47,16 @@
 		const id = crypto.randomUUID();
 
 		try {
-			const jumpChain: JumpHostConnectParams[] | undefined = jumpEnabled && jumpHost.trim()
-				? [{
-					host: jumpHost.trim(),
-					port: parseInt(jumpPortStr, 10) || 22,
-					username: jumpUsername.trim(),
-					authMethod: jumpAuthMethod,
-					password: jumpAuthMethod === 'password' ? jumpPassword : undefined,
-					keyPath: jumpAuthMethod === 'key' ? jumpKeyPath : undefined,
-					keyPassphrase: jumpAuthMethod === 'key' && jumpKeyPassphrase ? jumpKeyPassphrase : undefined,
-				}]
+			const jumpChain: JumpHostConnectParams[] | undefined = jumpEnabled && jumpHops.length > 0
+				? jumpHops.map(h => ({
+					host: h.host.trim(),
+					port: parseInt(h.port, 10) || 22,
+					username: h.username.trim(),
+					authMethod: h.authType,
+					password: (h.authType === 'password' || h.authType === 'Password') ? h.password : undefined,
+					keyPath: (h.authType === 'key' || h.authType === 'Key') ? h.keyPath.trim() : undefined,
+					keyPassphrase: (h.authType === 'key' || h.authType === 'Key') && h.keyPassphrase ? h.keyPassphrase : undefined,
+				}))
 				: undefined;
 
 			const connectParams = {
@@ -94,12 +93,7 @@
 			keyPath = '';
 			keyPassphrase = '';
 			jumpEnabled = false;
-			jumpHost = '';
-			jumpPortStr = '22';
-			jumpUsername = 'root';
-			jumpPassword = '';
-			jumpKeyPath = '';
-			jumpKeyPassphrase = '';
+			jumpHops = [];
 			proxyEnabled = false;
 			proxyType = 'socks5';
 			proxyHost = '127.0.0.1';
@@ -125,130 +119,27 @@
 
 <Modal {open} onclose={handleClose} title={t('session.quick_connect')}>
 	<form class="form" onsubmit={(e) => { e.preventDefault(); handleConnect(); }}>
-		<div class="row">
-			<div class="field-host">
-				<Input label={t('session.host')} bind:value={host} placeholder="192.168.1.1" disabled={connecting} />
-			</div>
-			<div class="field-port">
-				<Input label={t('session.port')} bind:value={portStr} type="number" placeholder="22" disabled={connecting} />
-			</div>
-		</div>
+		<HostPortRow bind:host bind:port={portStr} disabled={connecting} />
 
 		<Input label={t('session.username')} bind:value={username} placeholder="root" disabled={connecting} />
 
-		<div class="auth-section">
-			<span class="auth-label">{t('session.auth_method')}</span>
-			<div class="auth-toggle">
-				<button
-					type="button"
-					class="auth-btn"
-					class:active={authMethod === 'password'}
-					disabled={connecting}
-					onclick={() => (authMethod = 'password')}
-				>
-					{t('session.auth_password')}
-				</button>
-				<button
-					type="button"
-					class="auth-btn"
-					class:active={authMethod === 'key'}
-					disabled={connecting}
-					onclick={() => (authMethod = 'key')}
-				>
-					{t('session.auth_key')}
-				</button>
-			</div>
+		<AuthFields bind:authType={authMethod} bind:password bind:keyPath
+			bind:keyPassphrase disabled={connecting} />
+
+		<div class="jump-section section">
+			<JumpSection bind:enabled={jumpEnabled} bind:hops={jumpHops}
+				disabled={connecting} />
 		</div>
 
-		{#if authMethod === 'password'}
-			<Input label={t('session.password')} bind:value={password} type="password" disabled={connecting} />
-		{:else}
-			<Input label={t('session.key_path')} bind:value={keyPath} placeholder="~/.ssh/id_rsa" disabled={connecting} />
-			<Input label={t('session.passphrase_optional')} bind:value={keyPassphrase} type="password" disabled={connecting} />
-		{/if}
-
-		<div class="jump-section">
-			<label class="jump-toggle">
-				<input type="checkbox" bind:checked={jumpEnabled} disabled={connecting} />
-				<span class="jump-toggle-text">{t('session.jump_host_enable')}</span>
-				<span class="beta-badge">BETA</span>
-			</label>
-
-			{#if jumpEnabled}
-				<p class="jump-hint">{t('session.jump_host_hint')}</p>
-				<div class="jump-fields">
-					<div class="row">
-						<div class="field-host">
-							<Input label={t('session.jump_host')} bind:value={jumpHost} placeholder="bastion.example.com" disabled={connecting} />
-						</div>
-						<div class="field-port">
-							<Input label={t('session.port')} bind:value={jumpPortStr} type="number" placeholder="22" disabled={connecting} />
-						</div>
-					</div>
-					<Input label={t('session.username')} bind:value={jumpUsername} placeholder="root" disabled={connecting} />
-
-					<div class="auth-section">
-						<span class="auth-label">{t('session.auth_method')}</span>
-						<div class="auth-toggle">
-							<button type="button" class="auth-btn" class:active={jumpAuthMethod === 'password'} disabled={connecting} onclick={() => (jumpAuthMethod = 'password')}>
-								{t('session.auth_password')}
-							</button>
-							<button type="button" class="auth-btn" class:active={jumpAuthMethod === 'key'} disabled={connecting} onclick={() => (jumpAuthMethod = 'key')}>
-								{t('session.auth_key')}
-							</button>
-						</div>
-					</div>
-
-					{#if jumpAuthMethod === 'password'}
-						<Input label={t('session.password')} bind:value={jumpPassword} type="password" disabled={connecting} />
-					{:else}
-						<Input label={t('session.key_path')} bind:value={jumpKeyPath} placeholder="~/.ssh/id_rsa" disabled={connecting} />
-						<Input label={t('session.passphrase_optional')} bind:value={jumpKeyPassphrase} type="password" disabled={connecting} />
-					{/if}
-				</div>
-			{/if}
+		<div class="section">
+			<ProxySection bind:enabled={proxyEnabled} bind:proxyType bind:host={proxyHost}
+				bind:port={proxyPort} bind:username={proxyUsername}
+				bind:password={proxyPassword} disabled={connecting} />
 		</div>
 
-		<div class="proxy-section">
-			<label class="proxy-toggle">
-				<input type="checkbox" bind:checked={proxyEnabled} disabled={connecting} />
-				<span class="proxy-toggle-text">Connect via Proxy</span>
-			</label>
-
-			{#if proxyEnabled}
-				<div class="proxy-fields">
-					<div class="proxy-type-row">
-						<button type="button" class="proxy-type-btn" class:active={proxyType === 'socks5'} onclick={() => (proxyType = 'socks5')} disabled={connecting}>SOCKS5</button>
-						<button type="button" class="proxy-type-btn" class:active={proxyType === 'socks4'} onclick={() => (proxyType = 'socks4')} disabled={connecting}>SOCKS4</button>
-						<button type="button" class="proxy-type-btn" class:active={proxyType === 'http'} onclick={() => (proxyType = 'http')} disabled={connecting}>HTTP</button>
-					</div>
-					<div class="row">
-						<div class="field-host">
-							<Input label="Proxy Host" bind:value={proxyHost} placeholder="127.0.0.1" disabled={connecting} />
-						</div>
-						<div class="field-port">
-							<Input label="Port" bind:value={proxyPort} type="number" placeholder="9050" disabled={connecting} />
-						</div>
-					</div>
-					<div class="row">
-						<div class="field-host">
-							<Input label="Username (optional)" bind:value={proxyUsername} disabled={connecting} />
-						</div>
-						<div class="field-host">
-							<Input label="Password (optional)" bind:value={proxyPassword} type="password" disabled={connecting} />
-						</div>
-					</div>
-					<p class="proxy-hint">
-						{#if proxyType === 'socks5'}Tor: 127.0.0.1:9050 | Tor Browser: 127.0.0.1:9150{:else if proxyType === 'http'}HTTP CONNECT proxy{:else}SOCKS4 proxy{/if}
-					</p>
-				</div>
-			{/if}
+		<div class="colorize-section section">
+			<Toggle bind:checked={colorInit} label="Auto colorize shell" disabled={connecting} />
 		</div>
-
-		<label class="jump-toggle">
-			<input type="checkbox" bind:checked={colorInit} disabled={connecting} />
-			<span class="jump-toggle-text">Auto colorize shell</span>
-		</label>
 
 		{#if error}
 			<div class="error-message">{error}</div>
@@ -277,77 +168,6 @@
 		gap: 12px;
 	}
 
-	.row {
-		display: flex;
-		gap: 10px;
-		align-items: flex-start;
-	}
-
-	.field-host {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.field-port {
-		width: 80px;
-		flex-shrink: 0;
-	}
-
-	.auth-section {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.auth-label {
-		font-size: 0.6875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-secondary);
-	}
-
-	.auth-toggle {
-		display: flex;
-		gap: 0;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-btn);
-		overflow: hidden;
-	}
-
-	.auth-btn {
-		flex: 1;
-		padding: 7px 12px;
-		font-family: var(--font-sans);
-		font-size: 0.8125rem;
-		font-weight: 500;
-		border: none;
-		background: transparent;
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		transition:
-			background-color var(--duration-default) var(--ease-default),
-			color var(--duration-default) var(--ease-default);
-	}
-
-	.auth-btn:hover:not(:disabled) {
-		background-color: rgba(255, 255, 255, 0.04);
-	}
-
-	.auth-btn.active {
-		background-color: var(--color-accent);
-		color: #fff;
-	}
-
-	.auth-btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
-	.auth-btn:first-child {
-		border-right: 1px solid var(--color-border);
-	}
-
 	.error-message {
 		padding: 8px 12px;
 		font-size: 0.8125rem;
@@ -373,130 +193,10 @@
 		}
 	}
 
-	.jump-section {
+	.section {
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
 		padding-top: 4px;
-	}
-
-	.jump-toggle {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		cursor: pointer;
-	}
-
-	.jump-toggle input {
-		width: 14px;
-		height: 14px;
-		accent-color: var(--color-accent);
-	}
-
-	.jump-toggle-text {
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--color-text-primary);
-	}
-
-	.beta-badge {
-		padding: 1px 5px;
-		font-size: 0.5rem;
-		font-weight: 700;
-		letter-spacing: 0.05em;
-		color: #fff;
-		background: linear-gradient(135deg, #ff6b35, #f7c948);
-		border-radius: 3px;
-		line-height: 1.4;
-	}
-
-	.jump-hint {
-		margin: 0;
-		font-size: 0.6875rem;
-		color: var(--color-text-secondary);
-	}
-
-	.jump-fields {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		padding: 10px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-btn);
-		background-color: rgba(255, 255, 255, 0.02);
-	}
-
-	.proxy-section {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		padding-top: 4px;
-	}
-
-	.proxy-toggle {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		cursor: pointer;
-	}
-
-	.proxy-toggle input[type="checkbox"] {
-		width: 14px;
-		height: 14px;
-		accent-color: var(--color-accent);
-		cursor: pointer;
-	}
-
-	.proxy-toggle-text {
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: var(--color-text-primary);
-	}
-
-	.proxy-fields {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		padding: 10px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-btn);
-		background-color: rgba(255, 255, 255, 0.02);
-	}
-
-	.proxy-type-row {
-		display: flex;
-		gap: 0;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-btn);
-		overflow: hidden;
-	}
-
-	.proxy-type-btn {
-		flex: 1;
-		padding: 5px 8px;
-		font-family: var(--font-sans);
-		font-size: 0.6875rem;
-		font-weight: 500;
-		border: none;
-		background: transparent;
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		transition: background-color var(--duration-default) var(--ease-default), color var(--duration-default) var(--ease-default);
-	}
-
-	.proxy-type-btn.active {
-		background-color: var(--color-accent);
-		color: #fff;
-	}
-
-	.proxy-type-btn:not(.active):hover {
-		background-color: rgba(255, 255, 255, 0.06);
-	}
-
-	.proxy-hint {
-		margin: 0;
-		font-size: 0.625rem;
-		color: var(--color-text-secondary);
-		opacity: 0.7;
 	}
 </style>
