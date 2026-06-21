@@ -5,6 +5,8 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
 		<title>Reach</title>
+		<link rel="preload" href="/fonts/Inter-Variable.woff2" as="font" type="font/woff2" crossorigin />
+		<link rel="preload" href="/fonts/JetBrainsMono-Variable.woff2" as="font" type="font/woff2" crossorigin />
 		<style>
 			body { margin: 0; background: #0a0a0a; }
 			#preloader {
@@ -18,6 +20,10 @@
 				gap: 20px;
 				background: #0a0a0a;
 				transition: opacity 0.4s ease, visibility 0.4s ease;
+				user-select: none;
+				-ms-user-select: none;
+				-moz-user-select: none;
+				-webkit-user-select: none;
 			}
 			#preloader.hidden {
 				opacity: 0;
@@ -27,17 +33,18 @@
 			#preloader .logo {
 				width: 56px;
 				height: 56px;
-				opacity: 0;
-				animation: logoIn 0.6s ease 0.1s forwards;
+				opacity: 1;
+				/*animation: logoIn 0.6s ease 0.1s forwards;*/
 			}
 			#preloader .app-name {
-				font-family: 'Inter', system-ui, -apple-system, sans-serif;
+				font-family: system-ui, -apple-system, sans-serif;
 				font-size: 15px;
 				font-weight: 500;
 				letter-spacing: 0.5px;
 				color: #86868b;
-				opacity: 0;
-				animation: logoIn 0.5s ease 0.3s forwards;
+				opacity: 1;
+				/*animation: logoIn 0.5s ease 0.3s forwards;*/
+				line-height: 1.5;
 			}
 			#preloader .loader {
 				width: 24px;
@@ -46,7 +53,8 @@
 				border-top-color: #0a84ff;
 				border-radius: 50%;
 				opacity: 0;
-				animation: logoIn 0.4s ease 0.5s forwards, spin 0.8s linear 0.5s infinite;
+				animation: logoIn 0.4s ease 0.8s forwards, spin 0.8s linear 0.5s infinite;
+				box-sizing: border-box;
 			}
 			@keyframes logoIn {
 				to { opacity: 1; }
@@ -58,7 +66,7 @@
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
-		<div id="preloader">
+		<div id="preloader" data-tauri-drag-region>
 			<img class="logo" src="%sveltekit.assets%/app-icon.svg" alt="Reach" />
 			<span class="app-name">Reach</span>
 			<div class="loader"></div>

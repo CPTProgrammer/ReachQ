@@ -19,21 +19,19 @@
 
 	onMount(() => {
 		loadSettings();
-		syncTraySettings();
+		Promise.all([
+			syncTraySettings(),
+		]).then(() => {
+			const preloader = document.getElementById('preloader');
+			if (preloader) {
+				preloader.classList.add('hidden');
+				setTimeout(() => preloader.remove(), 400);
+			}
+		});
 		loadAISettings();
 		initShortcuts();
-		startupUpdateCheck();
+		// startupUpdateCheck();
 		startPeriodicChecks();
-
-		// Dismiss the preloader after a minimum display time so the
-		// splash screen is actually visible during startup.
-		const preloader = document.getElementById('preloader');
-		if (preloader) {
-			setTimeout(() => {
-				preloader.classList.add('hidden');
-				setTimeout(() => preloader.remove(), 500);
-			}, 800);
-		}
 
 		return () => {
 			cleanupShortcuts();
