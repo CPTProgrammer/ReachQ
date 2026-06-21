@@ -96,6 +96,12 @@
 		</svg>
 	</button>
 
+	<div class="dropdown-sizer" aria-hidden="true">
+		{#each options as option (option.value)}
+			<span>{option.label}</span>
+		{/each}
+	</div>
+
 	{#if isOpen}
 		<ul class="dropdown-list" class:drop-up={dropUp} role="listbox">
 			{#each options as option (option.value)}
@@ -122,7 +128,8 @@
 <style>
 	.dropdown {
 		position: relative;
-		width: 100%;
+		width: max-content;
+		min-width: 100%;
 	}
 
 	.dropdown-trigger {
@@ -191,6 +198,19 @@
 		animation: dropdownIn var(--duration-default) var(--ease-default);
 	}
 
+	.dropdown-sizer {
+		height: 0;
+		overflow: hidden;
+		visibility: hidden;
+		pointer-events: none;
+	}
+
+	.dropdown-sizer span {
+		display: block;
+		white-space: nowrap;
+		padding: 0 20px;
+	}
+
 	.dropdown-item {
 		margin: 0;
 	}
@@ -208,6 +228,7 @@
 		border: none;
 		border-radius: 4px;
 		cursor: pointer;
+		white-space: nowrap;
 		transition: background-color var(--duration-default) var(--ease-default);
 	}
 
