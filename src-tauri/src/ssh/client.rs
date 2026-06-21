@@ -29,18 +29,39 @@ fn expand_tilde(path: &str) -> PathBuf {
 async fn init_color(channel: &Channel<russh::client::Msg>) -> Result<(), SshError> {
     // Inject color initialization for remote shells that may lack color config
     // (e.g. root on Debian/Ubuntu ships with a minimal .bashrc without colors).
-    // stty -echo hides the commands; clear wipes any artifacts afterward.
+    // Echo is disabled at the PTY level (ECHO=0 in pty_modes) so the commands
+    // below are invisible without needing `stty -echo`. We re-enable echo via
+    // `stty echo` at the end so normal interactive use works afterward.
     let color_init = concat!(
-        r#"stty -echo; export COLORTERM=truecolor; "#,
+        r#"export COLORTERM=truecolor; "#,
         r#"[ -z "$LS_COLORS" ] && eval "$(dircolors -b 2>/dev/null)"; "#,
+
+        r#"if ls --color=auto -d . >/dev/null 2>&1; then "#,
         r#"alias ls='ls --color=auto' 2>/dev/null; "#,
+        r#"fi; "#,
+
+        r#"if echo | grep --color=auto "" >/dev/null 2>&1; then "#,
         r#"alias grep='grep --color=auto' 2>/dev/null; "#,
+        r#"fi; "#,
+
+        r#"if diff --color=auto /dev/null /dev/null >/dev/null 2>&1; then "#,
         r#"alias diff='diff --color=auto' 2>/dev/null; "#,
+        r#"fi; "#,
+
         r#"if [ -n "$BASH" ]; then "#,
+
+        r#"_n=$(($(printf '%s' "$PS1" | grep -o '\\n' 2>/dev/null | wc -l) + $(printf '%s\n' "$PS1" | wc -l))); "#,
+
         r#"case "$PS1" in *033*|*\\e\[*) ;; *) "#,
         r#"_c=32; [ "${EUID:-$(id -u)}" = "0" ] && _c=31; "#,
         r#"PS1="\\[\\033[01;${_c}m\\]\\u@\\h\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ "; "#,
-        r#"unset _c; esac; fi; stty echo; clear"#,
+        r#"unset _c; "#,
+        r#"esac; "#,
+
+        r#"while [ $_n -gt 0 ]; do printf '\r\033[2K\033[1A'; _n=$((_n-1)); done; "#,
+        r#"printf '\r\033[2K'; unset _n; "#,
+
+        r#"fi; stty echo"#,
         "\n"
     );
     channel.data(color_init.as_bytes()).await
@@ -231,6 +252,10 @@ enum SessionCommand {
     Data(Vec<u8>),
     Resize { cols: u32, rows: u32 },
     Close,
+    /// Frontend signals that the event listener is registered and buffered
+    /// data can be flushed. Before this, all channel output is held in a
+    /// Vec to avoid losing MOTD / system info emitted before setup completes.
+    Ready,
 }
 
 /// Cascading SSH auth parameters. Each field is optional and tried in order:
@@ -667,8 +692,12 @@ impl SshManager {
             .await
             .map_err(|e| SshError::ChannelError(format!("Failed to open session: {}", e)))?;
 
+        // Disable echo in PTY modes so the color-init commands sent below
+        // are invisible to the user; we re-enable echo via `stty echo` at
+        // the end of the init script.
+        let pty_modes: &[(russh::Pty, u32)] = &[(russh::Pty::ECHO, 0)];
         channel
-            .request_pty(false, "xterm-256color", cols as u32, rows as u32, 0, 0, &[])
+            .request_pty(false, "xterm-256color", cols as u32, rows as u32, 0, 0, pty_modes)
             .await
             .map_err(|e| SshError::ChannelError(format!("PTY request failed: {}", e)))?;
 
@@ -745,6 +774,16 @@ impl SshManager {
         self.connections.get(id)
             .map(|c| c.handle.clone())
             .ok_or_else(|| SshError::NotFound(id.to_string()))
+    }
+
+    /// Signal the session task that the frontend is ready to receive data.
+    /// Causes the task to flush its buffered channel output and switch to
+    /// direct forwarding mode.
+    pub fn mark_ready(&self, id: &str) -> Result<(), SshError> {
+        let conn = self.connections.get(id)
+            .ok_or_else(|| SshError::NotFound(id.to_string()))?;
+        conn.cmd_tx.send(SessionCommand::Ready)
+            .map_err(|e| SshError::SendError(format!("{}", e)))
     }
 }
 
@@ -1008,22 +1047,38 @@ async fn ssh_session_task(
     let data_event = format!("ssh-data-{}", connection_id);
     let exit_event = format!("ssh-exit-{}", connection_id);
 
+    // Buffer channel output until the frontend sends Ready.
+    // This prevents losing MOTD / system-info that the remote shell
+    // emits immediately after request_shell(), before the frontend
+    // has had time to create the terminal component and register
+    // its Tauri event listener.
+    let mut buffer: Vec<String> = Vec::new();
+    let mut ready = false;
+
     loop {
         tokio::select! {
             msg = channel.wait() => {
                 match msg {
                     Some(ChannelMsg::Data { ref data }) => {
                         let payload = String::from_utf8_lossy(data).to_string();
-                        if let Err(e) = app_handle.emit(&data_event, &payload) {
-                            tracing::error!("Failed to emit '{}': {}", data_event, e);
-                            break;
+                        if ready {
+                            if let Err(e) = app_handle.emit(&data_event, &payload) {
+                                tracing::error!("Failed to emit '{}': {}", data_event, e);
+                                break;
+                            }
+                        } else {
+                            buffer.push(payload);
                         }
                     }
                     Some(ChannelMsg::ExtendedData { ref data, .. }) => {
                         let payload = String::from_utf8_lossy(data).to_string();
-                        if let Err(e) = app_handle.emit(&data_event, &payload) {
-                            tracing::error!("Failed to emit '{}': {}", data_event, e);
-                            break;
+                        if ready {
+                            if let Err(e) = app_handle.emit(&data_event, &payload) {
+                                tracing::error!("Failed to emit '{}': {}", data_event, e);
+                                break;
+                            }
+                        } else {
+                            buffer.push(payload);
                         }
                     }
                     Some(ChannelMsg::ExitStatus { exit_status }) => {
@@ -1054,6 +1109,17 @@ async fn ssh_session_task(
                         if let Err(e) = channel.window_change(cols, rows, 0, 0).await {
                             tracing::error!("SSH '{}' resize error: {}", connection_id, e);
                         }
+                    }
+                    Some(SessionCommand::Ready) => {
+                        // Drain the entire buffer in one burst, then switch
+                        // to direct forwarding for all subsequent output.
+                        for payload in buffer.drain(..) {
+                            if let Err(e) = app_handle.emit(&data_event, &payload) {
+                                tracing::error!("Failed to emit '{}': {}", data_event, e);
+                                break;
+                            }
+                        }
+                        ready = true;
                     }
                     Some(SessionCommand::Close) | None => {
                         tracing::info!("SSH '{}' closing", connection_id);

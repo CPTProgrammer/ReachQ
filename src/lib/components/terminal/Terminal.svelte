@@ -8,7 +8,7 @@
 	import '@xterm/xterm/css/xterm.css';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { ptyWrite, ptyResize } from '$lib/ipc/pty';
-	import { sshSend, sshResize, sshConnect, type SshConnectParams } from '$lib/ipc/ssh';
+	import { sshSend, sshResize, sshConnect, sshMarkReady, type SshConnectParams } from '$lib/ipc/ssh';
 	import { registerBufferReader, unregisterBufferReader } from '$lib/state/terminal-buffer.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { getTerminalTheme, type ITheme } from '$lib/data/terminal-themes';
@@ -358,6 +358,15 @@
 				disconnected = true;
 			}
 		});
+
+		// Signal the backend that we're ready to receive data.
+		// Until this point the session task buffers all channel output
+		// so that MOTD / system-info emitted before listener setup is preserved.
+		if (termType === 'ssh' && currentConnectionId) {
+			sshMarkReady(currentConnectionId).catch((err) => {
+				console.error('[Terminal] Failed to mark ready:', err);
+			});
+		}
 	}
 
 	async function handleReconnect(): Promise<void> {

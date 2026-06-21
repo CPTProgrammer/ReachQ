@@ -108,6 +108,7 @@ pub fn run() {
             ssh_resize,
             ssh_list_connections,
             ssh_detect_os,
+            ssh_mark_ready,
             // SSH Config commands
             sshconfig_list_hosts,
             sshconfig_resolve_host,
@@ -321,6 +322,7 @@ pub fn run() {
             ssh_resize,
             ssh_list_connections,
             ssh_detect_os,
+            ssh_mark_ready,
             // SSH Config commands
             sshconfig_list_hosts,
             sshconfig_resolve_host,

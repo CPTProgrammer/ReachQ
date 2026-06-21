@@ -195,6 +195,18 @@ pub async fn ssh_list_connections(
     Ok(manager.list_connections())
 }
 
+/// Signal the session task that the frontend event listener is registered.
+/// Must be called after the Terminal component sets up its `ssh-data-*`
+/// listener so that buffered MOTD / system-info output can be delivered.
+#[tauri::command]
+pub async fn ssh_mark_ready(
+    state: tauri::State<'_, AppState>,
+    connection_id: String,
+) -> Result<(), String> {
+    let manager = state.ssh_manager.lock().await;
+    manager.mark_ready(&connection_id).map_err(|e| e.to_string())
+}
+
 /// Detect the remote operating system by parsing /etc/os-release.
 /// Returns a lowercase distro ID (e.g. "debian", "ubuntu", "alpine")
 /// or a fallback from uname -s (e.g. "darwin", "freebsd").

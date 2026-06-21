@@ -76,3 +76,7 @@ export async function sshListConnections(): Promise<ConnectionInfo[]> {
 export async function sshDetectOs(connectionId: string): Promise<string> {
   return invoke<string>('ssh_detect_os', { connectionId });
 }
+
+export async function sshMarkReady(connectionId: string): Promise<void> {
+  return invoke('ssh_mark_ready', { connectionId });
+}
