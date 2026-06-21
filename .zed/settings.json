@@ -4,6 +4,7 @@
       "hard_tabs": true
     },
     "TypeScript": {
+      "tab_size": 4,
       "hard_tabs": true
     }
   }

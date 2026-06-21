@@ -890,7 +890,7 @@
 	}
 
 	.save-session-btn > .beta-badge {
-	    position: absolute;
+		position: absolute;
 		top: 3px;
 		right: 3px;
 	}

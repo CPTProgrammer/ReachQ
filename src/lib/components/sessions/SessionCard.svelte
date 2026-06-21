@@ -36,23 +36,23 @@
 		</svg>
 	</span>
 	<button class="card-main" onclick={onconnect} title={t('session.connect_to', { name: session.name })}>
-  		<DistroIcon osId={session.detected_os} size={18} />
+		<DistroIcon osId={session.detected_os} size={18} />
 		<div class="session-info">
 			<span class="session-name">{session.name}</span>
 			<span class="session-detail"><span class="auth-badge" title={t('session.auth_type', { type: session.auth_method.type })}>
-                {#if session.auth_method.type === 'Password'}
-                    <svg width="12" height="12" viewBox="0 0 256 256" fill="currentColor">
-                        <path d="M48 56v144a8 8 0 0 1-16 0V56a8 8 0 0 1 16 0Zm84 54.5l-20 6.5V96a8 8 0 0 0-16 0v21l-20-6.5a8 8 0 0 0-5 15.22l20 6.49l-12.34 17a8 8 0 1 0 12.94 9.4l12.34-17l12.34 17a8 8 0 1 0 12.94-9.4l-12.34-17l20-6.49A8 8 0 0 0 132 110.5Zm106 5.14a8 8 0 0 0-10-5.14l-20 6.5V96a8 8 0 0 0-16 0v21l-20-6.49a8 8 0 0 0-4.95 15.22l20 6.49l-12.34 17a8 8 0 1 0 12.94 9.4l12.34-17l12.34 17a8 8 0 1 0 12.94-9.4l-12.34-17l20-6.49a8 8 0 0 0 5.07-10.09Z"/>
-                    </svg>
-                {:else if session.auth_method.type === 'Key'}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M7 13.846q.77 0 1.308-.538q.538-.539.538-1.308t-.538-1.308q-.539-.538-1.308-.538t-1.308.538q-.538.539-.538 1.308t.538 1.308q.539.538 1.308.538Zm0 2.885q-2 0-3.365-1.366Q2.269 14 2.269 12t1.366-3.365Q5 7.269 7 7.269q1.698 0 2.941.958q1.244.958 1.594 2.273h9.048l1.494 1.494l-2.48 2.635l-1.828-1.379l-1.827 1.442l-1.557-1.192h-2.85q-.356 1.338-1.608 2.285q-1.252.946-2.927.946Z"/>
-                    </svg>
-                {:else}
-                    <svg width="12" height="12" viewBox="0 0 512 512" fill="currentColor">
-                        <path d="M32 376a56 56 0 0 0 56 56h336a56 56 0 0 0 56-56V222H32Zm66-76a30 30 0 0 1 30-30h48a30 30 0 0 1 30 30v20a30 30 0 0 1-30 30h-48a30 30 0 0 1-30-30ZM424 80H88a56 56 0 0 0-56 56v26h448v-26a56 56 0 0 0-56-56Z"/>
-                    </svg>
-                {/if}
+				{#if session.auth_method.type === 'Password'}
+					<svg width="12" height="12" viewBox="0 0 256 256" fill="currentColor">
+						<path d="M48 56v144a8 8 0 0 1-16 0V56a8 8 0 0 1 16 0Zm84 54.5l-20 6.5V96a8 8 0 0 0-16 0v21l-20-6.5a8 8 0 0 0-5 15.22l20 6.49l-12.34 17a8 8 0 1 0 12.94 9.4l12.34-17l12.34 17a8 8 0 1 0 12.94-9.4l-12.34-17l20-6.49A8 8 0 0 0 132 110.5Zm106 5.14a8 8 0 0 0-10-5.14l-20 6.5V96a8 8 0 0 0-16 0v21l-20-6.49a8 8 0 0 0-4.95 15.22l20 6.49l-12.34 17a8 8 0 1 0 12.94 9.4l12.34-17l12.34 17a8 8 0 1 0 12.94-9.4l-12.34-17l20-6.49a8 8 0 0 0 5.07-10.09Z"/>
+					</svg>
+				{:else if session.auth_method.type === 'Key'}
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+						<path d="M7 13.846q.77 0 1.308-.538q.538-.539.538-1.308t-.538-1.308q-.539-.538-1.308-.538t-1.308.538q-.538.539-.538 1.308t.538 1.308q.539.538 1.308.538Zm0 2.885q-2 0-3.365-1.366Q2.269 14 2.269 12t1.366-3.365Q5 7.269 7 7.269q1.698 0 2.941.958q1.244.958 1.594 2.273h9.048l1.494 1.494l-2.48 2.635l-1.828-1.379l-1.827 1.442l-1.557-1.192h-2.85q-.356 1.338-1.608 2.285q-1.252.946-2.927.946Z"/>
+					</svg>
+				{:else}
+					<svg width="12" height="12" viewBox="0 0 512 512" fill="currentColor">
+						<path d="M32 376a56 56 0 0 0 56 56h336a56 56 0 0 0 56-56V222H32Zm66-76a30 30 0 0 1 30-30h48a30 30 0 0 1 30 30v20a30 30 0 0 1-30 30h-48a30 30 0 0 1-30-30ZM424 80H88a56 56 0 0 0-56 56v26h448v-26a56 56 0 0 0-56-56Z"/>
+					</svg>
+				{/if}
 			</span>{session.username}@{session.host}:{session.port}</span>
 		</div>
 	</button>
@@ -163,7 +163,7 @@
 	}
 
 	.auth-badge > svg {
-	    display: unset;
+		display: unset;
 	}
 
 	.session-actions {

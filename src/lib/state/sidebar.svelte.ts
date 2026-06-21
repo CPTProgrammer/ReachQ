@@ -22,20 +22,20 @@ function saveWidth(w: number): void {
 }
 
 class SidebarState {
-  #width = $state(loadWidth());
+	#width = $state(loadWidth());
 
-  get width() {
-    return this.#width;
-  }
-  set width(value: number) {
-    if (value < MIN_WIDTH) value = MIN_WIDTH;
-    if (value > MAX_WIDTH) value = MAX_WIDTH;
-    this.#width = value;
-    saveWidth(value);
-  }
+	get width() {
+		return this.#width;
+	}
+	set width(value: number) {
+		if (value < MIN_WIDTH) value = MIN_WIDTH;
+		if (value > MAX_WIDTH) value = MAX_WIDTH;
+		this.#width = value;
+		saveWidth(value);
+	}
 
-  collapsed = $state(false);
-  dragging = $state(false);
+	collapsed = $state(false);
+	dragging = $state(false);
 }
 
 export const sidebarState = new SidebarState();

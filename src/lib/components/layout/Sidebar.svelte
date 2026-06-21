@@ -208,7 +208,7 @@
 	}
 
 	.sidebar-collapsed .nav-btn {
-	    justify-content: center;
+		justify-content: center;
 	}
 
 	.nav-btn:hover {

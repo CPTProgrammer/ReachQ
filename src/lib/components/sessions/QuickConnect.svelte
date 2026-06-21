@@ -35,6 +35,7 @@
 	let proxyPassword = $state('');
 	let connecting = $state(false);
 	let error = $state<string | undefined>();
+	let colorInit = $state(true);
 
 	let port = $derived(parseInt(portStr, 10) || 22);
 	let canConnect = $derived(host.trim().length > 0 && username.trim().length > 0 && !connecting);
@@ -68,9 +69,10 @@
 				password: authMethod === 'password' ? password : undefined,
 				keyPath: authMethod === 'key' ? keyPath.trim() : undefined,
 				keyPassphrase: authMethod === 'key' && keyPassphrase ? keyPassphrase : undefined,
-				cols: 80,
-				rows: 24,
-				jumpChain,
+					cols: 80,
+					rows: 24,
+					jumpChain,
+					colorInit,
 				proxy: proxyEnabled ? {
 					proxy_type: proxyType,
 					host: proxyHost.trim(),
@@ -106,6 +108,7 @@
 			proxyPassword = '';
 			error = undefined;
 			open = false;
+			colorInit = true;
 		} catch (err) {
 			error = String(err);
 		} finally {
@@ -241,6 +244,11 @@
 				</div>
 			{/if}
 		</div>
+
+		<label class="jump-toggle">
+			<input type="checkbox" bind:checked={colorInit} disabled={connecting} />
+			<span class="jump-toggle-text">Auto colorize shell</span>
+		</label>
 
 		{#if error}
 			<div class="error-message">{error}</div>
