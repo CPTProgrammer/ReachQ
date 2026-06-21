@@ -90,7 +90,6 @@
 		<div class="setting-control">
 			<Toggle
 				checked={settings.openLastSession}
-				label={t('settings.open_last_session')}
 				onchange={onLastSessionChange}
 			/>
 		</div>
@@ -104,7 +103,6 @@
 		<div class="setting-control">
 			<Toggle
 				checked={settings.minimizeToTray}
-				label={t('settings.minimize_to_tray')}
 				onchange={onMinimizeToTrayChange}
 			/>
 		</div>
@@ -118,7 +116,6 @@
 		<div class="setting-control">
 			<Toggle
 				checked={settings.startWithSystem}
-				label={t('settings.start_with_system')}
 				onchange={onStartWithSystemChange}
 			/>
 		</div>
@@ -164,6 +161,5 @@
 
 	.setting-control {
 		flex-shrink: 0;
-		min-width: 180px;
 	}
 </style>
