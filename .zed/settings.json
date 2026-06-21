@@ -1,5 +1,8 @@
 {
   "languages": {
+    "CSS": {
+      "hard_tabs": true
+    },
     "Svelte": {
       "hard_tabs": true
     },
