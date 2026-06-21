@@ -71,7 +71,7 @@
 			newPassword = '';
 			confirmPassword = '';
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to set password';
+			error = e instanceof Error ? e.message : t('security.save_failed');
 		}
 		saving = false;
 	}
@@ -92,7 +92,7 @@
 			<span class="setting-label">{t('security.master_password_status')}</span>
 			<span class="setting-description">
 				{#if loading}
-					Checking...
+					{t('security.checking')}
 				{:else if hasPassword}
 					{t('security.password_set')}
 				{:else}
@@ -108,12 +108,12 @@
 					<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
 						<path d="M2 7L5.5 10.5L12 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
 					</svg>
-					Set
+					{t('security.password_set_badge')}
 				{:else}
 					<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
 						<path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
 					</svg>
-					Not set
+					{t('security.password_not_set')}
 				{/if}
 			</div>
 		</div>
@@ -124,9 +124,9 @@
 			<span class="setting-label">{t('security.lock_status')}</span>
 			<span class="setting-description">
 				{#if locked}
-					Credentials are locked and encrypted
+					{t('security.locked_desc')}
 				{:else}
-					Credentials are currently accessible
+					{t('security.unlocked_desc')}
 				{/if}
 			</span>
 		</div>
@@ -177,7 +177,7 @@
 				<Input
 					label={t('security.new_password')}
 					type="password"
-					placeholder="Enter new password"
+					placeholder={t('security.new_password_placeholder')}
 					bind:value={newPassword}
 				/>
 			</div>
@@ -186,7 +186,7 @@
 				<Input
 					label={t('security.confirm_password')}
 					type="password"
-					placeholder="Re-enter password"
+					placeholder={t('security.confirm_password_placeholder')}
 					bind:value={confirmPassword}
 				/>
 			</div>

@@ -214,7 +214,7 @@
 		</div>
 
 		<div class="colorize-section section">
-			<Toggle bind:checked={colorInit} label="Auto colorize shell" disabled={saving} />
+			<Toggle bind:checked={colorInit} label={t('session.auto_colorize')} disabled={saving} />
 		</div>
 
 		<Input label={t('session.tags')} bind:value={tagsStr} placeholder="production, web, linux" disabled={saving} />

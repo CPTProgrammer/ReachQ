@@ -30,7 +30,7 @@
 				title: t('session.select_key_file'),
 				filters: [
 					{ name: t('session.ssh_private_key_filter'), extensions: ['pem', 'key', 'ppk', 'rsa', 'ed25519', 'ecdsa', 'dsa'] },
-					{ name: 'All Files', extensions: ['*'] },
+					{ name: t('session.all_files_filter'), extensions: ['*'] },
 				],
 			});
 			if (typeof selected === 'string') keyPath = selected;
@@ -80,7 +80,7 @@
 </div>
 
 {#if isPassword}
-	<Input label={t('session.password_optional')} bind:value={password} type="password" placeholder="Stored encrypted in vault" {disabled} />
+	<Input label={t('session.password_optional')} bind:value={password} type="password" placeholder={t('session.password_placeholder')} {disabled} />
 {:else if isKey}
 	<div class="key-path-row">
 		<div class="key-path-input">
@@ -90,7 +90,7 @@
 				{t('session.browse_key')}
 		</Button>
 	</div>
-	<Input label={t('session.passphrase_optional')} bind:value={keyPassphrase} type="password" placeholder="Stored encrypted in vault" {disabled} />
+	<Input label={t('session.passphrase_optional')} bind:value={keyPassphrase} type="password" placeholder={t('session.password_placeholder')} {disabled} />
 {/if}
 
 <style>

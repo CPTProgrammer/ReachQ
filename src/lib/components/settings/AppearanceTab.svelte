@@ -158,12 +158,12 @@
 						<input
 							class="font-search"
 							type="text"
-							placeholder="Search fonts..."
+							placeholder={t('settings.search_fonts')}
 							bind:value={fontSearch}
 						/>
 						<div class="font-list">
 							{#if filteredFonts.common.length > 0}
-								<div class="font-group-label">Common</div>
+								<div class="font-group-label">{t('settings.font_common')}</div>
 								{#each filteredFonts.common as font (font.value)}
 									<button
 										class="font-option"
@@ -176,9 +176,9 @@
 								{/each}
 							{/if}
 							{#if fontsLoading}
-								<div class="font-loading">Loading system fonts…</div>
+								<div class="font-loading">{t('settings.fonts_loading')}</div>
 							{:else if filteredFonts.system.length > 0}
-								<div class="font-group-label">System Fonts</div>
+								<div class="font-group-label">{t('settings.fonts_system')}</div>
 								{#each filteredFonts.system as font (font)}
 									<button
 										class="font-option"
@@ -199,7 +199,7 @@
 
 	{#key `${pvFont}-${currentSize}`}
 		<div class="font-preview-box">
-			<span class="preview-label">Preview — {pvFont} @ {currentSize}px</span>
+			<span class="preview-label">{t('settings.font_preview_label', { font: pvFont, size: String(currentSize) })}</span>
 			<iframe
 				title="Font Preview"
 				class="preview-iframe"

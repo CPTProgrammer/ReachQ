@@ -50,7 +50,7 @@
 			}
 		} catch (e) {
 			addToast(
-				e instanceof Error ? e.message : 'Failed to set plugins directory',
+				e instanceof Error ? e.message : t('settings.plugins_set_dir_failed'),
 				'error'
 			);
 		}
@@ -85,7 +85,7 @@
 			);
 		} catch (e) {
 			addToast(
-				e instanceof Error ? e.message : 'Failed to discover plugins',
+				e instanceof Error ? e.message : t('settings.plugins_discover_failed'),
 				'error'
 			);
 		}
@@ -106,7 +106,7 @@
 			addToast(t('plugin.reloaded_toast'), 'success');
 		} catch (e) {
 			addToast(
-				e instanceof Error ? e.message : 'Failed to reload plugins',
+				e instanceof Error ? e.message : t('settings.plugins_reload_failed'),
 				'error'
 			);
 		}
@@ -136,7 +136,7 @@
 			setPlugins(list);
 		} catch (e) {
 			addToast(
-				e instanceof Error ? e.message : 'Failed to toggle plugin',
+				e instanceof Error ? e.message : t('settings.plugins_toggle_failed'),
 				'error'
 			);
 		}

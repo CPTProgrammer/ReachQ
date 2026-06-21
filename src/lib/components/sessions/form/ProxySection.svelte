@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Input from '$lib/components/shared/Input.svelte';
 	import Toggle from '$lib/components/shared/Toggle.svelte';
+	import { t } from '$lib/state/i18n.svelte';
 
 	interface Props {
 		enabled: boolean;
@@ -23,7 +24,7 @@
 	}: Props = $props();
 </script>
 
-<Toggle bind:checked={enabled} label="Connect via Proxy" {disabled} />
+<Toggle bind:checked={enabled} label={t('session.proxy_enable')} {disabled} />
 
 {#if enabled}
 	<div class="proxy-fields">
@@ -34,27 +35,27 @@
 		</div>
 		<div class="row">
 			<div class="field-host">
-				<Input label="Proxy Host" bind:value={host} placeholder="127.0.0.1" {disabled} />
+				<Input label={t('session.proxy_host')} bind:value={host} placeholder="127.0.0.1" {disabled} />
 			</div>
 			<div class="field-port">
-				<Input label="Port" bind:value={port} type="number" placeholder="9050" {disabled} />
+				<Input label={t('session.proxy_port')} bind:value={port} type="number" placeholder="9050" {disabled} />
 			</div>
 		</div>
 		<div class="row">
 			<div class="field-host">
-				<Input label="Username (optional)" bind:value={username} {disabled} />
+				<Input label={t('session.proxy_username')} bind:value={username} {disabled} />
 			</div>
 			<div class="field-host">
-				<Input label="Password (optional)" bind:value={password} type="password" {disabled} />
+				<Input label={t('session.proxy_password')} bind:value={password} type="password" {disabled} />
 			</div>
 		</div>
 		<p class="proxy-hint">
 			{#if proxyType === 'socks5'}
-				Tor default: 127.0.0.1:9050 | Tor Browser: 127.0.0.1:9150
-			{:else if proxyType === 'http'}
-				HTTP CONNECT proxy for tunneling SSH through corporate proxies
-			{:else}
-				SOCKS4 proxy (no authentication support)
+				{t('session.proxy_hint_socks5')}
+				{:else if proxyType === 'http'}
+					{t('session.proxy_hint_http')}
+				{:else}
+					{t('session.proxy_hint_socks4')}
 			{/if}
 		</p>
 	</div>

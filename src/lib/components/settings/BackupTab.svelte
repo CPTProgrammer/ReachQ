@@ -91,7 +91,7 @@
 			exportPassword = '';
 			exportConfirmPassword = '';
 		} catch (e) {
-			exportError = e instanceof Error ? e.message : 'Failed to export backup';
+			exportError = e instanceof Error ? e.message : t('backup.export_failed');
 			addToast(t('backup.export_failed_toast'), 'error');
 		} finally {
 			exporting = false;
@@ -112,7 +112,7 @@
 				importFilePath = selected as string;
 			}
 		} catch (e) {
-			importError = e instanceof Error ? e.message : 'Failed to open file dialog';
+			importError = e instanceof Error ? e.message : t('backup.open_file_failed');
 		}
 	}
 
@@ -125,7 +125,7 @@
 			preview = await previewBackup(importFilePath, importExportPassword);
 			addToast(t('backup.verified_toast'), 'success');
 		} catch (e) {
-			importError = e instanceof Error ? e.message : 'Failed to verify backup';
+			importError = e instanceof Error ? e.message : t('backup.verify_failed');
 		} finally {
 			verifying = false;
 		}
@@ -140,10 +140,10 @@
 		try {
 			await importBackup(importFilePath, importExportPassword, importMasterPassword);
 			addToast(t('backup.imported_toast'), 'success');
-			await message('Backup restored successfully. The app will now restart to apply all settings.', { title: 'Import Complete', kind: 'info' });
+			await message(t('backup.restored_message'), { title: 'Import Complete', kind: 'info' });
 			await relaunch();
 		} catch (e) {
-			importError = e instanceof Error ? e.message : 'Failed to import backup';
+			importError = e instanceof Error ? e.message : t('backup.import_failed');
 			addToast(t('backup.import_failed_toast'), 'error');
 		} finally {
 			importing = false;
@@ -163,8 +163,8 @@
 			<Input
 				label={t('backup.export_password')}
 				type="password"
-				placeholder="Minimum 8 characters"
-				bind:value={exportPassword}
+				placeholder={t('backup.password_min_chars_placeholder')}
+					bind:value={exportPassword}
 				disabled={exporting}
 			/>
 		</div>
@@ -173,8 +173,8 @@
 			<Input
 				label={t('backup.confirm_password')}
 				type="password"
-				placeholder="Re-enter password"
-				bind:value={exportConfirmPassword}
+				placeholder={t('backup.confirm_password_placeholder')}
+					bind:value={exportConfirmPassword}
 				disabled={exporting}
 			/>
 		</div>
@@ -215,8 +215,8 @@
 				<Input
 					label={t('backup.export_password')}
 					type="password"
-					placeholder="Password used during export"
-					bind:value={importExportPassword}
+					placeholder={t('backup.export_password_placeholder')}
+						bind:value={importExportPassword}
 					disabled={verifying || importing}
 				/>
 			</div>
@@ -256,10 +256,10 @@
 				<div class="setting-row">
 					<div class="setting-info">
 						<span class="setting-label">{t('backup.preview_sync')}</span>
-						<span class="setting-description">{preview.hasSyncConfig ? 'Included' : 'None'}</span>
+						<span class="setting-description">{preview.hasSyncConfig ? t('backup.included') : t('backup.none')}</span>
 					</div>
 					<div class="status-badge" class:enabled={preview.hasSyncConfig}>
-						{preview.hasSyncConfig ? 'Yes' : 'No'}
+						{preview.hasSyncConfig ? t('common.yes') : t('common.no')}
 					</div>
 				</div>
 			</div>
@@ -268,8 +268,8 @@
 				<Input
 					label={t('backup.master_password_optional')}
 					type="password"
-					placeholder="Leave blank if you used TLS-style init"
-					bind:value={importMasterPassword}
+					placeholder={t('backup.master_password_placeholder')}
+						bind:value={importMasterPassword}
 					disabled={importing}
 				/>
 			</div>

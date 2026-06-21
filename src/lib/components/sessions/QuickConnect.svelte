@@ -138,7 +138,7 @@
 		</div>
 
 		<div class="colorize-section section">
-			<Toggle bind:checked={colorInit} label="Auto colorize shell" disabled={connecting} />
+			<Toggle bind:checked={colorInit} label={t('session.auto_colorize')} disabled={connecting} />
 		</div>
 
 		{#if error}

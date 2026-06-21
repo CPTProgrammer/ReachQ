@@ -113,7 +113,7 @@
 				<Input
 					type="password"
 					value={aiSettings.apiKey}
-					placeholder="sk-or-..."
+					placeholder={t('ai_settings.api_key_placeholder')}
 					disabled={!aiSettings.enabled}
 					oninput={onApiKeyInput}
 				/>
@@ -155,7 +155,7 @@
 			<Input
 				type="text"
 				value={aiSettings.baseUrl}
-				placeholder="https://openrouter.ai/api/v1"
+				placeholder={t('ai_settings.base_url_placeholder')}
 				disabled={!aiSettings.enabled}
 				oninput={onBaseUrlInput}
 			/>

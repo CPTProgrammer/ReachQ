@@ -120,7 +120,7 @@
 				addToast(t('sync.settings_saved'), 'success');
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to save';
+			error = e instanceof Error ? e.message : t('sync.save_failed');
 		}
 		saving = false;
 	}
@@ -130,7 +130,7 @@
 			exportedKey = await exportIdentity();
 			showExportKey = true;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to export';
+			error = e instanceof Error ? e.message : t('sync.export_failed');
 		}
 	}
 
@@ -150,12 +150,12 @@
 
 		try {
 			const vaultInfo = await acceptInvite(inviteSyncUrl.trim(), inviteToken.trim());
-			addToast(`Joined vault: ${vaultInfo.name}`, 'success');
+			addToast(t('sync.joined_toast', { name: vaultInfo.name }), 'success');
 			inviteSyncUrl = '';
 			inviteToken = '';
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to accept invite';
-		} finally {
+					error = e instanceof Error ? e.message : t('sync.accept_invite_failed');
+				} finally {
 			acceptingInvite = false;
 		}
 	}
@@ -214,7 +214,7 @@
 			<div class="form-field">
 				<Input
 					label={t('sync.organization')}
-					placeholder="my-org"
+					placeholder={t('sync.org_placeholder')}
 					bind:value={tursoOrg}
 				/>
 			</div>
@@ -223,7 +223,7 @@
 				<Input
 					label={t('sync.platform_api_token')}
 					type="password"
-					placeholder="eyJhbG..."
+					placeholder={t('sync.token_placeholder')}
 					bind:value={tursoApiToken}
 				/>
 			</div>
@@ -231,7 +231,7 @@
 			<div class="form-field">
 				<Input
 					label={t('sync.group')}
-					placeholder="default"
+					placeholder={t('sync.group_placeholder')}
 					bind:value={tursoGroup}
 				/>
 			</div>
@@ -287,7 +287,7 @@
 			<div class="form-field">
 				<Input
 					label={t('vault.sync_url')}
-					placeholder="libsql://vault-xxx.turso.io"
+					placeholder={t('sync.invite_url_placeholder')}
 					bind:value={inviteSyncUrl}
 					disabled={acceptingInvite}
 				/>
@@ -295,9 +295,9 @@
 
 			<div class="form-field">
 				<Input
-					label="Token"
+					label={t('vault.token')}
 					type="password"
-					placeholder="eyJhbG..."
+					placeholder={t('sync.invite_token_placeholder')}
 					bind:value={inviteToken}
 					disabled={acceptingInvite}
 				/>
