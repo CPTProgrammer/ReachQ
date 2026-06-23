@@ -9,6 +9,7 @@
 	import Toggle from '$lib/components/shared/Toggle.svelte';
 	import { sshConnect, type JumpHostConnectParams } from '$lib/ipc/ssh';
 	import { createTab } from '$lib/state/tabs.svelte';
+	import { getPendingHostKey } from '$lib/state/host-key.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 
 	interface Props {
@@ -35,6 +36,14 @@
 	let connecting = $state(false);
 	let error = $state<string | undefined>();
 	let colorInit = $state(true);
+
+	// Auto-close this modal when a host-key verification dialog appears,
+	// so the HostKeyDialog isn't blocked behind the connection-in-progress state.
+	$effect(() => {
+		if (connecting && getPendingHostKey()) {
+			open = false;
+		}
+	});
 
 	let port = $derived(parseInt(portStr, 10) || 22);
 	let canConnect = $derived(host.trim().length > 0 && username.trim().length > 0 && !connecting);

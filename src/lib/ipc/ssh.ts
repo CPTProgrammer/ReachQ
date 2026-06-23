@@ -82,3 +82,11 @@ export async function sshDetectOs(connectionId: string): Promise<string> {
 export async function sshMarkReady(connectionId: string): Promise<void> {
   return invoke('ssh_mark_ready', { connectionId });
 }
+
+export async function sshConfirmHostKey(
+  host: string,
+  port: number,
+  decision: 'accept' | 'accept-once' | 'reject'
+): Promise<void> {
+  return invoke('ssh_confirm_host_key', { host, port, decision });
+}

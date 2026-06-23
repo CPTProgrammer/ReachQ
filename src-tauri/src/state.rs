@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 #[cfg(desktop)]
 use std::sync::Mutex;
-use tokio::sync::RwLock;
+use tokio::sync::{oneshot, RwLock};
 use serde::{Deserialize, Serialize};
 
 use crate::monitoring::collector::MonitoringCollector;
@@ -12,7 +12,7 @@ use crate::monitoring::collector::MonitoringCollector;
 use crate::pty::manager::PtyManager;
 #[cfg(desktop)]
 use crate::serial::port::SerialManager;
-use crate::ssh::client::SshManager;
+use crate::ssh::client::{SshManager, HostKeyDecision, KnownHosts, known_hosts_path};
 use crate::ansible::project::AnsibleProjectManager;
 use crate::tofu::project::TofuProjectManager;
 use crate::tofu::types::SchemaCache;
@@ -166,6 +166,15 @@ pub struct SystemStats {
 /// stored encrypted in the vault (SQLite + XChaCha20-Poly1305).
 pub struct AppState {
     pub ssh_manager: Arc<tokio::sync::Mutex<SshManager>>,
+    /// Pending host key verifications awaiting frontend response.
+    /// Kept outside SshManager to avoid deadlock: ssh_connect holds the
+    /// SshManager lock while waiting, so the IPC response command must
+    /// access this map without locking SshManager.
+    pub pending_host_keys: Arc<tokio::sync::Mutex<HashMap<String, Vec<oneshot::Sender<HostKeyDecision>>>>>,
+    /// Shared in-memory known_hosts used by all SSH connections.
+    /// RwLock lets multiple concurrent check_server_key calls read
+    /// simultaneously; only Accept & Save acquires the write lock.
+    pub known_hosts: Arc<tokio::sync::RwLock<KnownHosts>>,
     pub tunnels: Arc<RwLock<HashMap<String, TunnelConfig>>>,
     pub monitoring: Arc<RwLock<HashMap<String, SystemStats>>>,
     #[cfg(desktop)]
@@ -193,8 +202,16 @@ impl AppState {
             .unwrap_or_else(|| PathBuf::from("."))
             .join("com.reach.app");
 
+        // Load known_hosts from disk at startup (best-effort).
+        let known_hosts = std::fs::read_to_string(known_hosts_path())
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default();
+
         Self {
             ssh_manager: Arc::new(tokio::sync::Mutex::new(SshManager::new())),
+            pending_host_keys: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            known_hosts: Arc::new(tokio::sync::RwLock::new(known_hosts)),
             tunnels: Arc::new(RwLock::new(HashMap::new())),
             monitoring: Arc::new(RwLock::new(HashMap::new())),
             #[cfg(desktop)]

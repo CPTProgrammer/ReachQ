@@ -10,6 +10,7 @@
 	import { createTab, updateTabOs } from '$lib/state/tabs.svelte';
 	import { addToast } from '$lib/state/toasts.svelte';
 	import { t } from '$lib/state/i18n.svelte';
+	import { getPendingHostKey } from '$lib/state/host-key.svelte';
 	import { untrack } from 'svelte';
 	import { vaultState, checkState, initIdentity, refreshVaults, importIdentity } from '$lib/state/vault.svelte';
 
@@ -225,6 +226,14 @@
 	let fallbackPassword = $state('');
 
 	let showConnectPrompt = $derived(!!connectSession);
+
+	// Auto-hide the connect prompt when a host-key verification dialog appears,
+	// so the HostKeyDialog isn't trapped behind it.
+	$effect(() => {
+		if (connecting && showConnectPrompt && getPendingHostKey()) {
+			connectSession = undefined;
+		}
+	});
 
 	// Programmatic focus for the fallback input — `autofocus` is unreliable
 	// inside conditionally-rendered blocks across WebView versions.

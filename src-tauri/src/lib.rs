@@ -109,6 +109,7 @@ pub fn run() {
             ssh_list_connections,
             ssh_detect_os,
             ssh_mark_ready,
+            ssh_confirm_host_key,
             // SSH Config commands
             sshconfig_list_hosts,
             sshconfig_resolve_host,
@@ -323,6 +324,7 @@ pub fn run() {
             ssh_list_connections,
             ssh_detect_os,
             ssh_mark_ready,
+            ssh_confirm_host_key,
             // SSH Config commands
             sshconfig_list_hosts,
             sshconfig_resolve_host,

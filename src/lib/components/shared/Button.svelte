@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 
 	interface Props {
-		variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+		variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'warning';
 		size?: 'sm' | 'md' | 'lg';
 		type?: 'button' | 'submit' | 'reset';
 		disabled?: boolean;
@@ -99,5 +99,14 @@
 	}
 	.btn-danger:hover:not(:disabled) {
 		background-color: #ff6961;
+	}
+
+	/* Warning */
+	.btn-warning {
+		background-color: var(--color-warning, #d97706);
+		color: #fff;
+	}
+	.btn-warning:hover:not(:disabled) {
+		background-color: var(--color-warning-hover, #b45309);
 	}
 </style>

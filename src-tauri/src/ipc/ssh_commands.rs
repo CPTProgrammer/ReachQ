@@ -1,5 +1,5 @@
 use crate::state::AppState;
-use crate::ssh::client::{AuthParams, ConnectionInfo, JumpHostParams, exec_on_connection};
+use crate::ssh::client::{AuthParams, ConnectionInfo, HostKeyDecision, JumpHostParams, exec_on_connection};
 use crate::plugin::hooks;
 
 /// Parameters for a jump host received from the frontend.
@@ -79,12 +79,14 @@ pub async fn ssh_connect(
     let color_init = color_init.unwrap_or(true);
 
     let mut manager = state.ssh_manager.lock().await;
+    let pending_host_keys = state.pending_host_keys.clone();
+    let known_hosts = state.known_hosts.clone();
 
     let info = if let Some(chain) = jump_chain {
         if chain.is_empty() {
             // No jump hosts, connect directly
             manager
-                .connect(&id, &host, port, &username, auth, cols, rows, color_init, app.clone(), proxy)
+                .connect(&id, &host, port, &username, auth, cols, rows, color_init, app.clone(), proxy, pending_host_keys, known_hosts)
                 .await
                 .map_err(|e| e.to_string())?
         } else {
@@ -119,13 +121,15 @@ pub async fn ssh_connect(
                     rows,
                     color_init,
                     app.clone(),
-                )
+                        pending_host_keys,
+                        known_hosts,
+                    )
                 .await
                 .map_err(|e| e.to_string())?
         }
     } else {
         manager
-            .connect(&id, &host, port, &username, auth, cols, rows, color_init, app.clone(), proxy)
+            .connect(&id, &host, port, &username, auth, cols, rows, color_init, app.clone(), proxy, pending_host_keys, known_hosts)
             .await
             .map_err(|e| e.to_string())?
     };
@@ -247,4 +251,34 @@ pub async fn ssh_detect_os(
     }
 
     Ok("linux".to_string())
+}
+
+/// Called by the frontend after the user makes a decision on a host key
+/// verification dialog. Delivers the decision to the waiting oneshot channel
+/// inside SshClientHandler::check_server_key.
+#[tauri::command]
+pub async fn ssh_confirm_host_key(
+    state: tauri::State<'_, AppState>,
+    host: String,
+    port: u16,
+    decision: String,
+) -> Result<(), String> {
+    let host_id = format!("{}:{}", host, port);
+
+    let decision = match decision.as_str() {
+        "accept" => HostKeyDecision::Accept,
+        "accept-once" => HostKeyDecision::AcceptOnce,
+        "reject" => HostKeyDecision::Reject,
+        _ => return Err(format!("Invalid decision: {}", decision)),
+    };
+
+    let mut pending_map = state.pending_host_keys.lock().await;
+    if let Some(senders) = pending_map.remove(&host_id) {
+        for tx in senders {
+            let _ = tx.send(decision.clone());
+        }
+        Ok(())
+    } else {
+        Err("No pending host key verification for this host".to_string())
+    }
 }

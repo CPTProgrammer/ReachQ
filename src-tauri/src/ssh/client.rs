@@ -7,7 +7,7 @@ use russh::{Channel, ChannelMsg};
 use tauri::Emitter;
 use tauri::Manager;
 use thiserror::Error;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::state::ProxyConfig;
 
@@ -318,13 +318,40 @@ struct ActiveConnection {
     jump_handles: Vec<SharedHandle>,
 }
 
+/// Decision returned by the frontend after the user confirms a host key.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HostKeyDecision {
+    /// Accept and save the fingerprint to known_hosts.
+    Accept,
+    /// Accept for this session only, do not persist.
+    AcceptOnce,
+    /// Reject the connection.
+    Reject,
+}
+
+/// Payload emitted to the frontend when a host key needs verification.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostKeyVerifyEvent {
+    pub host: String,
+    pub port: u16,
+    pub fingerprint: String,
+    pub key_type: String,
+    /// True for a brand-new host, false when the key has changed.
+    pub is_new: bool,
+    /// The previously saved fingerprint (only set when is_new is false).
+    pub old_fingerprint: Option<String>,
+}
+
 pub struct SshManager {
     connections: HashMap<String, ActiveConnection>,
 }
 
 impl SshManager {
     pub fn new() -> Self {
-        Self { connections: HashMap::new() }
+        Self {
+            connections: HashMap::new(),
+        }
     }
 
     pub async fn connect(
@@ -339,13 +366,21 @@ impl SshManager {
         color_init: bool,
         app_handle: tauri::AppHandle,
         proxy: Option<ProxyConfig>,
+        pending_host_keys: Arc<tokio::sync::Mutex<HashMap<String, Vec<oneshot::Sender<HostKeyDecision>>>>>,
+        known_hosts: Arc<tokio::sync::RwLock<KnownHosts>>,
     ) -> Result<ConnectionInfo, SshError> {
         tracing::info!("SSH connecting to {}@{}:{}", username, host, port);
 
         let timeout_duration = std::time::Duration::from_secs(15);
         let connect_future = async {
             let config = Arc::new(russh::client::Config::default());
-            let handler = SshClientHandler::new(host, port);
+            let handler = SshClientHandler::new(
+                host,
+                port,
+                app_handle.clone(),
+                pending_host_keys.clone(),
+                known_hosts.clone(),
+            );
 
             let mut handle = if let Some(ref proxy) = proxy {
                 tracing::info!("SSH connecting via {} proxy {}:{}", proxy.proxy_type, proxy.host, proxy.port);
@@ -466,6 +501,8 @@ impl SshManager {
         rows: u16,
         color_init: bool,
         app_handle: tauri::AppHandle,
+        pending_host_keys: Arc<tokio::sync::Mutex<HashMap<String, Vec<oneshot::Sender<HostKeyDecision>>>>>,
+        known_hosts: Arc<tokio::sync::RwLock<KnownHosts>>,
     ) -> Result<ConnectionInfo, SshError> {
         tracing::info!(
             "SSH connecting to {}@{}:{} via {} jump host(s)",
@@ -479,7 +516,13 @@ impl SshManager {
             // Step 1: Connect to the first jump host directly
             let first_jump = &jump_chain[0];
             let config = Arc::new(russh::client::Config::default());
-            let handler = SshClientHandler::new(first_jump.host.as_str(), first_jump.port);
+            let handler = SshClientHandler::new(
+                first_jump.host.as_str(),
+                first_jump.port,
+                app_handle.clone(),
+                pending_host_keys.clone(),
+                known_hosts.clone(),
+            );
 
             let mut current_handle = russh::client::connect(
                 config,
@@ -531,7 +574,13 @@ impl SshManager {
 
                     let stream = channel.into_stream();
                     let config = Arc::new(russh::client::Config::default());
-                    let handler = SshClientHandler::new(next_jump.host.as_str(), next_jump.port);
+                    let handler = SshClientHandler::new(
+                        next_jump.host.as_str(),
+                        next_jump.port,
+                        app_handle.clone(),
+                        pending_host_keys.clone(),
+                        known_hosts.clone(),
+                    );
 
                     let mut next_handle =
                         russh::client::connect_stream(config, stream, handler)
@@ -578,7 +627,13 @@ impl SshManager {
 
                 let stream = channel.into_stream();
                 let config = Arc::new(russh::client::Config::default());
-                let handler = SshClientHandler::new(target_host, target_port);
+                let handler = SshClientHandler::new(
+                    target_host,
+                    target_port,
+                    app_handle.clone(),
+                    pending_host_keys.clone(),
+                    known_hosts.clone(),
+                );
 
                 let mut target_handle =
                     russh::client::connect_stream(config, stream, handler)
@@ -623,7 +678,13 @@ impl SshManager {
 
                 let stream = channel.into_stream();
                 let config = Arc::new(russh::client::Config::default());
-                let handler = SshClientHandler::new(target_host, target_port);
+                let handler = SshClientHandler::new(
+                    target_host,
+                    target_port,
+                    app_handle.clone(),
+                    pending_host_keys.clone(),
+                    known_hosts.clone(),
+                );
 
                 let mut target_handle =
                     russh::client::connect_stream(config, stream, handler)
@@ -978,24 +1039,45 @@ pub async fn exec_on_connection_streaming(
 pub struct SshClientHandler {
     host: String,
     port: u16,
+    app_handle: tauri::AppHandle,
+    pending_verifications: Arc<tokio::sync::Mutex<HashMap<String, Vec<oneshot::Sender<HostKeyDecision>>>>>,
+    known_hosts: Arc<tokio::sync::RwLock<KnownHosts>>,
 }
 
 impl SshClientHandler {
-    pub fn new(host: impl Into<String>, port: u16) -> Self {
-        Self { host: host.into(), port }
-    }
-
-    fn known_hosts_path() -> std::path::PathBuf {
-        let data_dir = dirs::data_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("com.reach.app");
-        data_dir.join("ssh").join("known_hosts.json")
+    pub fn new(
+        host: impl Into<String>,
+        port: u16,
+        app_handle: tauri::AppHandle,
+        pending_verifications: Arc<
+            tokio::sync::Mutex<HashMap<String, Vec<oneshot::Sender<HostKeyDecision>>>>,
+        >,
+        known_hosts: Arc<tokio::sync::RwLock<KnownHosts>>,
+    ) -> Self {
+        Self { host: host.into(), port, app_handle, pending_verifications, known_hosts }
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct KnownHosts {
-    entries: HashMap<String, String>,
+/// In-memory representation of ~/.reach/ssh/known_hosts.json.
+/// All SSH connections share a single instance via Arc<RwLock<>> in AppState
+/// so concurrent Accept & Save operations don't overwrite each other.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnownHosts {
+    pub entries: HashMap<String, String>,
+}
+
+impl Default for KnownHosts {
+    fn default() -> Self {
+        Self { entries: HashMap::new() }
+    }
+}
+
+/// Return the path to the known_hosts JSON file in the app data directory.
+pub fn known_hosts_path() -> std::path::PathBuf {
+    let data_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("com.reach.app");
+    data_dir.join("ssh").join("known_hosts.json")
 }
 
 #[async_trait]
@@ -1007,43 +1089,88 @@ impl russh::client::Handler for SshClientHandler {
         server_public_key: &russh_keys::key::PublicKey,
     ) -> Result<bool, Self::Error> {
         let host_id = format!("{}:{}", self.host, self.port);
-        let fingerprint = server_public_key.fingerprint().to_string();
+        let fingerprint = server_public_key.fingerprint();
+        let key_type = server_public_key.name();
 
-        let path = Self::known_hosts_path();
+        // Ensure parent directory exists so async persist won't fail later.
+        let path = known_hosts_path();
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        let mut known: KnownHosts = match std::fs::read_to_string(&path) {
-            Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
-            Err(_) => KnownHosts::default(),
-        };
-
-        match known.entries.get(&host_id) {
-            Some(existing) => {
+        // Read shared state under a read lock.
+        let is_new;
+        let old_fingerprint;
+        {
+            let known = self.known_hosts.read().await;
+            if let Some(existing) = known.entries.get(&host_id) {
                 if existing == &fingerprint {
-                    Ok(true)
-                } else {
-                    tracing::warn!(
-                        "SSH host key changed for {} (server likely reinstalled). Old: {}, New: {}. Auto-accepting.",
-                        host_id,
-                        existing,
-                        fingerprint
-                    );
-                    known.entries.insert(host_id, fingerprint);
-                    if let Ok(raw) = serde_json::to_string_pretty(&known) {
-                        let _ = std::fs::write(&path, raw);
-                    }
-                    Ok(true)
+                    return Ok(true); // Scenario 2: match → accept silently.
                 }
             }
-            None => {
-                known.entries.insert(host_id, fingerprint);
-                if let Ok(raw) = serde_json::to_string_pretty(&known) {
-                    let _ = std::fs::write(&path, raw);
+            is_new = !known.entries.contains_key(&host_id);
+            old_fingerprint = known.entries.get(&host_id).cloned();
+        }
+
+        // Scenario 1 (new host) or 3 (fingerprint changed) → prompt the user.
+        // Create a oneshot channel so we can wait for the frontend response.
+        let (tx, rx) = oneshot::channel();
+        let is_first = {
+            let mut pending = self.pending_verifications.lock().await;
+            let entry = pending.entry(host_id.clone()).or_default();
+            let first = entry.is_empty();
+            entry.push(tx);
+            first
+        };
+
+        let event = HostKeyVerifyEvent {
+            host: self.host.clone(),
+            port: self.port,
+            fingerprint: fingerprint.clone(),
+            key_type: key_type.to_string(),
+            is_new,
+            old_fingerprint,
+        };
+
+        // Only emit the event once per host:port; subsequent concurrent
+        // connections share the decision from this same dialog.
+        if is_first {
+            let _ = self.app_handle.emit("host-key-verify", &event);
+        }
+
+        // Block until the frontend sends back a decision via ssh_confirm_host_key.
+        let decision = match rx.await {
+            Ok(d) => d,
+            Err(_) => {
+                // The channel was closed (e.g. app quit). Reject.
+                return Ok(false);
+            }
+        };
+
+        match decision {
+            HostKeyDecision::Accept => {
+                // Persist the new/updated fingerprint in shared state.
+                {
+                    let mut known = self.known_hosts.write().await;
+                    known.entries.insert(host_id, fingerprint);
+                    // Persist to disk asynchronously so we don't block
+                    // the async runtime on filesystem I/O.
+                    if let Ok(raw) = serde_json::to_string_pretty(&*known) {
+                        let path = known_hosts_path();
+                        let _ = tokio::fs::write(&path, &raw).await;
+                    }
                 }
-                tracing::warn!("SSH host key saved (TOFU) for {}", self.host);
+                tracing::info!("SSH host key {} for {}", if is_new { "saved" } else { "updated" }, self.host);
                 Ok(true)
+            }
+            HostKeyDecision::AcceptOnce => {
+                // Allow this session without saving.
+                tracing::info!("SSH host key accepted (once) for {}", self.host);
+                Ok(true)
+            }
+            HostKeyDecision::Reject => {
+                tracing::info!("SSH host key rejected by user for {}", self.host);
+                Ok(false)
             }
         }
     }
