@@ -31,7 +31,7 @@
 		loadAISettings();
 		initShortcuts();
 		// startupUpdateCheck();
-		startPeriodicChecks();
+		// startPeriodicChecks();
 
 		return () => {
 			cleanupShortcuts();
