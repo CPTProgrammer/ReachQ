@@ -58,6 +58,7 @@ Reach is what happens when you build an SSH client from scratch with a native UI
   - Configurable auto-shell-color with improved injection to handle more edge cases.
   - *Dev: Refactored SSH backend for better code reuse and reduced duplication.*
 - [x] Fixed terminal buffer refresh issues when switching between related settings panels.
+- [x] Terminal links open in the system default browser on Ctrl+click (Cmd+click on macOS).
 
 ### UI
 

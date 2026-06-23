@@ -15,6 +15,7 @@
 	import { trieMatch } from '$lib/state/snippets.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
+	import { open as shellOpen } from '@tauri-apps/plugin-shell';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 
@@ -154,7 +155,11 @@
 
 	function loadAddons(term: Terminal, fit: FitAddon): void {
 		term.loadAddon(fit);
-		term.loadAddon(new WebLinksAddon());
+		term.loadAddon(new WebLinksAddon((event, uri) => {
+			if (event.ctrlKey || event.metaKey) {
+				shellOpen(uri);
+			}
+		}));
 
 		const unicode11 = new Unicode11Addon();
 		term.loadAddon(unicode11);
