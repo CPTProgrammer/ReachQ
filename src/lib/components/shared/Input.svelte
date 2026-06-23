@@ -20,7 +20,7 @@
 	let focused = $state(false);
 	let inputId = $state(`input-${Math.random().toString(36).slice(2, 9)}`);
 
-	let floated = $derived(focused || value.length > 0);
+	let floated = $derived(focused || (value !== '' && value !== null && !Number.isNaN(value)));
 </script>
 
 <div class="input-wrapper" class:disabled>
@@ -103,6 +103,16 @@
 	.input-field::placeholder {
 		color: var(--color-text-secondary);
 		opacity: 0.5;
+	}
+
+	.input-field[type='number']::-webkit-inner-spin-button,
+	.input-field[type='number']::-webkit-outer-spin-button {
+		-webkit-appearance: none;
+		margin: 0;
+	}
+
+	.input-field[type='number'] {
+		-moz-appearance: textfield;
 	}
 
 	.input-border {
