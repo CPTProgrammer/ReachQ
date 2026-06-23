@@ -29,6 +29,7 @@
 
 <div class="toggle-wrapper" class:disabled>
 	<button
+		type="button"
 		class="toggle-track"
 		class:active={checked}
 		role="switch"
