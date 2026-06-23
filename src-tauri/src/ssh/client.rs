@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use russh::{Channel, ChannelMsg};
 use tauri::Emitter;
+use tauri::Manager;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
@@ -1094,14 +1095,17 @@ async fn ssh_session_task(
                     Some(ChannelMsg::ExitStatus { exit_status }) => {
                         tracing::info!("SSH '{}' exited with status {}", connection_id, exit_status);
                         let _ = app_handle.emit(&exit_event, exit_status);
+                        cleanup_dead_connection(&app_handle, &connection_id).await;
                         break;
                     }
                     Some(ChannelMsg::Eof) => {
                         tracing::info!("SSH '{}' received EOF", connection_id);
+                        cleanup_dead_connection(&app_handle, &connection_id).await;
                         break;
                     }
                     None => {
                         tracing::info!("SSH '{}' channel closed", connection_id);
+                        cleanup_dead_connection(&app_handle, &connection_id).await;
                         break;
                     }
                     _ => {}
@@ -1145,4 +1149,27 @@ async fn ssh_session_task(
         tracing::error!("Failed to emit '{}': {}", exit_event, e);
     }
     tracing::info!("SSH '{}' session task exiting", connection_id);
+}
+
+/// Clean up a connection that died unexpectedly (network drop, server
+/// timeout, etc.). Stops monitoring and removes the connection from the
+/// manager so the monitoring loop doesn't keep retrying on a dead handle.
+async fn cleanup_dead_connection(app_handle: &tauri::AppHandle, connection_id: &str) {
+    let state = app_handle.state::<crate::state::AppState>();
+
+    // Stop the monitoring task first — it depends on the SSH handle.
+    {
+        let mut collector = state.monitoring_collector.lock().await;
+        collector.stop(connection_id);
+    }
+    {
+        let mut monitoring = state.monitoring.write().await;
+        monitoring.remove(connection_id);
+    }
+
+    // Remove the dead connection from SshManager.
+    // `disconnect()` is safe to call even if the connection was already
+    // removed — it just returns NotFound, which we ignore.
+    let mut manager = state.ssh_manager.lock().await;
+    let _ = manager.disconnect(connection_id);
 }
