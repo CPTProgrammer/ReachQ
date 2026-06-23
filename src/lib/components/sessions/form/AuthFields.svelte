@@ -4,8 +4,10 @@
 	import { t } from '$lib/state/i18n.svelte';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
 
+	type AuthType = 'Password' | 'Key' | 'Agent';
+
 	interface Props {
-		authType: string;
+		authType: AuthType;
 		password: string;
 		keyPath: string;
 		keyPassphrase: string;
@@ -14,7 +16,7 @@
 	}
 
 	let {
-		authType = $bindable('password'),
+		authType = $bindable('Password' as AuthType),
 		password = $bindable(''),
 		keyPath = $bindable(''),
 		keyPassphrase = $bindable(''),
@@ -39,9 +41,9 @@
 		}
 	}
 
-	let isPassword = $derived(authType === 'password' || authType === 'Password');
-	let isKey = $derived(authType === 'key' || authType === 'Key');
-	let isAgent = $derived(authType === 'agent' || authType === 'Agent');
+	let isPassword = $derived(authType === 'Password');
+	let isKey = $derived(authType === 'Key');
+	let isAgent = $derived(authType === 'Agent');
 </script>
 
 <div class="auth-section">
@@ -52,7 +54,7 @@
 			class="auth-btn"
 			class:active={isPassword}
 			{disabled}
-			onclick={() => (authType = 'password')}
+			onclick={() => (authType = 'Password')}
 		>
 			{t('session.auth_password')}
 		</button>
@@ -61,7 +63,7 @@
 			class="auth-btn"
 			class:active={isKey}
 			{disabled}
-			onclick={() => (authType = 'key')}
+			onclick={() => (authType = 'Key')}
 		>
 			{t('session.auth_key')}
 		</button>
@@ -71,7 +73,7 @@
 				class="auth-btn"
 				class:active={isAgent}
 				{disabled}
-				onclick={() => (authType = 'agent')}
+				onclick={() => (authType = 'Agent')}
 			>
 				{t('session.auth_agent')}
 			</button>

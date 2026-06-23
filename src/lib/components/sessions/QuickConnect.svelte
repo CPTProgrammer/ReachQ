@@ -20,12 +20,12 @@
 	let host = $state('');
 	let portStr = $state('22');
 	let username = $state('root');
-	let authMethod = $state<'password' | 'key'>('password');
+	let authMethod = $state<'Password' | 'Key'>('Password');
 	let password = $state('');
 	let keyPath = $state('');
 	let keyPassphrase = $state('');
 	let jumpEnabled = $state(false);
-	let jumpHops = $state<Array<{host: string; port: string; username: string; authType: string; password: string; keyPath: string; keyPassphrase: string}>>([]);
+	let jumpHops = $state<Array<{host: string; port: string; username: string; authType: 'Password' | 'Key' | 'Agent'; password: string; keyPath: string; keyPassphrase: string}>>([]);
 	let proxyEnabled = $state(false);
 	let proxyType = $state<'socks5' | 'socks4' | 'http'>('socks5');
 	let proxyHost = $state('127.0.0.1');
@@ -53,9 +53,9 @@
 					port: parseInt(h.port, 10) || 22,
 					username: h.username.trim(),
 					authMethod: h.authType,
-					password: (h.authType === 'password' || h.authType === 'Password') ? h.password : undefined,
-					keyPath: (h.authType === 'key' || h.authType === 'Key') ? h.keyPath.trim() : undefined,
-					keyPassphrase: (h.authType === 'key' || h.authType === 'Key') && h.keyPassphrase ? h.keyPassphrase : undefined,
+					password: h.authType === 'Password' ? h.password : undefined,
+					keyPath: h.authType === 'Key' ? h.keyPath.trim() : undefined,
+					keyPassphrase: h.authType === 'Key' && h.keyPassphrase ? h.keyPassphrase : undefined,
 				}))
 				: undefined;
 
@@ -65,9 +65,9 @@
 				port,
 				username: username.trim(),
 				authMethod,
-				password: authMethod === 'password' ? password : undefined,
-				keyPath: authMethod === 'key' ? keyPath.trim() : undefined,
-				keyPassphrase: authMethod === 'key' && keyPassphrase ? keyPassphrase : undefined,
+				password: authMethod === 'Password' ? password : undefined,
+				keyPath: authMethod === 'Key' ? keyPath.trim() : undefined,
+				keyPassphrase: authMethod === 'Key' && keyPassphrase ? keyPassphrase : undefined,
 					cols: 80,
 					rows: 24,
 					jumpChain,

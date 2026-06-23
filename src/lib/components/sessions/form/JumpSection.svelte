@@ -5,11 +5,13 @@
 	import AuthFields from './AuthFields.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 
+	type AuthType = 'Password' | 'Key' | 'Agent';
+
 	interface Hop {
 		host: string;
 		port: string;
 		username: string;
-		authType: string;
+		authType: AuthType;
 		password: string;
 		keyPath: string;
 		keyPassphrase: string;
@@ -30,7 +32,7 @@
 	}: Props = $props();
 
 	function addHop(): void {
-		hops = [...hops, { host: '', port: '22', username: 'root', authType: 'password', password: '', keyPath: '', keyPassphrase: '' }];
+		hops = [...hops, { host: '', port: '22', username: 'root', authType: 'Password' as AuthType, password: '', keyPath: '', keyPassphrase: '' }];
 	}
 
 	function removeHop(index: number): void {
