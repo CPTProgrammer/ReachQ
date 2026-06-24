@@ -1452,6 +1452,7 @@
 		white-space: pre-wrap;
 		word-break: break-all;
 		tab-size: 4;
+		user-select: text;
 	}
 
 	.rename-row {
