@@ -341,6 +341,9 @@ pub struct HostKeyVerifyEvent {
     pub is_new: bool,
     /// The previously saved fingerprint (only set when is_new is false).
     pub old_fingerprint: Option<String>,
+    /// Unix timestamp in milliseconds when the SSH connection will time out.
+    /// The frontend uses this to show a countdown in the host-key dialog.
+    pub deadline_ms: u64,
 }
 
 pub struct SshManager {
@@ -372,6 +375,11 @@ impl SshManager {
         tracing::info!("SSH connecting to {}@{}:{}", username, host, port);
 
         let timeout_duration = std::time::Duration::from_secs(15);
+        let deadline_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+            + timeout_duration.as_millis() as u64;
         let connect_future = async {
             let config = Arc::new(russh::client::Config::default());
             let handler = SshClientHandler::new(
@@ -380,6 +388,7 @@ impl SshManager {
                 app_handle.clone(),
                 pending_host_keys.clone(),
                 known_hosts.clone(),
+                deadline_ms,
             );
 
             let mut handle = if let Some(ref proxy) = proxy {
@@ -510,6 +519,11 @@ impl SshManager {
         );
 
         let timeout_duration = std::time::Duration::from_secs(30);
+        let deadline_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+            + timeout_duration.as_millis() as u64;
         let connect_future = async {
             let mut jump_handles: Vec<SharedHandle> = Vec::new();
 
@@ -522,6 +536,7 @@ impl SshManager {
                 app_handle.clone(),
                 pending_host_keys.clone(),
                 known_hosts.clone(),
+                deadline_ms,
             );
 
             let mut current_handle = russh::client::connect(
@@ -580,6 +595,7 @@ impl SshManager {
                         app_handle.clone(),
                         pending_host_keys.clone(),
                         known_hosts.clone(),
+                        deadline_ms,
                     );
 
                     let mut next_handle =
@@ -633,6 +649,7 @@ impl SshManager {
                     app_handle.clone(),
                     pending_host_keys.clone(),
                     known_hosts.clone(),
+                    deadline_ms,
                 );
 
                 let mut target_handle =
@@ -684,6 +701,7 @@ impl SshManager {
                     app_handle.clone(),
                     pending_host_keys.clone(),
                     known_hosts.clone(),
+                    deadline_ms,
                 );
 
                 let mut target_handle =
@@ -1042,19 +1060,21 @@ pub struct SshClientHandler {
     app_handle: tauri::AppHandle,
     pending_verifications: Arc<tokio::sync::Mutex<HashMap<String, Vec<oneshot::Sender<HostKeyDecision>>>>>,
     known_hosts: Arc<tokio::sync::RwLock<KnownHosts>>,
+    deadline_ms: u64,
 }
 
 impl SshClientHandler {
     pub fn new(
-        host: impl Into<String>,
+        host: &str,
         port: u16,
         app_handle: tauri::AppHandle,
         pending_verifications: Arc<
             tokio::sync::Mutex<HashMap<String, Vec<oneshot::Sender<HostKeyDecision>>>>,
         >,
         known_hosts: Arc<tokio::sync::RwLock<KnownHosts>>,
+        deadline_ms: u64,
     ) -> Self {
-        Self { host: host.into(), port, app_handle, pending_verifications, known_hosts }
+        Self { host: host.into(), port, app_handle, pending_verifications, known_hosts, deadline_ms }
     }
 }
 
@@ -1130,6 +1150,7 @@ impl russh::client::Handler for SshClientHandler {
             key_type: key_type.to_string(),
             is_new,
             old_fingerprint,
+            deadline_ms: self.deadline_ms,
         };
 
         // Only emit the event once per host:port; subsequent concurrent

@@ -8,6 +8,8 @@ export interface HostKeyVerifyRequest {
     keyType: string;
     isNew: boolean;
     oldFingerprint?: string;
+    /** Unix timestamp in milliseconds when the SSH connection will time out. */
+    deadlineMs: number;
 }
 
 let pending = $state<HostKeyVerifyRequest | null>(null);
@@ -38,6 +40,12 @@ export async function respondHostKey(
     decision: 'accept' | 'accept-once' | 'reject'
 ): Promise<void> {
     await sshConfirmHostKey(host, port, decision);
+    pending = null;
+}
+
+/** Dismiss the pending host-key dialog without sending a decision.
+ * Used when the connection times out from the backend side. */
+export function clearPendingHostKey(): void {
     pending = null;
 }
 

@@ -9,7 +9,7 @@
 	import Toggle from '$lib/components/shared/Toggle.svelte';
 	import { sshConnect, type JumpHostConnectParams } from '$lib/ipc/ssh';
 	import { createTab } from '$lib/state/tabs.svelte';
-	import { getPendingHostKey } from '$lib/state/host-key.svelte';
+	import { getPendingHostKey, clearPendingHostKey } from '$lib/state/host-key.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 
 	interface Props {
@@ -114,6 +114,14 @@
 			colorInit = true;
 		} catch (err) {
 			error = String(err);
+			// If a host-key timeout killed the connection, dismiss the
+			// HostKeyDialog (only if it matches this connection) and
+			// keep this modal open so the user can retry.
+			const pendingHK = getPendingHostKey();
+			if (pendingHK && pendingHK.host === host.trim() && pendingHK.port === port) {
+				clearPendingHostKey();
+				open = true;
+			}
 		} finally {
 			connecting = false;
 		}

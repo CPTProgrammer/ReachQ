@@ -14,6 +14,7 @@
 	import { getTerminalTheme, type ITheme } from '$lib/data/terminal-themes';
 	import { trieMatch } from '$lib/state/snippets.svelte';
 	import { t } from '$lib/state/i18n.svelte';
+	import { getPendingHostKey, clearPendingHostKey } from '$lib/state/host-key.svelte';
 	import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 	import { open as shellOpen } from '@tauri-apps/plugin-shell';
 	import Modal from '$lib/components/shared/Modal.svelte';
@@ -404,6 +405,10 @@
 			onReconnected?.(newId);
 		} catch (err) {
 			term.write(`\r\n\x1b[31m[${t('terminal.reconnect_failed')}: ${err}]\x1b[0m\r\n`);
+			const pendingHK = getPendingHostKey();
+			if (pendingHK && pendingHK.host === sshConnectParams.host && pendingHK.port === sshConnectParams.port) {
+				clearPendingHostKey();
+			}
 			disconnected = true;
 		} finally {
 			reconnecting = false;

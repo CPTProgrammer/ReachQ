@@ -10,7 +10,7 @@
 	import { createTab, updateTabOs } from '$lib/state/tabs.svelte';
 	import { addToast } from '$lib/state/toasts.svelte';
 	import { t } from '$lib/state/i18n.svelte';
-	import { getPendingHostKey } from '$lib/state/host-key.svelte';
+	import { getPendingHostKey, clearPendingHostKey } from '$lib/state/host-key.svelte';
 	import { untrack } from 'svelte';
 	import { vaultState, checkState, initIdentity, refreshVaults, importIdentity } from '$lib/state/vault.svelte';
 
@@ -372,6 +372,14 @@
 			}
 		} catch (err) {
 			const errStr = String(err);
+			// If a host-key timeout killed the connection, dismiss the
+			// HostKeyDialog (only if it matches this session) and
+			// re-show the connect prompt for a retry.
+			const pendingHK = getPendingHostKey();
+			if (pendingHK && pendingHK.host === session.host && pendingHK.port === session.port) {
+				clearPendingHostKey();
+				connectSession = session;
+			}
 			connectError = errStr;
 			// If the saved auth method got rejected and we haven't already tried the password fallback,
 			// switch the modal to password mode so the user can retry without changing the session.

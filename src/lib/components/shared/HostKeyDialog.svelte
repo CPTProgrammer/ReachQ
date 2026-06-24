@@ -8,6 +8,26 @@
 	let request = $derived(getPendingHostKey());
 	let deciding = $state(false);
 
+	// Live countdown based on the backend-supplied deadline timestamp.
+	let remainingSeconds = $state(0);
+
+	$effect(() => {
+		if (!request) return;
+		const tick = () => {
+			remainingSeconds = Math.ceil((request.deadlineMs - Date.now()) / 1000);
+		};
+		tick();
+		const interval = setInterval(tick, 250);
+		return () => clearInterval(interval);
+	});
+
+	function formatCountdown(seconds: number): string {
+		const mins = Math.floor(Math.abs(seconds) / 60);
+		const secs = Math.abs(seconds) % 60;
+		const sign = seconds < 0 ? '-' : '';
+		return `${sign}${mins}:${secs.toString().padStart(2, '0')}`;
+	}
+
 	async function handleDecision(decision: 'accept' | 'accept-once' | 'reject'): Promise<void> {
 		if (!request || deciding) return;
 		deciding = true;
@@ -64,6 +84,7 @@
 		{/snippet}
 
 		{#snippet actions()}
+			<div class="countdown">{formatCountdown(remainingSeconds)}</div>
 			<Button variant="danger" onclick={() => handleDecision('reject')} disabled={deciding}>
 				{t('host_key.reject')}
 			</Button>
@@ -142,5 +163,14 @@
 	.old-fp {
 		opacity: 0.5;
 		text-decoration: line-through;
+	}
+
+	.countdown {
+		margin-right: auto;
+		padding: 8px 12px;
+		font-size: 0.8rem;
+		font-family: var(--font-mono, monospace);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
 	}
 </style>
