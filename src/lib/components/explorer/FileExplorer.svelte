@@ -77,9 +77,15 @@
 
 	function cdToFolder(entry: FileEntry): void {
 		if (!connectionId || !entry.isDirectory) return;
-		const cmd = `cd ${entry.path}\n`;
+		const cmd = `cd '${entry.path}'\n`;
 		sshSend(connectionId, Array.from(new TextEncoder().encode(cmd)));
 		addToast(t('explorer.cd_sent', { path: entry.path }), 'success');
+	}
+	function cdToCurrentPath(): void {
+		if (!connectionId) return;
+		const cmd = `cd '${currentPath}'\n`;
+		sshSend(connectionId, Array.from(new TextEncoder().encode(cmd)));
+		addToast(t('explorer.cd_sent', { path: currentPath }), 'success');
 	}
 
 	function openContextMenu(e: MouseEvent, entry: FileEntry): void {
@@ -961,6 +967,16 @@
 						{/snippet}
 					</ContextMenuItem>
 					<div class="context-sep"></div>
+				{:else}
+					<ContextMenuItem label={t('explorer.cd_here')} onclick={() => { cdToCurrentPath(); closeContextMenu(); }}>
+						{#snippet children()}
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+								<polyline points="4 17 10 11 4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+								<line x1="12" y1="19" x2="20" y2="19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+							</svg>
+							<span class="context-item-label">{t('explorer.cd_here')}</span>
+						{/snippet}
+					</ContextMenuItem>
 				{/if}
 				<ContextMenuItem label={t('explorer.new_file')} onclick={handleNewFile}>
 					{#snippet children()}
