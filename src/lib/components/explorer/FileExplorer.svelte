@@ -13,6 +13,8 @@
 	import { getCurrentWebview } from '@tauri-apps/api/webview';
 	import { save } from '@tauri-apps/plugin-dialog';
 	import { onMount } from 'svelte';
+	import ContextMenu from '$lib/components/shared/ContextMenu.svelte';
+	import ContextMenuItem from '$lib/components/shared/ContextMenuItem.svelte';
 	import {
 		addTransfer,
 		updateTransferProgress,
@@ -873,103 +875,125 @@
 	</div>
 {/if}
 
-{#if contextMenu}
-	<div
-		class="context-menu"
-		style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
-	>
-		{#if contextMenu.entry}
-			{#if !contextMenu.entry.isDirectory}
-				<button class="context-item" onclick={handlePreview} type="button">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-						<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
-					</svg>
-					{t('explorer.preview')}
-				</button>
-				<button class="context-item" onclick={handleEdit} type="button">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-						<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						<polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						<line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						<line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-					</svg>
-					{t('explorer.edit')}
-				</button>
-				<button class="context-item" onclick={handleDownload} type="button">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-						<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						<polyline points="7 10 12 15 17 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						<line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-					</svg>
-					{t('explorer.download')}
-				</button>
-			{/if}
-			{#if contextMenu.entry.isDirectory}
-				<button class="context-item" onclick={() => { if (contextMenu?.entry) cdToFolder(contextMenu.entry); closeContextMenu(); }} type="button">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-						<polyline points="4 17 10 11 4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						<line x1="12" y1="19" x2="20" y2="19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-					</svg>
-					{t('explorer.cd_here')}
-				</button>
-			{/if}
-			<button class="context-item" onclick={handleCopyPath} type="button">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-					<rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/>
-					<path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="1.5"/>
-				</svg>
-				{t('explorer.copy_path')}
-			</button>
-			<button class="context-item" onclick={handleCopyFilename} type="button">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-					<rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/>
-					<path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="1.5"/>
-				</svg>
-				{t('explorer.copy_filename')}
-			</button>
-			<button class="context-item" onclick={startRename} type="button">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-					<path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-				</svg>
-				{t('explorer.rename')}
-			</button>
-			<button class="context-item danger" onclick={handleDelete} type="button">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-					<polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-					<path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-				</svg>
-				{t('explorer.delete')}
-			</button>
-			<div class="context-sep"></div>
-		{/if}
-		<button class="context-item" onclick={handleNewFile} type="button">
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-				<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-				<polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-				<line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-				<line x1="9" y1="14" x2="15" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-			</svg>
-			{t('explorer.new_file')}
-		</button>
-		<button class="context-item" onclick={handleNewFolder} type="button">
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-				<path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-				<line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-				<line x1="9" y1="14" x2="15" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-			</svg>
-			{t('explorer.new_folder')}
-		</button>
-		<div class="context-sep"></div>
-		<button class="context-item" onclick={() => { closeContextMenu(); refresh(); }} type="button">
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-				<path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-				<path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-			</svg>
-			{t('explorer.refresh')}
-		</button>
-	</div>
-{/if}
+	{#if contextMenu}
+		{@const menu = contextMenu}
+		<ContextMenu x={menu.x} y={menu.y} onclose={closeContextMenu}>
+			{#snippet children()}
+				{#if menu.entry}
+					{#if !menu.entry.isDirectory}
+						<ContextMenuItem label={t('explorer.preview')} onclick={handlePreview}>
+							{#snippet children()}
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+									<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+									<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
+								</svg>
+								<span class="context-item-label">{t('explorer.preview')}</span>
+							{/snippet}
+						</ContextMenuItem>
+						<ContextMenuItem label={t('explorer.edit')} onclick={handleEdit}>
+							{#snippet children()}
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+									<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+									<polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+									<line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+									<line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+								</svg>
+								<span class="context-item-label">{t('explorer.edit')}</span>
+							{/snippet}
+						</ContextMenuItem>
+						<ContextMenuItem label={t('explorer.download')} onclick={handleDownload}>
+							{#snippet children()}
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+									<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+									<polyline points="7 10 12 15 17 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+									<line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+								</svg>
+								<span class="context-item-label">{t('explorer.download')}</span>
+							{/snippet}
+						</ContextMenuItem>
+					{/if}
+					{#if menu.entry.isDirectory}
+						<ContextMenuItem label={t('explorer.cd_here')} onclick={() => { if (menu.entry) cdToFolder(menu.entry); closeContextMenu(); }}>
+							{#snippet children()}
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+									<polyline points="4 17 10 11 4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+									<line x1="12" y1="19" x2="20" y2="19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+								</svg>
+								<span class="context-item-label">{t('explorer.cd_here')}</span>
+							{/snippet}
+						</ContextMenuItem>
+					{/if}
+					<ContextMenuItem label={t('explorer.copy_path')} onclick={handleCopyPath}>
+						{#snippet children()}
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+								<rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/>
+								<path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="1.5"/>
+							</svg>
+							<span class="context-item-label">{t('explorer.copy_path')}</span>
+						{/snippet}
+					</ContextMenuItem>
+					<ContextMenuItem label={t('explorer.copy_filename')} onclick={handleCopyFilename}>
+						{#snippet children()}
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+								<rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/>
+								<path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="1.5"/>
+							</svg>
+							<span class="context-item-label">{t('explorer.copy_filename')}</span>
+						{/snippet}
+					</ContextMenuItem>
+					<ContextMenuItem label={t('explorer.rename')} onclick={startRename}>
+						{#snippet children()}
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+								<path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+							</svg>
+							<span class="context-item-label">{t('explorer.rename')}</span>
+						{/snippet}
+					</ContextMenuItem>
+					<ContextMenuItem label={t('explorer.delete')} danger onclick={handleDelete}>
+						{#snippet children()}
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+								<polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+								<path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+							</svg>
+							<span class="context-item-label">{t('explorer.delete')}</span>
+						{/snippet}
+					</ContextMenuItem>
+					<div class="context-sep"></div>
+				{/if}
+				<ContextMenuItem label={t('explorer.new_file')} onclick={handleNewFile}>
+					{#snippet children()}
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+							<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+							<polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+							<line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+							<line x1="9" y1="14" x2="15" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+						</svg>
+						<span class="context-item-label">{t('explorer.new_file')}</span>
+					{/snippet}
+				</ContextMenuItem>
+				<ContextMenuItem label={t('explorer.new_folder')} onclick={handleNewFolder}>
+					{#snippet children()}
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+							<path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+							<line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+							<line x1="9" y1="14" x2="15" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+						</svg>
+						<span class="context-item-label">{t('explorer.new_folder')}</span>
+					{/snippet}
+				</ContextMenuItem>
+				<div class="context-sep"></div>
+				<ContextMenuItem label={t('explorer.refresh')} onclick={() => { closeContextMenu(); refresh(); }}>
+					{#snippet children()}
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+							<path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+							<path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+						</svg>
+						<span class="context-item-label">{t('explorer.refresh')}</span>
+					{/snippet}
+				</ContextMenuItem>
+			{/snippet}
+		</ContextMenu>
+	{/if}
 </div>
 
 <style>
@@ -1428,51 +1452,6 @@
 		white-space: pre-wrap;
 		word-break: break-all;
 		tab-size: 4;
-	}
-
-	.context-menu {
-		position: fixed;
-		min-width: 160px;
-		padding: 4px 0;
-		background-color: var(--color-bg-elevated, #1c1c1e);
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-		z-index: 1000;
-	}
-
-	.context-item {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
-		padding: 6px 12px;
-		border: none;
-		background: transparent;
-		color: var(--color-text-primary);
-		font-family: var(--font-sans);
-		font-size: 0.75rem;
-		cursor: pointer;
-		text-align: left;
-		transition: background-color 0.1s ease;
-	}
-
-	.context-item:hover {
-		background-color: rgba(255, 255, 255, 0.08);
-	}
-
-	.context-item.danger {
-		color: var(--color-danger, #ff453a);
-	}
-
-	.context-item.danger:hover {
-		background-color: rgba(255, 69, 58, 0.12);
-	}
-
-	.context-sep {
-		height: 1px;
-		margin: 4px 0;
-		background-color: var(--color-border);
 	}
 
 	.rename-row {

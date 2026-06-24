@@ -13,6 +13,8 @@
 	import { getPendingHostKey, clearPendingHostKey } from '$lib/state/host-key.svelte';
 	import { untrack } from 'svelte';
 	import { vaultState, checkState, initIdentity, refreshVaults, importIdentity } from '$lib/state/vault.svelte';
+	import ContextMenu from '$lib/components/shared/ContextMenu.svelte';
+	import ContextMenuItem from '$lib/components/shared/ContextMenuItem.svelte';
 
 	let showQuickConnect = $state(false);
 	let showEditor = $state(false);
@@ -725,45 +727,42 @@
 	{/if}
 
 	{#if contextMenu}
-		<div class="context-menu" style="left: {contextMenu.x}px; top: {contextMenu.y}px;">
-			{#if contextMenu.session}
-				<button class="context-item" onclick={() => { if (contextMenu?.session) handleConnect(contextMenu.session); closeContextMenu(); }} type="button">
-					{t('session.connect')}
-				</button>
-				<button class="context-item" onclick={() => { if (contextMenu?.session) handleEdit(contextMenu.session); closeContextMenu(); }} type="button">
-					{t('session.edit')}
-				</button>
-				<div class="context-sep"></div>
-				<div class="context-label">{t('session.move_to_folder')}</div>
-				{#each folders as folder (folder.id)}
-					<button class="context-item context-folder-item" onclick={() => { if (contextMenu?.session) moveToFolder(contextMenu.session, folder.id); }} type="button">
-						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="ctx-folder-icon">
-							<path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						</svg>
-						{folder.name}
-					</button>
-				{/each}
-				<button class="context-item context-folder-item" onclick={contextNewFolder} type="button">
-					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="ctx-folder-icon">
-						<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-					</svg>
-					{t('session.new_folder')}
-				</button>
-				{#if contextMenu.session.folder_id}
-					<button class="context-item" onclick={() => { if (contextMenu?.session) moveToFolder(contextMenu.session, null); }} type="button">
-						{t('session.remove_from_folder')}
-					</button>
+		{@const menu = contextMenu}
+		<ContextMenu x={menu.x} y={menu.y} onclose={closeContextMenu}>
+			{#snippet children()}
+				{#if menu.session}
+					<ContextMenuItem label={t('session.connect')} onclick={() => { if (menu.session) handleConnect(menu.session); closeContextMenu(); }} />
+					<ContextMenuItem label={t('session.edit')} onclick={() => { if (menu.session) handleEdit(menu.session); closeContextMenu(); }} />
+					<div class="context-sep"></div>
+					<div class="context-label">{t('session.move_to_folder')}</div>
+					{#each folders as folder (folder.id)}
+						<ContextMenuItem label={folder.name} indent onclick={() => { if (menu.session) moveToFolder(menu.session, folder.id); }}>
+							{#snippet children()}
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="ctx-folder-icon">
+									<path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+								</svg>
+								<span class="context-item-label">{folder.name}</span>
+							{/snippet}
+						</ContextMenuItem>
+					{/each}
+					<ContextMenuItem label={t('session.new_folder')} indent onclick={contextNewFolder}>
+						{#snippet children()}
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="ctx-folder-icon">
+								<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+							</svg>
+							<span class="context-item-label">{t('session.new_folder')}</span>
+						{/snippet}
+					</ContextMenuItem>
+					{#if menu.session.folder_id}
+						<ContextMenuItem label={t('session.remove_from_folder')} onclick={() => { if (menu.session) moveToFolder(menu.session, null); }} />
+					{/if}
+					<div class="context-sep"></div>
+					<ContextMenuItem label={t('common.delete')} danger onclick={() => { if (menu.session) handleDelete(menu.session); closeContextMenu(); }} />
+				{:else}
+					<ContextMenuItem label={t('session.new_folder')} onclick={contextNewFolder} />
 				{/if}
-				<div class="context-sep"></div>
-				<button class="context-item context-danger" onclick={() => { if (contextMenu?.session) handleDelete(contextMenu.session); closeContextMenu(); }} type="button">
-					{t('common.delete')}
-				</button>
-			{:else}
-				<button class="context-item" onclick={contextNewFolder} type="button">
-					{t('session.new_folder')}
-				</button>
-			{/if}
-		</div>
+			{/snippet}
+		</ContextMenu>
 	{/if}
 </div>
 
@@ -1119,49 +1118,6 @@
 		padding-left: 12px;
 	}
 
-	.context-menu {
-		position: fixed;
-		min-width: 180px;
-		padding: 4px 0;
-		background-color: var(--color-bg-elevated, #1c1c1e);
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-		z-index: 1000;
-	}
-
-	.context-item {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
-		padding: 6px 12px;
-		border: none;
-		background: transparent;
-		color: var(--color-text-primary);
-		font-family: var(--font-sans);
-		font-size: 0.75rem;
-		cursor: pointer;
-		text-align: left;
-		transition: background-color 0.1s ease;
-	}
-
-	.context-item:hover {
-		background-color: rgba(255, 255, 255, 0.08);
-	}
-
-	.context-folder-item {
-		padding-left: 20px;
-	}
-
-	.context-danger {
-		color: var(--color-danger, #ff453a);
-	}
-
-	.context-danger:hover {
-		background-color: rgba(255, 69, 58, 0.12);
-	}
-
 	.context-label {
 		padding: 4px 12px 2px;
 		font-size: 0.625rem;
@@ -1176,12 +1132,6 @@
 		color: var(--color-warning, #ffd60a);
 		opacity: 0.7;
 		flex-shrink: 0;
-	}
-
-	.context-sep {
-		height: 1px;
-		margin: 4px 0;
-		background-color: var(--color-border);
 	}
 
 
