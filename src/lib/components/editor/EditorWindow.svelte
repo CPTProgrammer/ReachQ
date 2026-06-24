@@ -303,6 +303,7 @@
 		overflow-y: hidden;
 		scrollbar-width: none;
 		-webkit-app-region: drag;
+		height: 100%;
 	}
 
 	.titlebar-tabs::-webkit-scrollbar {
@@ -313,7 +314,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 0 8px 0 12px;
+		padding: 0 8px 0 18px;
 		height: 100%;
 		border: none;
 		border-bottom: 2px solid transparent;
