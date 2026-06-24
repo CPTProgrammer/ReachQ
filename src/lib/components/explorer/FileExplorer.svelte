@@ -1230,6 +1230,8 @@
 		scrollbar-width: thin;
 		scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 		transition: border-color 0.15s ease;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.file-list::-webkit-scrollbar {
@@ -1253,6 +1255,7 @@
 
 	.blank-area {
 		height: calc(100% - 33px);
+		flex-shrink: 0;
 		display: none;
 	}
 	.blank-area.show {
@@ -1349,7 +1352,7 @@
 		align-items: center;
 		justify-content: center;
 		padding: 24px;
-		height: 100%;
+		flex-grow: 1;
 	}
 
 	.spinner {
