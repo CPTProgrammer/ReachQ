@@ -34,7 +34,7 @@ async fn init_color(channel: &Channel<russh::client::Msg>) -> Result<(), SshErro
     // below are invisible without needing `stty -echo`. We re-enable echo via
     // `stty echo` at the end so normal interactive use works afterward.
     let color_init = concat!(
-        r#"export COLORTERM=truecolor; "#,
+        r#" export COLORTERM=truecolor; "#,
         r#"[ -z "$LS_COLORS" ] && eval "$(dircolors -b 2>/dev/null)"; "#,
 
         r#"if ls --color=auto -d . >/dev/null 2>&1; then "#,
