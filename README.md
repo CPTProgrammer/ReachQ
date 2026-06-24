@@ -56,6 +56,7 @@ Reach is what happens when you build an SSH client from scratch with a native UI
 - [x] **SSH** —
   - SSH backend buffers output until frontend is ready, preventing MOTD loss.
   - Configurable auto-shell-color with improved injection to handle more edge cases.
+  - Prompt user to verify unknown SSH host keys before connecting (TOFU), preventing MITM attacks.
   - *Dev: Refactored SSH backend for better code reuse and reduced duplication.*
 - [x] Fixed terminal buffer refresh issues when switching between related settings panels.
 - [x] Terminal links open in the system default browser on Ctrl+click (Cmd+click on macOS).
@@ -78,6 +79,7 @@ Reach is what happens when you build an SSH client from scratch with a native UI
 ### Misc
 
 - [x] Temporarily disabled auto-updates.
+- [ ] _**(Dev) Known issue:** During SSH host key verification, the `ssh_manager` Mutex is held while waiting for user input, which blocks unrelated SSH operations (`ssh_send`, `ssh_resize`, `ssh_disconnect`, etc.) on other connections. Incoming terminal data is unaffected (emitted directly from the session task via Tauri events, no lock needed). Should be refactored to release the lock before awaiting the oneshot response._
 
 ## What's inside
 
