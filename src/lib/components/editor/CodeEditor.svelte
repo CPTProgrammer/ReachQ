@@ -53,7 +53,9 @@
 	let currentLanguage = '';
 	const languageCompartment = new Compartment();
 
-	const editorFontSize = getSettings().fontSize ?? 14;
+	const settings = getSettings();
+	const editorFontSize = settings.fontSize ?? 14;
+	const editorFontFamily = settings.fontFamily;
 	const appleDarkTheme = EditorView.theme(
 		{
 			'&': {
@@ -62,14 +64,16 @@
 			},
 			'.cm-scroller': {
 				overflow: 'auto',
-				fontFamily: "'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace",
+				fontFamily: `${editorFontFamily ? `"${editorFontFamily}", ` : ""}'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace`,
 				fontSize: `${editorFontSize}px`,
 				lineHeight: '1.6'
 			},
 			'.cm-gutters': {
 				backgroundColor: '#0a0a0a',
 				color: '#86868b',
-				border: 'none'
+				border: 'none',
+				paddingLeft: '.5em',
+				paddingRight: '.25em'
 			},
 			'.cm-activeLineGutter': {
 				backgroundColor: 'rgba(255, 255, 255, 0.03)'
