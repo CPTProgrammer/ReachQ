@@ -10,11 +10,20 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="context-menu" style="left: {x}px; top: {y}px;" onclick={onclose} onkeydown={() => {}}>
-	{@render children()}
+<div class="context-backdrop" onmousedown={onclose}>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="context-menu" style="left: {x}px; top: {y}px;" onmousedown={(e) => e.stopPropagation()}>
+		{@render children()}
+	</div>
 </div>
 
 <style>
+	.context-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 999;
+	}
+
 	.context-menu {
 		position: fixed;
 		min-width: 160px;
