@@ -159,6 +159,7 @@
 				bracketMatching(),
 				closeBrackets(),
 				autocompletion(),
+				EditorState.allowMultipleSelections.of(true),
 				rectangularSelection(),
 				crosshairCursor(),
 				highlightActiveLine(),
