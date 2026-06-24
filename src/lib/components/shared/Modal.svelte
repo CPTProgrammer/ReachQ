@@ -5,6 +5,7 @@
 	interface Props {
 		open: boolean;
 		onclose: () => void;
+		userSelect?: boolean;
 		title?: string;
 		maxWidth?: string;
 		children: Snippet;
@@ -14,6 +15,7 @@
 	let {
 		open,
 		onclose,
+		userSelect = false,
 		title = '',
 		maxWidth,
 		children,
@@ -62,7 +64,7 @@
 				</header>
 			{/if}
 
-			<div class="modal-body">
+			<div class="modal-body" class:user-select={userSelect}>
 				{@render children()}
 			</div>
 
@@ -139,6 +141,9 @@
 		padding: 20px;
 		overflow-y: auto;
 		flex: 1;
+	}
+	.modal-body.user-select {
+		user-select: text;
 	}
 
 	.modal-actions {
