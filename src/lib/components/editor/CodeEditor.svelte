@@ -11,7 +11,7 @@
 		crosshairCursor,
 		dropCursor
 	} from '@codemirror/view';
-	import { EditorState, Compartment } from '@codemirror/state';
+	import { EditorState, Compartment, EditorSelection } from '@codemirror/state';
 	import {
 		defaultKeymap,
 		history,
@@ -143,6 +143,54 @@
 		}
 	}
 
+	function cjkRectangularSelection() {
+		return EditorView.mouseSelectionStyle.of((view, event) => {
+			if (!event.altKey || event.button !== 0) return null;
+
+			let startX = event.clientX;
+			let startY = event.clientY;
+
+			return {
+				update(update) {},
+				get(event, _extend, multiple) {
+					let left = Math.min(startX, event.clientX);
+					let right = Math.max(startX, event.clientX);
+
+					let startPos = view.posAtCoords({ x: startX, y: startY }, false);
+					let curPos = view.posAtCoords(
+						{ x: event.clientX, y: event.clientY },
+						false,
+					);
+					let startLine = view.state.doc.lineAt(startPos);
+					let curLine = view.state.doc.lineAt(curPos);
+					let minLine = Math.min(startLine.number, curLine.number);
+					let maxLine = Math.max(startLine.number, curLine.number);
+
+					let ranges = [];
+					for (let i = minLine; i <= maxLine; i++) {
+						let line = view.state.doc.line(i);
+						let block = view.lineBlockAt(line.from);
+						let midY = view.documentTop + block.top + block.height / 2;
+
+						let from = view.posAtCoords({ x: left, y: midY }, false);
+						let to = view.posAtCoords({ x: right, y: midY }, false);
+
+						if (from >= 0 && to >= 0) {
+							ranges.push(EditorSelection.range(from, to));
+						}
+					}
+
+					if (!ranges.length) return view.state.selection;
+					if (multiple)
+						return EditorSelection.create(
+							ranges.concat(view.state.selection.ranges),
+						);
+					return EditorSelection.create(ranges);
+				},
+			};
+		});
+	}
+
 	function mountEditor(node: HTMLDivElement): { destroy: () => void } {
 		const state = EditorState.create({
 			doc: content,
@@ -160,7 +208,7 @@
 				closeBrackets(),
 				autocompletion(),
 				EditorState.allowMultipleSelections.of(true),
-				rectangularSelection(),
+				cjkRectangularSelection(),
 				crosshairCursor(),
 				highlightActiveLine(),
 				highlightSelectionMatches(),
