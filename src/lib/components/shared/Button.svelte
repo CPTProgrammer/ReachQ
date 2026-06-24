@@ -53,6 +53,19 @@
 			box-shadow var(--duration-default) var(--ease-default);
 		user-select: none;
 		white-space: nowrap;
+		position: relative;
+		overflow: hidden;
+	}
+	.btn::before {
+		opacity: 0;
+		transition: opacity var(--duration-default) var(--ease-default);
+		pointer-events: none;
+		position: absolute;
+		top: 0;
+		left: 0;
+		display: block;
+		width: 100%;
+		height: 100%;
 	}
 
 	.btn:active:not(:disabled) {
@@ -81,6 +94,7 @@
 	}
 	.btn-secondary:hover:not(:disabled) {
 		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
 	}
 
 	/* Ghost */
@@ -90,6 +104,7 @@
 	}
 	.btn-ghost:hover:not(:disabled) {
 		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
 	}
 
 	/* Danger */
@@ -103,10 +118,15 @@
 
 	/* Warning */
 	.btn-warning {
-		background-color: var(--color-warning, #d97706);
-		color: #fff;
+		background-color: var(--color-bg-elevated);
+		color: var(--color-warning);
+		border: 1px solid var(--color-warning);
 	}
-	.btn-warning:hover:not(:disabled) {
-		background-color: var(--color-warning-hover, #b45309);
+	.btn-warning::before {
+		content: "";
+		background-color: var(--color-warning);
+	}
+	.btn-warning:hover:not(:disabled)::before {
+		opacity: 0.08;
 	}
 </style>
