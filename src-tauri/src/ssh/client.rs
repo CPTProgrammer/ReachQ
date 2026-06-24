@@ -1138,6 +1138,10 @@ impl russh::client::Handler for SshClientHandler {
         let is_first = {
             let mut pending = self.pending_verifications.lock().await;
             let entry = pending.entry(host_id.clone()).or_default();
+            // Clean up dead senders from previously cancelled/timeout connections
+            // whose receivers were dropped, so they don't block subsequent
+            // connection attempts from emitting the host-key-verify event.
+            entry.retain(|s| !s.is_closed());
             let first = entry.is_empty();
             entry.push(tx);
             first

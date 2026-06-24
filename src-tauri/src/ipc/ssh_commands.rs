@@ -78,6 +78,20 @@ pub async fn ssh_connect(
 
     let color_init = color_init.unwrap_or(true);
 
+    // Proactively remove any stale pending host-key entry for this host:port.
+    // russh v0.46 Handle::drop() does not abort the background task, so a
+    // connection that times out while blocked in check_server_key leaks a
+    // live rx, making is_closed() useless. Without this cleanup the next
+    // check_server_key sees a non-empty entry, skips emitting the
+    // host-key-verify event, and the new connection blocks forever.
+    // The remove also unblocks the leaked background task (its rx receives
+    // RecvError::Closed), allowing it to exit cleanly.
+    {
+        let host_id = format!("{}:{}", host, port);
+        let mut pending = state.pending_host_keys.lock().await;
+        pending.remove(&host_id);
+    }
+
     let mut manager = state.ssh_manager.lock().await;
     let pending_host_keys = state.pending_host_keys.clone();
     let known_hosts = state.known_hosts.clone();
