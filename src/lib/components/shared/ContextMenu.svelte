@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+
 	interface Props {
 		x: number;
 		y: number;
@@ -7,12 +9,36 @@
 	}
 
 	let { x, y, onclose, children }: Props = $props();
+
+	let menuEl = $state<HTMLDivElement>();
+	let ready = $state(false);
+	let posX = $state(untrack(() => x));
+	let posY = $state(untrack(() => y));
+
+	$effect(() => {
+		const el = menuEl;
+		if (!el) return;
+
+		const rect = el.getBoundingClientRect();
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+
+		if (x + rect.width > vw) posX = vw - rect.width - 4;
+		if (y + rect.height > vh) posY = y - rect.height;
+
+		ready = true;
+	});
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="context-backdrop" onmousedown={onclose}>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="context-menu" style="left: {x}px; top: {y}px;" onmousedown={(e) => e.stopPropagation()}>
+	<div
+		class="context-menu"
+		bind:this={menuEl}
+		style="left: {posX}px; top: {posY}px; visibility: {ready ? 'visible' : 'hidden'};"
+		onmousedown={(e) => e.stopPropagation()}
+	>
 		{@render children()}
 	</div>
 </div>
