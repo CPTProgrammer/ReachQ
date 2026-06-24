@@ -833,7 +833,7 @@
 				<div class="empty-dir">
 					<span class="empty-dir-text">{t('explorer.empty')}</span>
 				</div>
-			{:else}
+			{:else if !loading}
 				{#each sortedEntries as entry (entry.path)}
 					{#if renaming && renaming.entry.path === entry.path}
 						<div class="rename-row">
@@ -852,6 +852,8 @@
 					{/if}
 				{/each}
 			{/if}
+
+			<div class="blank-area" class:show={!loading}></div>
 		</div>
 	</div>
 {/if}
@@ -1249,6 +1251,14 @@
 		background-color: rgba(100, 160, 255, 0.04);
 	}
 
+	.blank-area {
+		height: calc(100% - 33px);
+		display: none;
+	}
+	.blank-area.show {
+		display: block;
+	}
+
 	.drop-overlay {
 		position: absolute;
 		inset: 0;
@@ -1339,6 +1349,7 @@
 		align-items: center;
 		justify-content: center;
 		padding: 24px;
+		height: 100%;
 	}
 
 	.spinner {
