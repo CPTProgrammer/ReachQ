@@ -61,6 +61,12 @@ Reach is what happens when you build an SSH client from scratch with a native UI
 - [x] Fixed terminal buffer refresh issues when switching between related settings panels.
 - [x] Terminal links open in the system default browser on Ctrl+click (Cmd+click on macOS).
 
+### Editor
+
+- [x] Broader language highlighting with automatic file type detection.
+- [x] Smart detection of indentation size and style (spaces vs tabs).
+- [x] Full multi-cursor editing support with CJK-aware rectangular selection.
+
 ### UI
 
 - [x] Added Chinese language support with comprehensive UI i18n.
