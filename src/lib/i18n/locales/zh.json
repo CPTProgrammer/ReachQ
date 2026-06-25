@@ -216,6 +216,10 @@
   "editor.unsaved_changes": "您有未保存的更改。确定不保存就关闭吗？",
   "editor.file_saved_toast": "文件已保存",
   "editor.opening": "正在打开文件...",
+  "editor.indent": "缩进：",
+  "editor.indent_tab": "制表符",
+  "editor.indent_spaces": "空格",
+  "editor.tab_size": "缩进大小：",
 
   "ai.title": "AI 助手",
   "ai.clear_chat": "清除对话",

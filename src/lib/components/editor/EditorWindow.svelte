@@ -262,17 +262,17 @@
 			<span class="toolbar-path">{activeTab.path}</span>
 			<div class="toolbar-spacer"></div>
 			<span class="toolbar-option">
-				Indent:
+				{t('editor.indent')}
 				<select
 					value={String(activeTab.insertSpaces)}
 					onchange={(e) => updateInsertSpaces(e.currentTarget.value === "true")}
 				>
-					<option value="false">Tab</option>
-					<option value="true">Spaces</option>
+					<option value="false">{t('editor.indent_tab')}</option>
+					<option value="true">{t('editor.indent_spaces')}</option>
 				</select>
 			</span>
 			<span class="toolbar-option">
-				Tab Size:
+				{t('editor.tab_size')}
 				<input
 					value={activeTab.tabSize}
 					onchange={(e) => updateTabSize(parseInt(e.currentTarget.value))}

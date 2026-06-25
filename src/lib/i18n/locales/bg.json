@@ -216,6 +216,10 @@
   "editor.unsaved_changes": "Имате незапазени промени. Затваряне без запазване?",
   "editor.file_saved_toast": "Файлът е запазен",
   "editor.opening": "Отваряне на файл...",
+  "editor.indent": "Отстъп:",
+  "editor.indent_tab": "Tab",
+  "editor.indent_spaces": "Интервали",
+  "editor.tab_size": "Размер на табулатора:",
 
   "ai.title": "AI Асистент",
   "ai.clear_chat": "Изчисти чата",

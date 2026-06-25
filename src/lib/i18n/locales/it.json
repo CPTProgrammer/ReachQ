@@ -216,6 +216,10 @@
   "editor.unsaved_changes": "Hai modifiche non salvate. Chiudere senza salvare?",
   "editor.file_saved_toast": "File salvato",
   "editor.opening": "Apertura file...",
+  "editor.indent": "Rientro:",
+  "editor.indent_tab": "Tab",
+  "editor.indent_spaces": "Spazi",
+  "editor.tab_size": "Dimensione tab:",
 
   "ai.title": "Assistente AI",
   "ai.clear_chat": "Cancella chat",

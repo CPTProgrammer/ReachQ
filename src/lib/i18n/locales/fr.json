@@ -216,6 +216,10 @@
   "editor.unsaved_changes": "Vous avez des modifications non enregistrees. Fermer sans enregistrer ?",
   "editor.file_saved_toast": "Fichier enregistré",
   "editor.opening": "Ouverture du fichier...",
+  "editor.indent": "Indentation :",
+  "editor.indent_tab": "Tab",
+  "editor.indent_spaces": "Espaces",
+  "editor.tab_size": "Taille de tabulation :",
 
   "ai.title": "Assistant AI",
   "ai.clear_chat": "Effacer la conversation",
