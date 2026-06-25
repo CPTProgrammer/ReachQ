@@ -292,7 +292,7 @@
 			<button class="save-btn" onclick={handleSave} disabled={saving || !dirty}>
 				{saving ? t('editor.saving') : t('editor.save')}
 			</button>
-			<span class="shortcut-hint">Ctrl+S</span>
+			<span class="shortcut-hint">Ctrl/Cmd+S</span>
 		</div>
 
 		{#key activeTab.id}
