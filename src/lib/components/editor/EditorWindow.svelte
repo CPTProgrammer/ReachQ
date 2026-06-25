@@ -8,6 +8,12 @@
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { onMount } from 'svelte';
+	import { LanguageDescription, LanguageSupport } from '@codemirror/language';
+	import { languages } from '@codemirror/language-data';
+	import { guessIndentation, type IGuessedIndentation } from '$lib/utils/editor/indentationGuesser';
+
+	/** Languages not in @codemirror/language-data */
+	import { hcl } from 'codemirror-lang-hcl';
 
 	interface EditorTab {
 		id: string;
@@ -16,14 +22,24 @@
 		filename: string;
 		content: string;
 		originalContent: string;
-		language: string;
+		language: LanguageDescription | undefined;
+		tabSize: number;
+		insertSpaces: boolean;
 	}
 
-	const availableLanguages = [
-		'text', 'javascript', 'typescript', 'python', 'rust', 'go', 'java', 'c', 'cpp',
-		'ruby', 'php', 'swift', 'kotlin', 'shell', 'css', 'scss', 'less', 'html', 'xml',
-		'json', 'yaml', 'toml', 'markdown', 'sql', 'lua', 'r', 'dockerfile'
-	];
+	const availableLanguages: Array<LanguageDescription> = ([
+		...languages,
+		LanguageDescription.of({
+			name: 'HCL',
+			alias: ['terraform'],
+			extensions: ['tf', 'tfvars', 'hcl', 'terraform'],
+			support: hcl(),
+		})
+	]);
+
+	const TEXT_LANGUAGE_NAME = "Text";
+
+	const availableLanguageNamesWithText = availableLanguages.map(lang => lang.name).concat([TEXT_LANGUAGE_NAME]).toSorted();
 
 	let tabs = $state<EditorTab[]>([]);
 	let activeTabId = $state<string | null>(null);
@@ -32,29 +48,18 @@
 	let activeTab = $derived(tabs.find((t) => t.id === activeTabId));
 	let dirty = $derived(activeTab ? activeTab.content !== activeTab.originalContent : false);
 
-	function detectLanguage(filename: string): string {
-		const ext = filename.includes('.') ? filename.slice(filename.lastIndexOf('.')).toLowerCase() : '';
-		const map: Record<string, string> = {
-			'.js': 'javascript', '.jsx': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript',
-			'.ts': 'typescript', '.tsx': 'typescript', '.py': 'python', '.rs': 'rust',
-			'.html': 'html', '.htm': 'html', '.css': 'css', '.scss': 'scss', '.less': 'less',
-			'.json': 'json', '.md': 'markdown', '.markdown': 'markdown', '.yaml': 'yaml', '.yml': 'yaml',
-			'.sh': 'shell', '.bash': 'shell', '.zsh': 'shell', '.c': 'c', '.h': 'c',
-			'.cpp': 'cpp', '.hpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.java': 'java', '.php': 'php',
-			'.sql': 'sql', '.xml': 'xml', '.svg': 'xml', '.go': 'go', '.rb': 'ruby',
-			'.conf': 'shell', '.ini': 'shell', '.toml': 'toml', '.lua': 'lua', '.r': 'r',
-			'.swift': 'swift', '.kt': 'kotlin', '.kts': 'kotlin', '.dart': 'dart',
-			'.vue': 'vue', '.svelte': 'html', '.dockerfile': 'dockerfile', '.tf': 'hcl',
-		};
-		const basename = filename.toLowerCase();
-		if (basename === 'dockerfile') return 'dockerfile';
-		if (basename === 'makefile') return 'shell';
-		if (basename === '.env' || basename.startsWith('.env.')) return 'shell';
-		return map[ext] || 'text';
+	function detectLanguage(filename: string): LanguageDescription | undefined {
+		return LanguageDescription.matchFilename(availableLanguages, filename) ?? undefined;
 	}
 
 	function makeTabId(connectionId: string, path: string): string {
 		return `${connectionId}:${path}`;
+	}
+
+	function detectIndent(language: LanguageDescription | undefined, content: string): IGuessedIndentation {
+		const defaultTabSize = language ? 4 : 8;
+		const defaultInsertSpaces = language ? true : false;
+		return guessIndentation(content, defaultTabSize, defaultInsertSpaces);
 	}
 
 	function addOrActivateTab(connectionId: string, path: string, filename: string, content: string): void {
@@ -64,14 +69,15 @@
 			activeTabId = id;
 			return;
 		}
+		const fileLanguage = detectLanguage(filename);
+		const indent = detectIndent(fileLanguage, content);
 		tabs.push({
-			id,
-			connectionId,
-			path,
-			filename,
-			content,
+			id, connectionId, path,
+			filename, content,
 			originalContent: content,
-			language: detectLanguage(filename)
+			language: fileLanguage,
+			tabSize: indent.tabSize,
+			insertSpaces: indent.insertSpaces,
 		});
 		activeTabId = id;
 	}
@@ -100,9 +106,20 @@
 		}
 	}
 
-	function updateLanguage(language: string): void {
+	function updateLanguage(languageName: string): void {
 		if (activeTab) {
-			activeTab.language = language;
+			activeTab.language = availableLanguages.find(language => language.name === languageName);
+		}
+	}
+
+	function updateTabSize(tabSize: number): void {
+		if (activeTab) {
+			activeTab.tabSize = Math.min(16, Math.max(1, tabSize));
+		}
+	}
+	function updateInsertSpaces(insertSpaces: boolean): void {
+		if (activeTab) {
+			activeTab.insertSpaces = insertSpaces;
 		}
 	}
 
@@ -244,11 +261,31 @@
 		<div class="toolbar">
 			<span class="toolbar-path">{activeTab.path}</span>
 			<div class="toolbar-spacer"></div>
+			<span class="toolbar-option">
+				Indent:
+				<select
+					value={String(activeTab.insertSpaces)}
+					onchange={(e) => updateInsertSpaces(e.currentTarget.value === "true")}
+				>
+					<option value="false">Tab</option>
+					<option value="true">Spaces</option>
+				</select>
+			</span>
+			<span class="toolbar-option">
+				Tab Size:
+				<input
+					value={activeTab.tabSize}
+					onchange={(e) => updateTabSize(parseInt(e.currentTarget.value))}
+					type="number"
+					max="16"
+					min="1"
+				/>
+			</span>
 			<select
-				value={activeTab.language}
+				value={activeTab.language?.name ?? TEXT_LANGUAGE_NAME}
 				onchange={(e) => updateLanguage(e.currentTarget.value)}
 			>
-				{#each availableLanguages as lang (lang)}
+				{#each availableLanguageNamesWithText as lang (lang)}
 					<option value={lang}>{lang}</option>
 				{/each}
 			</select>
@@ -263,6 +300,8 @@
 				<CodeEditor
 					content={activeTab.content}
 					language={activeTab.language}
+					tabSize={activeTab.tabSize}
+					insertSpaces={activeTab.insertSpaces}
 					onchange={updateContent}
 					onsave={handleSave}
 				/>
@@ -430,13 +469,18 @@
 		flex: 1;
 	}
 
-	select {
+	.toolbar-option {
+		font-size: .8rem;
+	}
+
+	select, input[type=number] {
 		background: var(--color-bg-elevated);
 		border: 1px solid var(--color-border);
 		color: var(--color-text-primary);
 		border-radius: var(--radius-btn);
 		padding: 4px 8px;
 		font-size: 0.75rem;
+		line-height: 1.5;
 		font-family: var(--font-sans);
 	}
 
