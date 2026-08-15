@@ -687,6 +687,12 @@ pub fn run() {
                     api.prevent_close();
                     #[cfg(desktop)]
                     let _ = window.hide();
+                } else if window.label() == "main" {
+                    // Main window really closing = app quit. The editor window is
+                    // designed to never be destroyed (hidden instead, to avoid a
+                    // WebView2 crash on Windows), so without an explicit exit the
+                    // hidden editor window would keep the process alive forever.
+                    window.app_handle().exit(0);
                 }
             }
         })
