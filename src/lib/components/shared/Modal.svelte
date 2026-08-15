@@ -8,6 +8,7 @@
 		userSelect?: boolean;
 		title?: string;
 		maxWidth?: string;
+		flush?: boolean;
 		children: Snippet;
 		actions?: Snippet;
 	}
@@ -18,6 +19,7 @@
 		userSelect = false,
 		title = '',
 		maxWidth,
+		flush = false,
 		children,
 		actions
 	}: Props = $props();
@@ -64,7 +66,7 @@
 				</header>
 			{/if}
 
-			<div class="modal-body" class:user-select={userSelect}>
+			<div class="modal-body" class:user-select={userSelect} class:flush>
 				{@render children()}
 			</div>
 
@@ -141,6 +143,13 @@
 		padding: 20px;
 		overflow-y: auto;
 		flex: 1;
+	}
+	/* flush: body 不滚动、无内边距，由子内容撑满并自行管理滚动（如设置页双栏） */
+	.modal-body.flush {
+		padding: 0;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
 	}
 	.modal-body.user-select {
 		user-select: text;

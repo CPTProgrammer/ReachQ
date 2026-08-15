@@ -31,7 +31,7 @@
 	let activeTabId = $state<TabId>('general');
 </script>
 
-<Modal {open} {onclose} title={t('settings.title')} maxWidth="680px">
+<Modal {open} {onclose} title={t('settings.title')} maxWidth="680px" flush>
 	{#snippet children()}
 		<div class="settings-layout">
 			<nav class="settings-menu">
@@ -80,8 +80,8 @@
 	.settings-layout {
 		display: flex;
 		gap: 0;
+		flex: 1;
 		min-height: 340px;
-		margin: -20px;
 	}
 
 	.settings-menu {
@@ -91,6 +91,7 @@
 		padding: 8px;
 		width: 160px;
 		flex-shrink: 0;
+		overflow-y: auto;
 		border-right: 1px solid var(--color-border);
 		background-color: var(--color-bg-secondary);
 		border-radius: 0 0 0 var(--radius-modal, 12px);
