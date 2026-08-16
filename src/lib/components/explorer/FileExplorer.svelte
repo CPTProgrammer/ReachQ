@@ -77,13 +77,13 @@
 
 	function cdToFolder(entry: FileEntry): void {
 		if (!connectionId || !entry.isDirectory) return;
-		const cmd = `cd '${entry.path}'\n`;
+		const cmd = `cd '${entry.path}'`;
 		sshSend(connectionId, Array.from(new TextEncoder().encode(cmd)));
 		addToast(t('explorer.cd_sent', { path: entry.path }), 'success');
 	}
 	function cdToCurrentPath(): void {
 		if (!connectionId) return;
-		const cmd = `cd '${currentPath}'\n`;
+		const cmd = `cd '${currentPath}'`;
 		sshSend(connectionId, Array.from(new TextEncoder().encode(cmd)));
 		addToast(t('explorer.cd_sent', { path: currentPath }), 'success');
 	}
