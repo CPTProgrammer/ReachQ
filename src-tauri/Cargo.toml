@@ -30,6 +30,7 @@ uuid = { version = "1", features = ["v4"] }
 # SSH
 russh = { version = "0.46", default-features = false }
 russh-keys = { version = "0.46", default-features = false }
+russh-sftp = "2.1"
 async-trait = "0.1"
 ssh2-config = "0.7"
 

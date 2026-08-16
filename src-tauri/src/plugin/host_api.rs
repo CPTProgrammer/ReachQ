@@ -7,6 +7,8 @@ use mlua::{Lua, Result as LuaResult, UserDataRef};
 use tauri::Emitter;
 
 use crate::plugin::schema::{PluginPermission, UiElement, HTTP_REQUEST_TIMEOUT_MS};
+use crate::sftp::backend::SftpBackendManager;
+use crate::sftp::ops::RemoteFs;
 use crate::ssh::client::SshManager;
 use crate::tunnel::manager::TunnelManager;
 use crate::vault::VaultManager;
@@ -27,6 +29,7 @@ fn http_client() -> &'static reqwest::Client {
 #[derive(Clone)]
 pub struct PluginAppState {
     pub ssh_manager: Arc<tokio::sync::Mutex<SshManager>>,
+    pub sftp_backend_manager: Arc<tokio::sync::Mutex<SftpBackendManager>>,
     pub tunnel_manager: Arc<tokio::sync::Mutex<TunnelManager>>,
     pub vault_manager: Arc<tokio::sync::Mutex<VaultManager>>,
     pub app_handle: Option<tauri::AppHandle>,
@@ -186,15 +189,16 @@ fn inject_sftp_api(
             lua.create_async_function(|lua, (conn_id, path): (String, String)| async move {
                 let state: UserDataRef<PluginAppState> =
                     lua.named_registry_value("__plugin_app_state")?;
-                let handle = {
-                    let manager = state.ssh_manager.lock().await;
-                    manager
-                        .get_handle(&conn_id)
-                        .map_err(|e| mlua::Error::external(e.to_string()))?
-                };
-                let entries = crate::sftp::browser::list_directory(&handle, &path)
-                    .await
-                    .map_err(|e| mlua::Error::external(e.to_string()))?;
+                let entries = RemoteFs::connect(
+                    &state.ssh_manager,
+                    &state.sftp_backend_manager,
+                    &conn_id,
+                )
+                .await
+                .map_err(|e| mlua::Error::external(e.to_string()))?
+                .list_dir(&path)
+                .await
+                .map_err(|e| mlua::Error::external(e.to_string()))?;
                 let table = lua.create_table()?;
                 for (i, entry) in entries.iter().enumerate() {
                     let e = lua.create_table()?;
@@ -215,15 +219,16 @@ fn inject_sftp_api(
             lua.create_async_function(|lua, (conn_id, path): (String, String)| async move {
                 let state: UserDataRef<PluginAppState> =
                     lua.named_registry_value("__plugin_app_state")?;
-                let handle = {
-                    let manager = state.ssh_manager.lock().await;
-                    manager
-                        .get_handle(&conn_id)
-                        .map_err(|e| mlua::Error::external(e.to_string()))?
-                };
-                let content = crate::sftp::browser::read_text_file(&handle, &path)
-                    .await
-                    .map_err(|e| mlua::Error::external(e.to_string()))?;
+                let content = RemoteFs::connect(
+                    &state.ssh_manager,
+                    &state.sftp_backend_manager,
+                    &conn_id,
+                )
+                .await
+                .map_err(|e| mlua::Error::external(e.to_string()))?
+                .read_text(&path)
+                .await
+                .map_err(|e| mlua::Error::external(e.to_string()))?;
                 Ok(content)
             })?,
         )?;
@@ -236,15 +241,16 @@ fn inject_sftp_api(
                 |lua, (conn_id, path, content): (String, String, String)| async move {
                     let state: UserDataRef<PluginAppState> =
                         lua.named_registry_value("__plugin_app_state")?;
-                    let handle = {
-                        let manager = state.ssh_manager.lock().await;
-                        manager
-                            .get_handle(&conn_id)
-                            .map_err(|e| mlua::Error::external(e.to_string()))?
-                    };
-                    crate::sftp::browser::write_text_file(&handle, &path, &content)
-                        .await
-                        .map_err(|e| mlua::Error::external(e.to_string()))?;
+                    RemoteFs::connect(
+                        &state.ssh_manager,
+                        &state.sftp_backend_manager,
+                        &conn_id,
+                    )
+                    .await
+                    .map_err(|e| mlua::Error::external(e.to_string()))?
+                    .write_text(&path, &content)
+                    .await
+                    .map_err(|e| mlua::Error::external(e.to_string()))?;
                     Ok(())
                 },
             )?,

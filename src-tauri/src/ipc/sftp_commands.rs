@@ -1,7 +1,9 @@
 use tracing::info;
 use tauri::Emitter;
 use crate::state::AppState;
-use crate::sftp::browser::{self, RemoteEntry};
+use crate::sftp::browser::RemoteEntry;
+use crate::sftp::ops::RemoteFs;
+use crate::sftp::transfer::TransferProgress;
 use crate::plugin::hooks;
 
 /// List the contents of a remote directory.
@@ -12,19 +14,14 @@ pub async fn sftp_list_dir(
     path: String,
 ) -> Result<Vec<RemoteEntry>, String> {
     info!("sftp_list_dir called: conn={}, path={}", connection_id, path);
-    let handle = {
-        let manager = state.ssh_manager.lock().await;
-        manager.get_handle(&connection_id).map_err(|e| {
-            info!("sftp_list_dir handle error: {}", e);
-            e.to_string()
-        })?
-    };
-    let result = browser::list_directory(&handle, &path)
-        .await
-        .map_err(|e| {
-            info!("sftp_list_dir browse error: {}", e);
-            e.to_string()
-        })?;
+    let fs = RemoteFs::connect(&state.ssh_manager, &state.sftp_backend_manager, &connection_id).await.map_err(|e| {
+        info!("sftp_list_dir connect error: {}", e);
+        e.to_string()
+    })?;
+    let result = fs.list_dir(&path).await.map_err(|e| {
+        info!("sftp_list_dir browse error: {}", e);
+        e.to_string()
+    })?;
     info!("sftp_list_dir returning {} entries for {}", result.len(), path);
     Ok(result)
 }
@@ -39,10 +36,7 @@ pub async fn sftp_upload(
     local_path: String,
     remote_path: String,
 ) -> Result<String, String> {
-    let handle = {
-        let manager = state.ssh_manager.lock().await;
-        manager.get_handle(&connection_id).map_err(|e| e.to_string())?
-    };
+    let fs = RemoteFs::connect(&state.ssh_manager, &state.sftp_backend_manager, &connection_id).await.map_err(|e| e.to_string())?;
     let transfer_id = uuid::Uuid::new_v4().to_string();
     let tid = transfer_id.clone();
     let plugin_mgr = state.plugin_manager.clone();
@@ -50,15 +44,25 @@ pub async fn sftp_upload(
     let rpath = remote_path.clone();
 
     tokio::spawn(async move {
-        if let Err(e) = crate::sftp::transfer::upload_file(
-            &handle, &local_path, &remote_path, &tid, &app,
-        ).await {
-            tracing::error!("Upload failed for {}: {}", tid, e);
-            let _ = app.emit(&format!("transfer-error-{}", tid), e.to_string());
-        } else {
-            let hook = hooks::sftp_upload_complete(&conn_id, &rpath);
-            let mut mgr = plugin_mgr.lock().await;
-            mgr.dispatch_hook(&hook, Some(&app)).await;
+        let app_progress = app.clone();
+        let tid_progress = tid.clone();
+        let result = fs
+            .upload(&local_path, &remote_path, &tid, move |p: TransferProgress| {
+                let _ = app_progress.emit(&format!("transfer-progress-{}", tid_progress), &p);
+            })
+            .await;
+
+        match result {
+            Ok(()) => {
+                let _ = app.emit(&format!("transfer-complete-{}", tid), ());
+                let hook = hooks::sftp_upload_complete(&conn_id, &rpath);
+                let mut mgr = plugin_mgr.lock().await;
+                mgr.dispatch_hook(&hook, Some(&app)).await;
+            }
+            Err(e) => {
+                tracing::error!("Upload failed for {}: {}", tid, e);
+                let _ = app.emit(&format!("transfer-error-{}", tid), e.to_string());
+            }
         }
     });
 
@@ -75,10 +79,7 @@ pub async fn sftp_download(
     remote_path: String,
     local_path: String,
 ) -> Result<String, String> {
-    let handle = {
-        let manager = state.ssh_manager.lock().await;
-        manager.get_handle(&connection_id).map_err(|e| e.to_string())?
-    };
+    let fs = RemoteFs::connect(&state.ssh_manager, &state.sftp_backend_manager, &connection_id).await.map_err(|e| e.to_string())?;
     let transfer_id = uuid::Uuid::new_v4().to_string();
     let tid = transfer_id.clone();
     let plugin_mgr = state.plugin_manager.clone();
@@ -87,15 +88,25 @@ pub async fn sftp_download(
     let lpath = local_path.clone();
 
     tokio::spawn(async move {
-        if let Err(e) = crate::sftp::transfer::download_file(
-            &handle, &remote_path, &local_path, &tid, &app,
-        ).await {
-            tracing::error!("Download failed for {}: {}", tid, e);
-            let _ = app.emit(&format!("transfer-error-{}", tid), e.to_string());
-        } else {
-            let hook = hooks::sftp_download_complete(&conn_id, &rpath, &lpath);
-            let mut mgr = plugin_mgr.lock().await;
-            mgr.dispatch_hook(&hook, Some(&app)).await;
+        let app_progress = app.clone();
+        let tid_progress = tid.clone();
+        let result = fs
+            .download(&remote_path, &local_path, &tid, move |p: TransferProgress| {
+                let _ = app_progress.emit(&format!("transfer-progress-{}", tid_progress), &p);
+            })
+            .await;
+
+        match result {
+            Ok(()) => {
+                let _ = app.emit(&format!("transfer-complete-{}", tid), ());
+                let hook = hooks::sftp_download_complete(&conn_id, &rpath, &lpath);
+                let mut mgr = plugin_mgr.lock().await;
+                mgr.dispatch_hook(&hook, Some(&app)).await;
+            }
+            Err(e) => {
+                tracing::error!("Download failed for {}: {}", tid, e);
+                let _ = app.emit(&format!("transfer-error-{}", tid), e.to_string());
+            }
         }
     });
 
@@ -109,13 +120,8 @@ pub async fn sftp_delete(
     connection_id: String,
     path: String,
 ) -> Result<(), String> {
-    let handle = {
-        let manager = state.ssh_manager.lock().await;
-        manager.get_handle(&connection_id).map_err(|e| e.to_string())?
-    };
-    browser::delete_entry(&handle, &path)
-        .await
-        .map_err(|e| e.to_string())
+    let fs = RemoteFs::connect(&state.ssh_manager, &state.sftp_backend_manager, &connection_id).await.map_err(|e| e.to_string())?;
+    fs.delete(&path).await.map_err(|e| e.to_string())
 }
 
 /// Rename or move a file on the remote host.
@@ -126,13 +132,8 @@ pub async fn sftp_rename(
     old_path: String,
     new_path: String,
 ) -> Result<(), String> {
-    let handle = {
-        let manager = state.ssh_manager.lock().await;
-        manager.get_handle(&connection_id).map_err(|e| e.to_string())?
-    };
-    browser::rename_entry(&handle, &old_path, &new_path)
-        .await
-        .map_err(|e| e.to_string())
+    let fs = RemoteFs::connect(&state.ssh_manager, &state.sftp_backend_manager, &connection_id).await.map_err(|e| e.to_string())?;
+    fs.rename(&old_path, &new_path).await.map_err(|e| e.to_string())
 }
 
 /// Create an empty file on the remote host.
@@ -142,13 +143,8 @@ pub async fn sftp_touch(
     connection_id: String,
     path: String,
 ) -> Result<(), String> {
-    let handle = {
-        let manager = state.ssh_manager.lock().await;
-        manager.get_handle(&connection_id).map_err(|e| e.to_string())?
-    };
-    browser::touch_file(&handle, &path)
-        .await
-        .map_err(|e| e.to_string())
+    let fs = RemoteFs::connect(&state.ssh_manager, &state.sftp_backend_manager, &connection_id).await.map_err(|e| e.to_string())?;
+    fs.touch(&path).await.map_err(|e| e.to_string())
 }
 
 /// Read a text file's content from the remote host.
@@ -159,13 +155,8 @@ pub async fn sftp_read_file(
     path: String,
 ) -> Result<String, String> {
     info!("sftp_read_file called: conn={}, path={}", connection_id, path);
-    let handle = {
-        let manager = state.ssh_manager.lock().await;
-        manager.get_handle(&connection_id).map_err(|e| e.to_string())?
-    };
-    browser::read_text_file(&handle, &path)
-        .await
-        .map_err(|e| e.to_string())
+    let fs = RemoteFs::connect(&state.ssh_manager, &state.sftp_backend_manager, &connection_id).await.map_err(|e| e.to_string())?;
+    fs.read_text(&path).await.map_err(|e| e.to_string())
 }
 
 /// Write text content to a remote file.
@@ -177,13 +168,8 @@ pub async fn sftp_write_file(
     content: String,
 ) -> Result<(), String> {
     info!("sftp_write_file called: conn={}, path={}", connection_id, path);
-    let handle = {
-        let manager = state.ssh_manager.lock().await;
-        manager.get_handle(&connection_id).map_err(|e| e.to_string())?
-    };
-    browser::write_text_file(&handle, &path, &content)
-        .await
-        .map_err(|e| e.to_string())
+    let fs = RemoteFs::connect(&state.ssh_manager, &state.sftp_backend_manager, &connection_id).await.map_err(|e| e.to_string())?;
+    fs.write_text(&path, &content).await.map_err(|e| e.to_string())
 }
 
 /// Create a directory on the remote host.
@@ -193,11 +179,6 @@ pub async fn sftp_mkdir(
     connection_id: String,
     path: String,
 ) -> Result<(), String> {
-    let handle = {
-        let manager = state.ssh_manager.lock().await;
-        manager.get_handle(&connection_id).map_err(|e| e.to_string())?
-    };
-    browser::make_directory(&handle, &path)
-        .await
-        .map_err(|e| e.to_string())
+    let fs = RemoteFs::connect(&state.ssh_manager, &state.sftp_backend_manager, &connection_id).await.map_err(|e| e.to_string())?;
+    fs.mkdir(&path).await.map_err(|e| e.to_string())
 }

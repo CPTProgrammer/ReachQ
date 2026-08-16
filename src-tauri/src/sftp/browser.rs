@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use russh_sftp::client::error::Error as SftpError;
+use russh_sftp::protocol::{FileAttributes, FileType, OpenFlags, StatusCode};
+
 use crate::ssh::client::{SharedHandle, exec_on_connection, SshError};
+use super::backend::{SftpBackend, SftpProtocol};
+use super::transfer::{read_remote_pipelined, write_remote_pipelined};
 
 #[derive(Debug, Error)]
 pub enum SftpBrowserError {
@@ -14,6 +20,10 @@ pub enum SftpBrowserError {
     PathNotFound(String),
     #[error("Permission denied: {0}")]
     PermissionDenied(String),
+    #[error("Target already exists: {0}")]
+    AlreadyExists(String),
+    #[error("SFTP error: {0}")]
+    Protocol(String),
 }
 
 /// Metadata for a remote file or directory entry.
@@ -29,8 +39,121 @@ pub struct RemoteEntry {
     pub permissions: String,
 }
 
+/// Map an russh-sftp error onto the browser error type, preserving the
+/// variants the UI cares about.
+fn map_sftp_error(path: &str, e: SftpError) -> SftpBrowserError {
+    match e {
+        SftpError::Status(status) => match status.status_code {
+            StatusCode::NoSuchFile => SftpBrowserError::PathNotFound(path.to_string()),
+            StatusCode::PermissionDenied => SftpBrowserError::PermissionDenied(path.to_string()),
+            _ => SftpBrowserError::Protocol(SftpError::Status(status).to_string()),
+        },
+        other => SftpBrowserError::Protocol(other.to_string()),
+    }
+}
+
+/// Render ls-style permission characters (e.g. `drwxr-xr-x`) from an SFTP
+/// file type + mode so the UI looks the same on both backends.
+fn format_permissions(file_type: &FileType, mode: Option<u32>) -> String {
+    let mut s = String::with_capacity(10);
+    s.push(match file_type {
+        FileType::Dir => 'd',
+        FileType::Symlink => 'l',
+        _ => '-',
+    });
+    let mode = mode.unwrap_or(0);
+    const BITS: [(u32, char); 9] = [
+        (0o400, 'r'), (0o200, 'w'), (0o100, 'x'),
+        (0o040, 'r'), (0o020, 'w'), (0o010, 'x'),
+        (0o004, 'r'), (0o002, 'w'), (0o001, 'x'),
+    ];
+    for (bit, ch) in BITS {
+        s.push(if mode & bit != 0 { ch } else { '-' });
+    }
+    s
+}
+
+fn sort_entries(entries: &mut [RemoteEntry]) {
+    // Directories first, then by name
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+}
+
+fn with_trailing_slash(path: &str) -> String {
+    if path.ends_with('/') {
+        path.to_string()
+    } else {
+        format!("{}/", path)
+    }
+}
+
+/// List the contents of a remote directory.
+pub(crate) async fn list_directory(
+    backend: &SftpBackend,
+    handle: &SharedHandle,
+    path: &str,
+) -> Result<Vec<RemoteEntry>, SftpBrowserError> {
+    match backend.protocol() {
+        Some(proto) => list_directory_sftp(proto, path).await,
+        None => list_directory_exec(handle, path).await,
+    }
+}
+
+async fn list_directory_sftp(
+    proto: &SftpProtocol,
+    path: &str,
+) -> Result<Vec<RemoteEntry>, SftpBrowserError> {
+    let handle = proto
+        .session
+        .opendir(path)
+        .await
+        .map_err(|e| map_sftp_error(path, e))?
+        .handle;
+
+    let base = with_trailing_slash(path);
+    let mut entries = Vec::new();
+
+    loop {
+        match proto.session.readdir(handle.clone()).await {
+            Ok(name) => {
+                for f in name.files {
+                    if f.filename == "." || f.filename == ".." {
+                        continue;
+                    }
+                    let file_type = f.attrs.file_type();
+                    entries.push(RemoteEntry {
+                        path: format!("{}{}", base, f.filename),
+                        name: f.filename,
+                        is_dir: file_type.is_dir(),
+                        size: f.attrs.size.unwrap_or(0),
+                        modified: f.attrs.mtime.map(u64::from).unwrap_or(0),
+                        permissions: format_permissions(&file_type, f.attrs.permissions),
+                    });
+                }
+            }
+            Err(SftpError::Status(s)) if s.status_code == StatusCode::Eof => break,
+            Err(e) => {
+                let _ = proto.session.close(handle).await;
+                return Err(map_sftp_error(path, e));
+            }
+        }
+    }
+
+    proto
+        .session
+        .close(handle)
+        .await
+        .map_err(|e| map_sftp_error(path, e))?;
+
+    sort_entries(&mut entries);
+    Ok(entries)
+}
+
 /// List the contents of a remote directory via SSH exec.
-pub async fn list_directory(
+async fn list_directory_exec(
     handle: &SharedHandle,
     path: &str,
 ) -> Result<Vec<RemoteEntry>, SftpBrowserError> {
@@ -45,17 +168,66 @@ pub async fn list_directory(
 }
 
 /// Create a directory on the remote host.
-pub async fn make_directory(
+///
+/// Backend difference: SFTP `mkdir` requires the parent to exist and
+/// fails if the target already exists, while the exec path uses `mkdir -p`.
+/// Acceptable for the explorer's "new folder" flow, which always creates a
+/// fresh name inside an existing directory.
+pub(crate) async fn make_directory(
+    backend: &SftpBackend,
     handle: &SharedHandle,
     path: &str,
 ) -> Result<(), SftpBrowserError> {
-    let command = format!("mkdir -p {}", shell_escape(path));
-    exec_on_connection(handle, &command).await?;
-    Ok(())
+    match backend.protocol() {
+        Some(proto) => proto
+            .session
+            .mkdir(path, FileAttributes::empty())
+            .await
+            .map(|_| ())
+            .map_err(|e| map_sftp_error(path, e)),
+        None => {
+            let command = format!("mkdir -p {}", shell_escape(path));
+            exec_on_connection(handle, &command).await?;
+            Ok(())
+        }
+    }
 }
 
 /// Delete a file or directory on the remote host.
-pub async fn delete_entry(
+pub(crate) async fn delete_entry(
+    backend: &SftpBackend,
+    handle: &SharedHandle,
+    path: &str,
+) -> Result<(), SftpBrowserError> {
+    match backend.protocol() {
+        Some(proto) => {
+            // lstat semantics: a symlink to a directory is deleted as a file.
+            let meta = proto
+                .session
+                .lstat(path)
+                .await
+                .map_err(|e| map_sftp_error(path, e))?;
+            if meta.attrs.file_type().is_dir() {
+                // TODO: native recursive delete over SFTP (client-side
+                // traversal with bounded-concurrency removals). Until then
+                // directories go through the shell, exactly like the exec
+                // backend — this breaks only on SFTP-only accounts
+                // (ForceCommand internal-sftp), where exec is rejected.
+                delete_entry_exec(handle, path).await
+            } else {
+                proto
+                    .session
+                    .remove(path)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| map_sftp_error(path, e))
+            }
+        }
+        None => delete_entry_exec(handle, path).await,
+    }
+}
+
+async fn delete_entry_exec(
     handle: &SharedHandle,
     path: &str,
 ) -> Result<(), SftpBrowserError> {
@@ -65,31 +237,152 @@ pub async fn delete_entry(
 }
 
 /// Create an empty file on the remote host.
-pub async fn touch_file(
+///
+/// Both backends preserve the content of an existing file (SFTP opens with
+/// CREATE but without TRUNCATE); only the mtime bump of `touch` is lost.
+pub(crate) async fn touch_file(
+    backend: &SftpBackend,
     handle: &SharedHandle,
     path: &str,
 ) -> Result<(), SftpBrowserError> {
-    let command = format!("touch {}", shell_escape(path));
-    exec_on_connection(handle, &command).await?;
-    Ok(())
+    match backend.protocol() {
+        Some(proto) => {
+            let handle = proto
+                .session
+                .open(path, OpenFlags::CREATE | OpenFlags::WRITE, FileAttributes::empty())
+                .await
+                .map_err(|e| map_sftp_error(path, e))?
+                .handle;
+            proto
+                .session
+                .close(handle)
+                .await
+                .map(|_| ())
+                .map_err(|e| map_sftp_error(path, e))
+        }
+        None => {
+            let command = format!("touch {}", shell_escape(path));
+            exec_on_connection(handle, &command).await?;
+            Ok(())
+        }
+    }
 }
 
 /// Rename or move a remote file or directory.
-pub async fn rename_entry(
+///
+/// Unified semantics on both backends: fails when the destination already
+/// exists (native SFTP rename behaviour; the exec path checks first).
+pub(crate) async fn rename_entry(
+    backend: &SftpBackend,
     handle: &SharedHandle,
     old_path: &str,
     new_path: &str,
 ) -> Result<(), SftpBrowserError> {
-    let command = format!("mv {} {}", shell_escape(old_path), shell_escape(new_path));
-    exec_on_connection(handle, &command).await?;
-    Ok(())
+    match backend.protocol() {
+        Some(proto) => {
+            let exists = match proto.session.stat(new_path).await {
+                Ok(_) => true,
+                Err(SftpError::Status(s)) if s.status_code == StatusCode::NoSuchFile => false,
+                Err(e) => return Err(map_sftp_error(new_path, e)),
+            };
+            if exists {
+                return Err(SftpBrowserError::AlreadyExists(new_path.to_string()));
+            }
+            proto
+                .session
+                .rename(old_path, new_path)
+                .await
+                .map(|_| ())
+                .map_err(|e| map_sftp_error(old_path, e))
+        }
+        None => {
+            let check = exec_on_connection(
+                handle,
+                &format!("test -e {} && echo EXISTS", shell_escape(new_path)),
+            )
+            .await?;
+            if check.trim().contains("EXISTS") {
+                return Err(SftpBrowserError::AlreadyExists(new_path.to_string()));
+            }
+            let command = format!("mv {} {}", shell_escape(old_path), shell_escape(new_path));
+            exec_on_connection(handle, &command).await?;
+            Ok(())
+        }
+    }
 }
 
 /// Maximum file size for text editing (5 MB).
 const MAX_EDIT_SIZE: u64 = 5 * 1024 * 1024;
 
+fn too_large_error(size: u64) -> SftpBrowserError {
+    SftpBrowserError::ParseError(format!(
+        "File too large to edit ({:.1} MB, max {:.0} MB)",
+        size as f64 / (1024.0 * 1024.0),
+        MAX_EDIT_SIZE as f64 / (1024.0 * 1024.0)
+    ))
+}
+
+/// Read a text file's content from the remote host.
+pub(crate) async fn read_text_file(
+    backend: &SftpBackend,
+    handle: &SharedHandle,
+    path: &str,
+) -> Result<String, SftpBrowserError> {
+    match backend.protocol() {
+        Some(proto) => read_text_file_sftp(proto, path).await,
+        None => read_text_file_exec(handle, path).await,
+    }
+}
+
+async fn read_text_file_sftp(
+    proto: &SftpProtocol,
+    path: &str,
+) -> Result<String, SftpBrowserError> {
+    let meta = proto
+        .session
+        .stat(path)
+        .await
+        .map_err(|e| map_sftp_error(path, e))?;
+
+    let size = meta.attrs.size.unwrap_or(0);
+    if size > MAX_EDIT_SIZE {
+        return Err(too_large_error(size));
+    }
+
+    if size == 0 {
+        return Ok(String::new());
+    }
+
+    let mut buf = vec![0u8; size as usize];
+    let read = read_remote_pipelined(
+        proto,
+        path,
+        size,
+        |offset, data| {
+            let start = offset as usize;
+            let end = start + data.len();
+            if end > buf.len() {
+                return Err(super::transfer::TransferError::IoError(
+                    "Remote returned more data than expected".to_string(),
+                ));
+            }
+            buf[start..end].copy_from_slice(&data);
+            Ok(())
+        },
+        |_| {},
+    )
+    .await
+    .map_err(|e| SftpBrowserError::Protocol(e.to_string()))?;
+
+    // The file may have shrunk on the server mid-read.
+    buf.truncate(read as usize);
+
+    String::from_utf8(buf)
+        .map_err(|_| SftpBrowserError::ParseError("File is not valid UTF-8 text".to_string()))
+}
+
 /// Read a text file's content from the remote host via base64 encoding.
-pub async fn read_text_file(
+async fn read_text_file_exec(
     handle: &SharedHandle,
     path: &str,
 ) -> Result<String, SftpBrowserError> {
@@ -102,11 +395,7 @@ pub async fn read_text_file(
         .map_err(|_| SftpBrowserError::ParseError(format!("Cannot determine file size: {}", path)))?;
 
     if size > MAX_EDIT_SIZE {
-        return Err(SftpBrowserError::ParseError(format!(
-            "File too large to edit ({:.1} MB, max {:.0} MB)",
-            size as f64 / (1024.0 * 1024.0),
-            MAX_EDIT_SIZE as f64 / (1024.0 * 1024.0)
-        )));
+        return Err(too_large_error(size));
     }
 
     // Read file via base64 to handle binary-safe transport
@@ -130,8 +419,37 @@ pub async fn read_text_file(
     })
 }
 
+/// Write text content to a remote file.
+pub(crate) async fn write_text_file(
+    backend: &SftpBackend,
+    handle: &SharedHandle,
+    path: &str,
+    content: &str,
+) -> Result<(), SftpBrowserError> {
+    match backend.protocol() {
+        Some(proto) => {
+            let bytes = content.as_bytes();
+            let mut pos = 0usize;
+            let producer = |max_len: usize| {
+                if pos >= bytes.len() {
+                    return Ok(None);
+                }
+                let end = (pos + max_len).min(bytes.len());
+                let chunk = bytes[pos..end].to_vec();
+                pos = end;
+                Ok(Some(chunk))
+            };
+            write_remote_pipelined(proto, path, producer, |_| {})
+                .await
+                .map(|_| ())
+                .map_err(|e| SftpBrowserError::Protocol(e.to_string()))
+        }
+        None => write_text_file_exec(handle, path, content).await,
+    }
+}
+
 /// Write text content to a remote file via streaming base64 over a single SSH channel.
-pub async fn write_text_file(
+async fn write_text_file_exec(
     handle: &SharedHandle,
     path: &str,
     content: &str,
@@ -223,11 +541,7 @@ fn shell_escape(s: &str) -> String {
 
 fn parse_ls_output(output: &str, base_path: &str) -> Result<Vec<RemoteEntry>, SftpBrowserError> {
     let mut entries = Vec::new();
-    let base = if base_path.ends_with('/') {
-        base_path.to_string()
-    } else {
-        format!("{}/", base_path)
-    };
+    let base = with_trailing_slash(base_path);
 
     for line in output.lines() {
         let line = line.trim();
@@ -289,12 +603,6 @@ fn parse_ls_output(output: &str, base_path: &str) -> Result<Vec<RemoteEntry>, Sf
         });
     }
 
-    // Sort: directories first, then by name
-    entries.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
-
+    sort_entries(&mut entries);
     Ok(entries)
 }

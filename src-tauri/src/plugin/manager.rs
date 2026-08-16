@@ -93,6 +93,7 @@ impl PluginManager {
         plugin_id: &str,
         mut config: PluginConfig,
         ssh_manager: Arc<tokio::sync::Mutex<SshManager>>,
+        sftp_backend_manager: Arc<tokio::sync::Mutex<crate::sftp::backend::SftpBackendManager>>,
         tunnel_manager: Arc<tokio::sync::Mutex<TunnelManager>>,
         vault_manager: Arc<tokio::sync::Mutex<VaultManager>>,
         app_handle: Option<tauri::AppHandle>,
@@ -159,6 +160,7 @@ impl PluginManager {
         // Inject host API
         let plugin_app_state = PluginAppState {
             ssh_manager,
+            sftp_backend_manager,
             tunnel_manager,
             vault_manager,
             app_handle,
@@ -254,6 +256,7 @@ impl PluginManager {
         plugin_id: &str,
         config: PluginConfig,
         ssh_manager: Arc<tokio::sync::Mutex<SshManager>>,
+        sftp_backend_manager: Arc<tokio::sync::Mutex<crate::sftp::backend::SftpBackendManager>>,
         tunnel_manager: Arc<tokio::sync::Mutex<TunnelManager>>,
         vault_manager: Arc<tokio::sync::Mutex<VaultManager>>,
         app_handle: Option<tauri::AppHandle>,
@@ -263,6 +266,7 @@ impl PluginManager {
             plugin_id,
             config,
             ssh_manager,
+            sftp_backend_manager,
             tunnel_manager,
             vault_manager,
             app_handle,

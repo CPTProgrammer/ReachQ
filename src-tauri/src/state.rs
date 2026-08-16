@@ -13,6 +13,7 @@ use crate::pty::manager::PtyManager;
 #[cfg(desktop)]
 use crate::serial::port::SerialManager;
 use crate::ssh::client::{SshManager, HostKeyDecision, KnownHosts, known_hosts_path};
+use crate::sftp::backend::SftpBackendManager;
 use crate::ansible::project::AnsibleProjectManager;
 use crate::tofu::project::TofuProjectManager;
 use crate::tofu::types::SchemaCache;
@@ -166,6 +167,8 @@ pub struct SystemStats {
 /// stored encrypted in the vault (SQLite + XChaCha20-Poly1305).
 pub struct AppState {
     pub ssh_manager: Arc<tokio::sync::Mutex<SshManager>>,
+    /// Negotiated SFTP backend (protocol session or exec fallback) per connection.
+    pub sftp_backend_manager: Arc<tokio::sync::Mutex<SftpBackendManager>>,
     /// Pending host key verifications awaiting frontend response.
     /// Kept outside SshManager to avoid deadlock: ssh_connect holds the
     /// SshManager lock while waiting, so the IPC response command must
@@ -210,6 +213,7 @@ impl AppState {
 
         Self {
             ssh_manager: Arc::new(tokio::sync::Mutex::new(SshManager::new())),
+            sftp_backend_manager: Arc::new(tokio::sync::Mutex::new(SftpBackendManager::new())),
             pending_host_keys: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             known_hosts: Arc::new(tokio::sync::RwLock::new(known_hosts)),
             tunnels: Arc::new(RwLock::new(HashMap::new())),

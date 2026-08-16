@@ -41,11 +41,12 @@ pub async fn marketplace_install(
     };
 
     let ssh = state.ssh_manager.clone();
+    let sftp_backends = state.sftp_backend_manager.clone();
     let tunnel = state.tunnel_manager.clone();
     let vault = state.vault_manager.clone();
 
     let mut manager = state.plugin_manager.lock().await;
-    manager.load_plugin(&plugin_id, config, ssh, tunnel, vault, Some(app))
+    manager.load_plugin(&plugin_id, config, ssh, sftp_backends, tunnel, vault, Some(app))
 }
 
 /// Uninstall a plugin: unload its VM, then remove its directory.

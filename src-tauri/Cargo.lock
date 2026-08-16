@@ -4884,6 +4884,7 @@ dependencies = [
  "reqwest 0.12.28",
  "russh",
  "russh-keys",
+ "russh-sftp",
  "secrecy",
  "serde",
  "serde_json",

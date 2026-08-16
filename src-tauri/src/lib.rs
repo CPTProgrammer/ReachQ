@@ -593,6 +593,7 @@ pub fn run() {
             // Clone state arcs for plugin auto-loading
             let app_state = app.state::<AppState>();
             let ssh_mgr = app_state.ssh_manager.clone();
+            let sftp_backend_mgr = app_state.sftp_backend_manager.clone();
             let tunnel_mgr = app_state.tunnel_manager.clone();
             let vault_mgr = app_state.vault_manager.clone();
             let plugin_mgr = app_state.plugin_manager.clone();
@@ -644,6 +645,7 @@ pub fn run() {
                                 &manifest.id,
                                 config,
                                 ssh_mgr.clone(),
+                                sftp_backend_mgr.clone(),
                                 tunnel_mgr.clone(),
                                 vault_mgr.clone(),
                                 Some(handle.clone()),

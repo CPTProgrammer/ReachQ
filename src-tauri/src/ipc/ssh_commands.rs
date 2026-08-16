@@ -154,6 +154,9 @@ pub async fn ssh_connect(
     // (plugins may call reach.ssh.exec which needs the lock)
     drop(manager);
 
+    // A (re)connection must not inherit the SFTP backend of a previous session.
+    state.sftp_backend_manager.lock().await.invalidate(&connection_id);
+
     // Fire-and-forget: a slow or hung plugin hook must not block the IPC
     // return. dispatch_hook applies a per-hook timeout internally.
     let hook = hooks::session_connected(&connection_id, &host, &username);
@@ -197,6 +200,9 @@ pub async fn ssh_disconnect(
     let mut manager = state.ssh_manager.lock().await;
     manager.disconnect(&connection_id).map_err(|e| e.to_string())?;
     drop(manager);
+
+    // Release the cached SFTP backend (closes the SFTP session if any).
+    state.sftp_backend_manager.lock().await.invalidate(&connection_id);
 
     // Fire-and-forget hook dispatch (see ssh_connect for rationale).
     let hook = hooks::session_disconnected(&connection_id);

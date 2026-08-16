@@ -32,6 +32,7 @@ pub async fn plugin_load(
     };
 
     let ssh = state.ssh_manager.clone();
+    let sftp_backends = state.sftp_backend_manager.clone();
     let tunnel = state.tunnel_manager.clone();
     let vault = state.vault_manager.clone();
 
@@ -40,6 +41,7 @@ pub async fn plugin_load(
         &plugin_id,
         config,
         ssh,
+        sftp_backends,
         tunnel,
         vault,
         Some(app),
@@ -76,6 +78,7 @@ pub async fn plugin_reload(
     };
 
     let ssh = state.ssh_manager.clone();
+    let sftp_backends = state.sftp_backend_manager.clone();
     let tunnel = state.tunnel_manager.clone();
     let vault = state.vault_manager.clone();
 
@@ -84,6 +87,7 @@ pub async fn plugin_reload(
         &plugin_id,
         config,
         ssh,
+        sftp_backends,
         tunnel,
         vault,
         Some(app),
