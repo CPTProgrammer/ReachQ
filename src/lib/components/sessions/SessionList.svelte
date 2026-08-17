@@ -350,6 +350,14 @@
 			};
 			await sshConnect(connectParams);
 
+			// Cancelled while the handshake was in flight: connectingId was
+			// cleared by cancelConnect, so this connection is unwanted — tear
+			// it down instead of opening a tab.
+			if (connectingId !== id) {
+				sshDisconnect(id).catch(() => {});
+				return;
+			}
+
 			const tab = createTab('ssh', `${session.username}@${session.host}`, id, session.name, session.detected_os);
 			tab.sshConnectParams = connectParams;
 			addToast(t('session.connected_toast', { name: session.name }), 'success');
@@ -373,6 +381,9 @@
 				}).catch(() => {});
 			}
 		} catch (err) {
+			// Cancelled while connecting: the modal is already gone, discard
+			// the failure silently (and never resurrect the prompt below).
+			if (connectingId !== id) return;
 			const errStr = String(err);
 			// If a host-key timeout killed the connection, dismiss the
 			// HostKeyDialog (only if it matches this session) and
@@ -772,9 +783,9 @@
 
 {#if showConnectPrompt && connectSession}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="prompt-overlay" onkeydown={(e) => { if (e.key === 'Escape') cancelConnect(); }} onclick={cancelConnect}>
+	<div class="prompt-overlay" onkeydown={(e) => { if (e.key === 'Escape') cancelConnect(); }}>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="prompt-box" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
+		<div class="prompt-box" onkeydown={() => {}}>
 			<div class="prompt-header">
 				<span class="prompt-title">{t('session.connect_to', { name: connectSession.name })}</span>
 				<span class="prompt-detail">{connectSession.username}@{connectSession.host}:{connectSession.port}</span>
