@@ -2,6 +2,7 @@
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import Input from '$lib/components/shared/Input.svelte';
+	import DistroIcon from './DistroIcon.svelte';
 	import HostPortRow from './form/HostPortRow.svelte';
 	import AuthFields from './form/AuthFields.svelte';
 	import ProxySection from './form/ProxySection.svelte';
@@ -42,12 +43,14 @@
 	let saving = $state(false);
 	let error = $state<string | undefined>();
 	let colorInit = $state(true);
+	let osCacheCleared = $state(false);
 
 	let isEditing = $derived(!!editSession);
 	let canSave = $derived(name.trim().length > 0 && host.trim().length > 0 && username.trim().length > 0 && !saving);
 
 	// Populate fields when editing, reset when creating
 	$effect(() => {
+		osCacheCleared = false;
 		if (editSession) {
 			name = editSession.name;
 			host = editSession.host;
@@ -160,6 +163,7 @@
 					jump_chain: jumpChain ?? editSession.jump_chain ?? null,
 					proxy: proxyConfig,
 					color_init: colorInit,
+					detected_os: osCacheCleared ? null : (editSession.detected_os ?? null),
 				});
 			} else {
 				await sessionCreate({
@@ -220,6 +224,23 @@
 
 		<Input label={t('session.tags')} bind:value={tagsStr} placeholder="production, web, linux" disabled={saving} />
 
+		{#if isEditing && editSession?.detected_os}
+			<div class="os-cache-section">
+				<span class="os-cache-label">{t('session.detected_os')}</span>
+				{#if osCacheCleared}
+					<span class="os-cache-cleared">{t('session.os_cache_cleared')}</span>
+				{:else}
+					<div class="os-cache-row">
+						<DistroIcon osId={editSession.detected_os} size={16} />
+						<span class="os-cache-id">{editSession.detected_os}</span>
+						<Button variant="secondary" size="sm" onclick={() => (osCacheCleared = true)} disabled={saving}>
+							{t('session.clear_os_cache')}
+						</Button>
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		{#if folders.length > 0}
 			<div class="folder-section">
 				<span class="folder-label">{t('session.folder')}</span>
@@ -266,6 +287,37 @@
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
+	}
+
+	.os-cache-section {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.os-cache-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.os-cache-label {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-secondary);
+	}
+
+	.os-cache-id {
+		flex: 1;
+		font-size: 0.8125rem;
+		color: var(--color-text-primary);
+	}
+
+	.os-cache-cleared {
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
 	}
 
 	.folder-label {
