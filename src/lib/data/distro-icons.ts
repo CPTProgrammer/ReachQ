@@ -54,7 +54,7 @@ export const osIdToSlug: Record<string, keyof typeof icons> = {
 	openbsd: 'Openbsd',
 	netbsd: 'Netbsd',
 	darwin: 'Apple',
-	windows: 'Linux',
+	windows: 'Windows',
 	linux: 'Linux',
 };
 
@@ -240,6 +240,11 @@ export const icons = {
 		hex: 'FCC624',
 		title: 'Linux',
 	},
+	Windows: {
+		path: 'M 0 0 H 11.3772 V 11.3723 H 0 Z M 12.6228 0 H 24 V 11.3723 H 12.6228 Z M 0 12.6228 H 11.3772 V 24 H 0 Z M 12.6228 12.6228 H 24 V 24 H 12.6228',
+		hex: '0078D4',
+		title: "Windows",
+	}
 } satisfies Record<string, DistroIconData>;
 
 /** Look up icon data for an os-release ID string. Falls back to generic Linux. */
