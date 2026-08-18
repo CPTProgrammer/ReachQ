@@ -249,7 +249,7 @@ export const icons = {
 
 /** Look up icon data for an os-release ID string. Falls back to generic Linux. */
 export function getDistroIcon(osId: string | undefined | null): DistroIconData | undefined {
-	if (!osId) return undefined;
+	if (!osId || osId === 'unknown') return undefined;
 	const slug = osIdToSlug[osId.toLowerCase()];
 	if (slug) return icons[slug];
 	return icons['Linux'];

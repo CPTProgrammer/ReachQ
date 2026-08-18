@@ -1,5 +1,5 @@
 use crate::state::AppState;
-use crate::ssh::client::{AuthParams, ConnectionInfo, HostKeyDecision, JumpHostParams, exec_on_connection};
+use crate::ssh::client::{AuthParams, ConnectionInfo, HostKeyDecision, JumpHostParams, exec_on_connection_with_exit_code_timeout};
 use crate::plugin::hooks;
 
 /// Parameters for a jump host received from the frontend.
@@ -236,9 +236,15 @@ pub async fn ssh_mark_ready(
     manager.mark_ready(&connection_id).map_err(|e| e.to_string())
 }
 
-/// Detect the remote operating system by parsing /etc/os-release.
-/// Returns a lowercase distro ID (e.g. "debian", "ubuntu", "alpine")
-/// or a fallback from uname -s (e.g. "darwin", "freebsd").
+/// Idle timeout for OS detection probes — these commands answer immediately or not at all.
+const OS_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Detect the remote operating system by probing the connection in order:
+/// 1. `/etc/os-release` (modern Linux, and MSYS2/Cygwin on Windows)
+/// 2. `uname -s` (macOS, BSDs, Git Bash on Windows)
+/// 3. `cmd /c ver` (Windows, works regardless of the default shell)
+/// Returns a lowercase distro ID (e.g. "debian", "ubuntu", "alpine"),
+/// "windows", or "unknown" when nothing could be determined.
 #[tauri::command]
 pub async fn ssh_detect_os(
     state: tauri::State<'_, AppState>,
@@ -249,28 +255,52 @@ pub async fn ssh_detect_os(
         manager.get_handle(&connection_id).map_err(|e| e.to_string())?
     };
 
-    // Try /etc/os-release first (standard on modern Linux)
-    if let Ok(output) = exec_on_connection(&handle, "cat /etc/os-release 2>/dev/null").await {
-        for line in output.lines() {
-            // Match the ID= line (not ID_LIKE=)
-            if let Some(rest) = line.strip_prefix("ID=") {
-                let id = rest.trim().trim_matches('"').to_lowercase();
-                if !id.is_empty() {
-                    return Ok(id);
+    // 1. /etc/os-release — standard on modern Linux (and MSYS2/Cygwin on Windows)
+    if let Ok((output, _, code)) =
+        exec_on_connection_with_exit_code_timeout(&handle, "cat /etc/os-release", OS_PROBE_TIMEOUT).await
+    {
+        if code == 0 {
+            for line in output.lines() {
+                // Match the ID= line (not ID_LIKE=)
+                if let Some(rest) = line.strip_prefix("ID=") {
+                    let id = rest.trim().trim_matches('"').to_lowercase();
+                    if !id.is_empty() {
+                        // MSYS2/Cygwin ship an os-release pointing at a Windows host.
+                        // WSL is intentionally NOT caught here (its ID is the real distro).
+                        if id.contains("msys") || id.contains("mingw") || id.contains("cygwin") {
+                            return Ok("windows".to_string());
+                        }
+                        return Ok(id);
+                    }
                 }
+            }
+            // os-release exists but has no ID= — it's a Linux-ish system
+            return Ok("linux".to_string());
+        }
+    }
+
+    // 2. uname -s — macOS/BSDs, plus Git Bash/MSYS/Cygwin on Windows (e.g. MINGW64_NT-10.0)
+    if let Ok((output, _, code)) = exec_on_connection_with_exit_code_timeout(&handle, "uname -s", OS_PROBE_TIMEOUT).await {
+        if code == 0 {
+            let os = output.trim().to_lowercase();
+            if !os.is_empty() {
+                if os.contains("_nt") {
+                    return Ok("windows".to_string());
+                }
+                return Ok(os);
             }
         }
     }
 
-    // Fallback: uname -s for non-Linux systems
-    if let Ok(output) = exec_on_connection(&handle, "uname -s 2>/dev/null").await {
-        let os = output.trim().to_lowercase();
-        if !os.is_empty() {
-            return Ok(os);
+    // 3. Windows: cmd.exe is always on PATH, so this works from cmd, PowerShell, or bash
+    if let Ok((output, _, code)) = exec_on_connection_with_exit_code_timeout(&handle, "cmd /c ver", OS_PROBE_TIMEOUT).await {
+        if code == 0 && output.to_lowercase().contains("windows") {
+            return Ok("windows".to_string());
         }
     }
 
-    Ok("linux".to_string())
+    // Nothing detected — keep it explicit instead of guessing Linux
+    Ok("unknown".to_string())
 }
 
 /// Called by the frontend after the user makes a decision on a host key

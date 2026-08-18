@@ -932,6 +932,18 @@ pub async fn exec_on_connection_with_exit_code(
     handle: &SharedHandle,
     command: &str,
 ) -> Result<(String, String, i32), SshError> {
+    exec_on_connection_with_exit_code_timeout(handle, command, std::time::Duration::from_secs(300)).await
+}
+
+/// `exec_on_connection_with_exit_code` with a configurable idle timeout.
+/// The timeout applies to each channel read: if no message arrives within it,
+/// the loop exits and returns what was collected (exit code stays -1 if no
+/// ExitStatus was received).
+pub async fn exec_on_connection_with_exit_code_timeout(
+    handle: &SharedHandle,
+    command: &str,
+    idle_timeout: std::time::Duration,
+) -> Result<(String, String, i32), SshError> {
     let mut channel = {
         let guard = handle.lock().await;
         guard.channel_open_session().await
@@ -947,10 +959,7 @@ pub async fn exec_on_connection_with_exit_code(
     let mut got_exit = false;
 
     loop {
-        let msg = tokio::time::timeout(
-            std::time::Duration::from_secs(300),
-            channel.wait(),
-        ).await;
+        let msg = tokio::time::timeout(idle_timeout, channel.wait()).await;
 
         match msg {
             Ok(Some(ChannelMsg::Data { ref data })) => {
