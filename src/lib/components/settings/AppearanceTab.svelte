@@ -450,6 +450,7 @@
 	.terminal-theme-card {
 		display: flex;
 		flex-direction: column;
+		align-items: stretch;
 		gap: 8px;
 		padding: 10px 12px;
 		background: transparent;
