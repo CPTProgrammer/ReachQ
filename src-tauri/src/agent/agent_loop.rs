@@ -680,6 +680,7 @@ async fn run_loop(
                 args: args.clone(),
                 status: ToolCallStatus::Streaming,
                 result: None,
+                warnings: None,
             });
         }
 
@@ -869,6 +870,7 @@ async fn execute_one_tool(
                 args: args.clone(),
                 status,
                 result: Some(result),
+                warnings: None,
             },
         )
     };
@@ -928,23 +930,23 @@ async fn execute_one_tool(
             all_warnings.extend(tool.approval_warnings(&args, &ctx));
 
             emit_view(ToolCallStatus::PendingApproval, None, Some(all_warnings.clone()));
+            let approval = ApprovalRequest {
+                tool_call_id: tool_call_id.clone(),
+                tool: name.clone(),
+                title: tool.title(&args),
+                payload,
+                warnings: all_warnings,
+            };
             emit(&app, &identity, AgentEvent::ApprovalNeeded {
                 thread_id: thread_id.clone(),
-                approval: ApprovalRequest {
-                    tool_call_id: tool_call_id.clone(),
-                    tool: name.clone(),
-                    title: tool.title(&args),
-                    payload,
-                    warnings: all_warnings,
-                },
+                approval: approval.clone(),
             });
 
             let (tx, rx) = oneshot::channel::<bool>();
-            agent
-                .approvals
-                .lock()
-                .await
-                .insert(tool_call_id.clone(), tx);
+            agent.approvals.lock().await.insert(
+                tool_call_id.clone(),
+                crate::agent::PendingApproval { request: approval, tx },
+            );
 
             let approved = tokio::select! {
                 _ = cancel.cancelled() => {

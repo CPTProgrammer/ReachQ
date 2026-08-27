@@ -12,6 +12,7 @@ import type { AgentBackend } from './agent-backend';
 import type {
 	AgentEvent,
 	AgentSendOpts,
+	ApprovalRequest,
 	ContentBlock,
 	InstanceModels,
 	ModelMeta,
@@ -322,7 +323,10 @@ Keep watching — this message is deliberately long so there is time to queue a 
 class MockAgentBackend implements AgentBackend {
 	private threads = new Map<string, MockThread>();
 	private listeners = new Map<string, Set<(e: AgentEvent) => void>>();
-	private pendingApprovals = new Map<string, (ok: boolean) => void>();
+	private pendingApprovals = new Map<
+		string,
+		{ request: ApprovalRequest; resolve: (ok: boolean) => void }
+	>();
 	private stoppedTerminals = new Set<string>();
 	private instances: ProviderInstance[] = [
 		{ id: 'mock-or', preset: 'openrouter', name: 'OpenRouter' },
@@ -448,6 +452,46 @@ class MockAgentBackend implements AgentBackend {
 		return { thread: { ...thread.summary }, messages: this.computePath(thread) };
 	}
 
+	/**
+	 * Snapshot with the same enrichments as the Rust side's
+	 * `AgentState::enrich_snapshot`: reconcile stale blocks of dead runs to
+	 * `cancelled`, then overlay live pending approvals (status + warnings)
+	 * onto the returned copies.
+	 */
+	private snapshotView(thread: MockThread): ThreadSnapshot {
+		if (!thread.running) {
+			for (const msg of thread.messages.values()) {
+				for (const block of msg.content) {
+					if (
+						block.type === 'tool_call' &&
+						(block.status === 'streaming' || block.status === 'pending_approval')
+					) {
+						block.status = 'cancelled';
+					}
+				}
+			}
+		}
+		const snapshot = this.snapshot(thread);
+		if (this.pendingApprovals.size > 0) {
+			for (const msg of snapshot.messages) {
+				msg.content = msg.content.map((block) => {
+					if (block.type !== 'tool_call') return block;
+					const pending = this.pendingApprovals.get(block.id);
+					if (!pending) return block;
+					return {
+						...block,
+						status: 'pending_approval' as const,
+						warnings:
+							pending.request.warnings.length > 0
+								? [...pending.request.warnings]
+								: block.warnings
+					};
+				});
+			}
+		}
+		return snapshot;
+	}
+
 	// ── messaging ────────────────────────────────────────────────────────────
 
 	async sendMessage(
@@ -523,10 +567,10 @@ class MockAgentBackend implements AgentBackend {
 	}
 
 	async approve(toolCallId: string, approved: boolean): Promise<void> {
-		const resolve = this.pendingApprovals.get(toolCallId);
+		const pending = this.pendingApprovals.get(toolCallId);
 		this.pendingApprovals.delete(toolCallId);
-		if (!resolve) throw new Error('No pending approval for this tool call');
-		resolve(approved);
+		if (!pending) throw new Error('No pending approval for this tool call');
+		pending.resolve(approved);
 	}
 
 	async terminalResize(): Promise<void> {
@@ -699,13 +743,23 @@ class MockAgentBackend implements AgentBackend {
 			},
 			requestApproval: (call, title, warnings, payload) => {
 				return new Promise<boolean>((resolve, reject) => {
+					const request: ApprovalRequest = {
+						toolCallId: call.id,
+						tool: call.name,
+						title,
+						payload,
+						warnings
+					};
 					run.rejectApproval = () => {
 						this.pendingApprovals.delete(call.id);
 						reject(CANCELLED);
 					};
-					this.pendingApprovals.set(call.id, (ok) => {
-						run.rejectApproval = undefined;
-						resolve(ok);
+					this.pendingApprovals.set(call.id, {
+						request,
+						resolve: (ok) => {
+							run.rejectApproval = undefined;
+							resolve(ok);
+						}
 					});
 					const pending: ToolCallView = {
 						...call,
@@ -713,17 +767,7 @@ class MockAgentBackend implements AgentBackend {
 						warnings
 					};
 					this.emit(identity, { kind: 'tool_call', threadId, toolCall: pending });
-					this.emit(identity, {
-						kind: 'approval_needed',
-						threadId,
-						approval: {
-							toolCallId: call.id,
-							tool: call.name,
-							title,
-							payload,
-							warnings
-						}
-					});
+					this.emit(identity, { kind: 'approval_needed', threadId, approval: request });
 				});
 			},
 			emitTerminal: (toolCallId, text) => {
@@ -803,12 +847,12 @@ class MockAgentBackend implements AgentBackend {
 		}
 
 		async threadMessages(threadId: string): Promise<ThreadSnapshot> {
-			return this.snapshot(this.requireThread(threadId));
+			return this.snapshotView(this.requireThread(threadId));
 		}
 
 		async threadState(threadId: string): Promise<ThreadState> {
 			const thread = this.requireThread(threadId);
-			return { ...this.snapshot(thread), running: thread.running };
+			return { ...this.snapshotView(thread), running: thread.running };
 		}
 
 		async threadEditMessage(

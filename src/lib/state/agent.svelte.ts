@@ -18,6 +18,7 @@ import type {
 	PathMessage,
 	StoredMessage,
 	ThreadSnapshot,
+	ToolCallStatus,
 	ToolCallView,
 	Usage
 } from '$lib/ipc/agent';
@@ -285,6 +286,22 @@ export function getThreadRuntime(threadId: string): ThreadRuntime | null {
 	return runtimes[threadId] ?? null;
 }
 
+/**
+ * Monotonic status order for snapshot merging: a snapshot is a point-in-time
+ * DB read, so a live view that has already moved further (e.g. an approval
+ * resolved to running/success between the read and application) must not be
+ * downgraded back. Terminal states all share rank 3.
+ */
+const STATUS_RANK: Record<ToolCallStatus, number> = {
+	streaming: 0,
+	pending_approval: 1,
+	running: 2,
+	success: 3,
+	failed: 3,
+	rejected: 3,
+	cancelled: 3
+};
+
 /** Seed from a backend snapshot (panel open / thread switch). */
 export function applySnapshot(threadId: string, snapshot: ThreadSnapshot, running: boolean) {
 	const rt = ensureThreadRuntime(threadId);
@@ -294,10 +311,16 @@ export function applySnapshot(threadId: string, snapshot: ThreadSnapshot, runnin
 	rt.error = null;
 	rt.streamingMessageId = null;
 	// Rebuild live tool call views from persisted content.
+	const prev = rt.toolCalls;
 	rt.toolCalls = {};
 	for (const msg of snapshot.messages) {
 		for (const block of msg.content) {
 			if (block.type === 'tool_call') {
+				const live = prev[block.id];
+				if (live && STATUS_RANK[live.status] > STATUS_RANK[block.status]) {
+					rt.toolCalls[block.id] = live;
+					continue;
+				}
 				rt.toolCalls[block.id] = {
 					id: block.id,
 					messageId: msg.id,
@@ -305,7 +328,7 @@ export function applySnapshot(threadId: string, snapshot: ThreadSnapshot, runnin
 					argsJson: JSON.stringify(block.args ?? {}, null, 2),
 					status: block.status,
 					result: block.result,
-					warnings: undefined
+					warnings: block.warnings
 				};
 			}
 		}

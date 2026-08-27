@@ -127,15 +127,15 @@ pub async fn agent_approve(
     tool_call_id: String,
     approved: bool,
 ) -> Result<(), String> {
-    let sender = state
+    let pending = state
         .agent
         .approvals
         .lock()
         .await
         .remove(&tool_call_id);
-    match sender {
-        Some(tx) => {
-            let _ = tx.send(approved);
+    match pending {
+        Some(p) => {
+            let _ = p.tx.send(approved);
             Ok(())
         }
         None => Err("No pending approval for this tool call".to_string()),
@@ -248,7 +248,10 @@ pub async fn agent_thread_messages(
     state: State<'_, AppState>,
     thread_id: String,
 ) -> Result<ThreadSnapshot, String> {
-    store(&state).await?.snapshot(&thread_id).await
+    let mut snapshot = store(&state).await?.snapshot(&thread_id).await?;
+    let running = state.agent.runs.lock().await.contains_key(&thread_id);
+    state.agent.enrich_snapshot(&mut snapshot, running).await;
+    Ok(snapshot)
 }
 
 /// Snapshot plus whether a run is active (panel reopen path, 01 §5).
@@ -265,8 +268,9 @@ pub async fn agent_get_thread_state(
     state: State<'_, AppState>,
     thread_id: String,
 ) -> Result<ThreadState, String> {
-    let snapshot = store(&state).await?.snapshot(&thread_id).await?;
+    let mut snapshot = store(&state).await?.snapshot(&thread_id).await?;
     let running = state.agent.runs.lock().await.contains_key(&thread_id);
+    state.agent.enrich_snapshot(&mut snapshot, running).await;
     Ok(ThreadState { snapshot, running })
 }
 
@@ -318,10 +322,13 @@ pub async fn agent_set_active_branch(
     at_message_id: String,
     direction: String,
 ) -> Result<ThreadSnapshot, String> {
-    store(&state)
+    let mut snapshot = store(&state)
         .await?
         .switch_branch(&thread_id, &at_message_id, &direction)
-        .await
+        .await?;
+    let running = state.agent.runs.lock().await.contains_key(&thread_id);
+    state.agent.enrich_snapshot(&mut snapshot, running).await;
+    Ok(snapshot)
 }
 
 // ---------------------------------------------------------------------------

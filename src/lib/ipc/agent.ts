@@ -47,6 +47,8 @@ export type ContentBlock =
 			args: unknown;
 			status: ToolCallStatus;
 			result?: ToolResult;
+			/** Approval warnings; only present on snapshots enriched by the backend for live pending approvals. */
+			warnings?: string[];
 	  };
 
 export interface StoredMessage {

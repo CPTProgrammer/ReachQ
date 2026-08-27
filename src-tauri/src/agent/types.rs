@@ -91,6 +91,10 @@ pub enum ContentBlock {
         status: ToolCallStatus,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         result: Option<ToolResult>,
+        /// Approval warnings, filled only by snapshot enrichment for live
+        /// pending approvals (AgentState::enrich_snapshot); never persisted.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        warnings: Option<Vec<String>>,
     },
 }
 

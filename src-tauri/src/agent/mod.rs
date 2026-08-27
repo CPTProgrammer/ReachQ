@@ -45,6 +45,13 @@ impl AgentDeps {
     }
 }
 
+/// A pending tool approval: the full request (kept so snapshots can
+/// re-enrich the pending_approval state) plus the decision channel.
+pub struct PendingApproval {
+    pub request: events::ApprovalRequest,
+    pub tx: tokio::sync::oneshot::Sender<bool>,
+}
+
 /// A live agent run: cancellation signal plus a completion notification
 /// (agent_send_now waits on `done` before starting the successor run).
 pub struct RunHandle {
@@ -63,8 +70,8 @@ pub struct AgentState {
     pub runs: Mutex<HashMap<String, Arc<RunHandle>>>,
     /// thread_id -> queued message (at most 1; injected at round boundary).
     pub queued: Mutex<HashMap<String, String>>,
-    /// tool_call_id -> approval decision channel.
-    pub approvals: Mutex<HashMap<String, tokio::sync::oneshot::Sender<bool>>>,
+    /// tool_call_id -> pending approval (request + decision channel).
+    pub approvals: Mutex<HashMap<String, PendingApproval>>,
     pub read_cache: ReadCache,
     /// thread_id -> set of paths read (read-before-write gate).
     pub read_paths: Mutex<HashMap<String, ReadPaths>>,
@@ -129,6 +136,84 @@ impl AgentState {
             guard.insert(p);
         }
         Ok(())
+    }
+
+    /// Enrich a thread snapshot for the panel-reopen / thread-switch path:
+    ///
+    /// 1. Reconcile: when no run is active, blocks left in `streaming` /
+    ///    `pending_approval` belong to a dead run (app restart, crash) —
+    ///    downgrade them to `cancelled` and persist the fix. API replay is
+    ///    safe without a result (`to_api_messages` synthesizes one).
+    /// 2. Enrich: blocks whose tool call sits in `approvals` get
+    ///    `pending_approval` + warnings on the returned copy (never
+    ///    persisted; the DB keeps its round-end write as the only write
+    ///    path).
+    pub async fn enrich_snapshot(
+        &self,
+        snapshot: &mut types::ThreadSnapshot,
+        running: bool,
+    ) {
+        use types::{ContentBlock, ToolCallStatus};
+
+        // Pass 1: reconcile stale blocks of dead runs, then persist.
+        if !running {
+            let mut dirty: Vec<types::StoredMessage> = Vec::new();
+            for msg in &mut snapshot.messages {
+                let mut changed = false;
+                for block in &mut msg.message.content {
+                    if let ContentBlock::ToolCall { status, .. } = block {
+                        if matches!(
+                            status,
+                            ToolCallStatus::Streaming | ToolCallStatus::PendingApproval
+                        ) {
+                            *status = ToolCallStatus::Cancelled;
+                            changed = true;
+                        }
+                    }
+                }
+                if changed {
+                    dirty.push(msg.message.clone());
+                }
+            }
+            if !dirty.is_empty() {
+                if let Ok(store) = self.thread_store().await {
+                    for msg in dirty {
+                        let _ = store
+                            .update_message(
+                                &msg.id,
+                                &msg.content,
+                                msg.usage.as_ref(),
+                                msg.metadata.as_ref(),
+                            )
+                            .await;
+                    }
+                }
+            }
+        }
+
+        // Pass 2: overlay live pending approvals onto the returned copy.
+        let approvals = self.approvals.lock().await;
+        if approvals.is_empty() {
+            return;
+        }
+        for msg in &mut snapshot.messages {
+            for block in &mut msg.message.content {
+                if let ContentBlock::ToolCall {
+                    id,
+                    status,
+                    warnings,
+                    ..
+                } = block
+                {
+                    if let Some(pending) = approvals.get(id.as_str()) {
+                        *status = ToolCallStatus::PendingApproval;
+                        if !pending.request.warnings.is_empty() {
+                            *warnings = Some(pending.request.warnings.clone());
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Tool configs: vault-backed with an in-memory cache (design 04 §4.3:
