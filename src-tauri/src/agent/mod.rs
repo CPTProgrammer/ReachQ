@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use tokio::sync::{Mutex, OnceCell, RwLock};
+use tokio::sync::{Mutex, Notify, OnceCell, RwLock};
 use tokio_util::sync::CancellationToken;
 
 use remote_fs::{PendingWrites, ReadCache, ReadPaths};
@@ -45,13 +45,22 @@ impl AgentDeps {
     }
 }
 
+/// A live agent run: cancellation signal plus a completion notification
+/// (agent_send_now waits on `done` before starting the successor run).
+pub struct RunHandle {
+    /// Observed by the SSE stream, approvals, and tools.
+    pub token: CancellationToken,
+    /// Fired once the run has fully exited and been unregistered.
+    pub done: Arc<Notify>,
+}
+
 /// Shared agent state, owned by AppState.
 pub struct AgentState {
     app_dir: PathBuf,
     /// agent.db, opened lazily (AppState::new is sync).
     pub store: OnceCell<Arc<ThreadStore>>,
-    /// thread_id -> running loop's cancel token (one active run per thread).
-    pub runs: Mutex<HashMap<String, CancellationToken>>,
+    /// thread_id -> active run handle (one active run per thread).
+    pub runs: Mutex<HashMap<String, Arc<RunHandle>>>,
     /// thread_id -> queued message (at most 1; injected at round boundary).
     pub queued: Mutex<HashMap<String, String>>,
     /// tool_call_id -> approval decision channel.

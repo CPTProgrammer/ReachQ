@@ -213,6 +213,17 @@ export function agentDequeue(threadId: string): Promise<boolean> {
 	return invoke('agent_dequeue', { threadId });
 }
 
+/** Force-send the queued message: backend atomically supersedes the queue,
+ * cancels the active run, waits for it to exit, then starts a fresh run. */
+export function agentSendNow(
+	identity: string,
+	threadId: string,
+	text: string,
+	opts: AgentSendOpts
+): Promise<void> {
+	return invoke('agent_send_now', { identity, threadId, text, opts });
+}
+
 export function agentApprove(toolCallId: string, approved: boolean): Promise<void> {
 	return invoke('agent_approve', { toolCallId, approved });
 }

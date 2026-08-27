@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Notify};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -23,6 +23,7 @@ use crate::agent::types::{
     ContentBlock, MessageMetadata, ModelSelection, StoredMessage, ToolCallStatus, ToolResult,
 };
 use crate::agent::AgentDeps;
+use crate::agent::RunHandle;
 
 /// Options carried by agent_send_message (request-scoped, design 05 §5).
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -321,10 +322,13 @@ pub async fn run_agent(
     // Best-effort OS detection, once per identity.
     let detected_os = detect_os(&app, &deps, &identity, opts.connection_hint.as_deref()).await;
 
-    let cancel = CancellationToken::new();
+    let handle = Arc::new(RunHandle {
+        token: CancellationToken::new(),
+        done: Arc::new(Notify::new()),
+    });
     {
         let mut runs = agent.runs.lock().await;
-        runs.insert(thread_id.clone(), cancel.clone());
+        runs.insert(thread_id.clone(), handle.clone());
     }
     let result = run_loop(
         &app,
@@ -335,15 +339,14 @@ pub async fn run_agent(
         &opts,
         &resolved,
         detected_os.as_deref(),
-        &cancel,
+        &handle.token,
     )
     .await;
 
-    {
-        let mut runs = agent.runs.lock().await;
-        runs.remove(&thread_id);
-    }
-
+    // Emit the terminal event before unregistering/waking agent_send_now
+    // waiters, so the frontend settles running=false before the successor
+    // run starts.
+    let failed = result.is_err();
     match result {
         Ok(()) => {}
         Err(LoopExit::Cancelled) => {
@@ -358,6 +361,23 @@ pub async fn run_agent(
             });
         }
     }
+
+    // Abnormal exit: the queued message dies with the run. Without this it
+    // would linger in the map and be injected into the *next* run as a
+    // ghost message (the normal Ok exit implies an empty queue).
+    if failed {
+        agent.queued.lock().await.remove(&thread_id);
+    }
+
+    {
+        let mut runs = agent.runs.lock().await;
+        // Identity check: an agent_send_now successor may already occupy the
+        // slot; a dying run must never unregister it.
+        if matches!(runs.get(&thread_id), Some(h) if Arc::ptr_eq(h, &handle)) {
+            runs.remove(&thread_id);
+        }
+    }
+    handle.done.notify_waiters();
 
     // Title generation after the first exchange (design 01 §2.1).
     maybe_generate_title(&app, &deps, &store, &identity, &thread_id).await;

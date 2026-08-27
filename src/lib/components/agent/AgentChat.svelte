@@ -8,10 +8,9 @@
 <script lang="ts">
 	import type { ContentBlock, MessageMetadata, PathMessage, ToolCallView } from '$lib/ipc/agent';
 	import {
-		agentCancelRun,
 		agentDequeueMessage,
 		agentEditAndFork,
-		agentSendMessage,
+		agentSendNow,
 		agentSwitchBranch,
 		getThreadRuntime,
 		type ThreadRuntime
@@ -197,9 +196,8 @@
 		if (!rt?.queued || !threadId) return;
 		const text = rt.queued.text;
 		const opts = resolveSendOpts(identity, threadId);
-		rt.queued = null;
-		await agentCancelRun(threadId);
-		if (opts) await agentSendMessage(identity, threadId, text, opts);
+		// Atomic backend-side: supersede queue + cancel + wait + fresh run.
+		if (opts) await agentSendNow(identity, threadId, text, opts);
 	}
 
 	// ── Markdown code-block copy (event delegation) ───────────────────────────

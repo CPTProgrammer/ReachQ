@@ -156,6 +156,7 @@ pub fn run() {
             monitoring_get_stats,
             // AI agent commands
             agent_send_message,
+            agent_send_now,
             agent_cancel,
             agent_dequeue,
             agent_approve,
@@ -388,6 +389,7 @@ pub fn run() {
             monitoring_get_stats,
             // AI agent commands
             agent_send_message,
+            agent_send_now,
             agent_cancel,
             agent_dequeue,
             agent_approve,

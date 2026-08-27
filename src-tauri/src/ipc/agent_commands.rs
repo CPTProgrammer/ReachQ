@@ -2,6 +2,7 @@
 //! lib.rs (desktop + mobile).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tauri::{AppHandle, State};
 
@@ -56,9 +57,9 @@ pub async fn agent_send_message(
 /// observe the token).
 #[tauri::command]
 pub async fn agent_cancel(state: State<'_, AppState>, thread_id: String) -> Result<(), String> {
-    let token = state.agent.runs.lock().await.get(&thread_id).cloned();
-    if let Some(token) = token {
-        token.cancel();
+    let handle = state.agent.runs.lock().await.get(&thread_id).cloned();
+    if let Some(handle) = handle {
+        handle.token.cancel();
     }
     Ok(())
 }
@@ -68,6 +69,55 @@ pub async fn agent_cancel(state: State<'_, AppState>, thread_id: String) -> Resu
 #[tauri::command]
 pub async fn agent_dequeue(state: State<'_, AppState>, thread_id: String) -> Result<bool, String> {
     Ok(state.agent.queued.lock().await.remove(&thread_id).is_some())
+}
+
+/// Upper bound for waiting on a run to observe cancellation. Only tools
+/// that ignore the cancel token (SFTP file ops) can delay the exit.
+const SEND_NOW_STOP_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Force-send the queued message (design 01 §3.5 "send now"): supersede the
+/// queue, cancel the active run, wait for it to fully exit, then start a
+/// fresh run — atomically, so no racing message can slip into the dying
+/// run's queue slot.
+#[tauri::command]
+pub async fn agent_send_now(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    identity: String,
+    thread_id: String,
+    text: String,
+    opts: SendOpts,
+) -> Result<(), String> {
+    // Supersede the queue. If the dying run already consumed the message
+    // (injected at a round boundary), start the successor with None so it
+    // answers the existing message instead of duplicating it.
+    let dequeued = state.agent.queued.lock().await.remove(&thread_id);
+    let mut initial = dequeued.map(|_| text);
+
+    let handle = state.agent.runs.lock().await.get(&thread_id).cloned();
+    if let Some(handle) = handle {
+        handle.token.cancel();
+        if tokio::time::timeout(SEND_NOW_STOP_TIMEOUT, handle.done.notified())
+            .await
+            .is_err()
+        {
+            // The run is still alive: roll back into the queue so the
+            // message is consumed at its next round boundary, not lost.
+            if let Some(t) = initial.take() {
+                state.agent.queued.lock().await.insert(thread_id, t);
+            }
+            return Err(
+                "The current run did not stop in time. Your message was kept in the queue."
+                    .to_string(),
+            );
+        }
+    }
+
+    let deps = AgentDeps::from_state(state.inner());
+    tauri::async_runtime::spawn(async move {
+        agent_loop::run_agent(app, deps, identity, thread_id, initial, opts).await;
+    });
+    Ok(())
 }
 
 /// Resolve a pending approval.
@@ -186,9 +236,9 @@ pub async fn agent_thread_delete(
     thread_id: String,
 ) -> Result<(), String> {
     // Cancel any active run first.
-    let token = state.agent.runs.lock().await.get(&thread_id).cloned();
-    if let Some(token) = token {
-        token.cancel();
+    let handle = state.agent.runs.lock().await.get(&thread_id).cloned();
+    if let Some(handle) = handle {
+        handle.token.cancel();
     }
     store(&state).await?.delete_thread(&thread_id).await
 }

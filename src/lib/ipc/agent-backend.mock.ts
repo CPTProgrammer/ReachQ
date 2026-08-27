@@ -488,6 +488,40 @@ class MockAgentBackend implements AgentBackend {
 		return true;
 	}
 
+	async sendNow(
+		identity: string,
+		threadId: string,
+		text: string,
+		opts: AgentSendOpts
+	): Promise<void> {
+		this.lastIdentity = identity;
+		const thread = this.requireThread(threadId);
+		const wasQueued = thread.queued != null;
+		thread.queued = null;
+		if (thread.run) {
+			thread.run.cancelled = true;
+			thread.run.rejectApproval?.();
+			// Wait for the dying run to fully exit (mirrors agent_send_now).
+			const deadline = Date.now() + 10_000;
+			while (thread.running && Date.now() < deadline) {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+			}
+			if (thread.running) {
+				if (wasQueued) thread.queued = text; // rollback
+				throw new Error(
+					'The current run did not stop in time. Your message was kept in the queue.'
+				);
+			}
+		}
+		// Fresh run (same as sendMessage's 'started' branch).
+		thread.running = true;
+		thread.run = { cancelled: false };
+		thread.summary.model = { model: opts.model, thinking: opts.thinking, effort: opts.effort };
+		const msg = this.appendUserMessage(thread, text);
+		this.emit(identity, { kind: 'user_message', threadId, message: msg });
+		void this.executeRun(identity, thread, thread.run, opts);
+	}
+
 	async approve(toolCallId: string, approved: boolean): Promise<void> {
 		const resolve = this.pendingApprovals.get(toolCallId);
 		this.pendingApprovals.delete(toolCallId);
@@ -534,6 +568,9 @@ class MockAgentBackend implements AgentBackend {
 			}
 			this.maybeTitle(identity, thread);
 		} catch (e) {
+			// Abnormal exit: the queued message dies with the run (mirrors the
+			// real backend's cleanup; no ghost injection into the next run).
+			thread.queued = null;
 			if (e === CANCELLED) {
 				this.emit(identity, { kind: 'cancelled', threadId });
 			} else {

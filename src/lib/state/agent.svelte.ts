@@ -8,6 +8,7 @@ import {
 	tauriBackend,
 	type AgentBackend
 } from '$lib/ipc/agent-backend';
+import { appendDraft } from '$lib/components/agent/composer-draft.svelte';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { applyThreadTitle } from './agent-threads.svelte';
@@ -444,6 +445,12 @@ function handleEvent(e: AgentEvent): void {
 			rt.running = false;
 			rt.error = e.message;
 			rt.streamingMessageId = null;
+			// The backend drops the queue on abnormal exit; return the text to
+			// the composer so the user doesn't lose it.
+			if (rt.queued) {
+				appendDraft(e.threadId, rt.queued.text);
+				rt.queued = null;
+			}
 			break;
 		}
 		case 'cancelled': {
@@ -516,9 +523,35 @@ export async function agentSendMessage(
 
 export async function agentCancelRun(threadId: string): Promise<void> {
 	const rt = ensureThreadRuntime(threadId);
+	// A queued message goes back to the composer (like the queued bar's edit
+	// action) instead of being discarded.
+	if (rt.queued) appendDraft(threadId, rt.queued.text);
 	rt.queued = null;
+	await backend.dequeue(threadId).catch(() => {});
 	await backend.cancel(threadId);
 	rt.running = false;
+}
+
+/** Force-send the queued message (design 01 §3.5 "send now"). The backend
+ * atomically supersedes the queue, cancels the run, waits for it to exit,
+ * then starts a fresh run. On timeout the message is re-queued backend-side;
+ * restore the bar so the UI matches. */
+export async function agentSendNow(
+	identity: string,
+	threadId: string,
+	text: string,
+	opts: AgentSendOpts
+): Promise<void> {
+	const rt = ensureThreadRuntime(threadId);
+	rt.error = null;
+	rt.queued = null;
+	try {
+		await backend.sendNow(identity, threadId, text, opts);
+		rt.running = true;
+	} catch (e) {
+		rt.queued = { text };
+		rt.error = String(e);
+	}
 }
 
 /** Discard the queued message (backend queue + UI bar). */

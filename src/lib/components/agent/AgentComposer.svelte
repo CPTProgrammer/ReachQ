@@ -136,6 +136,7 @@
 
 	function onActionClick(): void {
 		if (mode === 'stop') {
+			// A queued message goes back to the composer, not into the void.
 			if (threadId) void agentCancelRun(threadId);
 		} else {
 			void send();

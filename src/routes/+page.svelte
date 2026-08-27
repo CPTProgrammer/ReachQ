@@ -108,6 +108,7 @@
 		}
 		for (const threadId of threadIds) {
 			if (getThreadRuntime(threadId)?.running) {
+				// Preserve any queued message by returning it to the composer draft.
 				agentCancelRun(threadId).catch(() => {});
 			}
 		}

@@ -8,6 +8,7 @@ import {
 	agentCancel as ipcCancel,
 	agentDequeue as ipcDequeue,
 	agentSend as ipcSend,
+	agentSendNow as ipcSendNow,
 	agentTerminalResize as ipcResize,
 	agentTerminalStop as ipcStop,
 	agentThreads,
@@ -37,6 +38,12 @@ export interface AgentBackend {
 			text: string,
 			opts: AgentSendOpts
 		): Promise<'started' | 'queued' | 'queued_full'>;
+		sendNow(
+			identity: string,
+			threadId: string,
+			text: string,
+			opts: AgentSendOpts
+		): Promise<void>;
 		cancel(threadId: string): Promise<void>;
 		dequeue(threadId: string): Promise<boolean>;
 	approve(toolCallId: string, approved: boolean): Promise<void>;
@@ -95,6 +102,7 @@ export interface AgentBackend {
 
 export const tauriBackend: AgentBackend = {
 	sendMessage: ipcSend,
+	sendNow: ipcSendNow,
 	cancel: ipcCancel,
 	dequeue: ipcDequeue,
 	approve: ipcApprove,
