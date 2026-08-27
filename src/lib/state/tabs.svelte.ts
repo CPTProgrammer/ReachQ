@@ -14,6 +14,9 @@ export interface Tab {
 	detectedOs?: string | null;
 	/** SSH connect params for reconnection */
 	sshConnectParams?: SshConnectParams;
+	/** Close requested but the agent holds a lease on the connection;
+	 * the tab stays until the lease releases (design 01 §1.4). */
+	pendingClose?: boolean;
 }
 
 let tabs = $state<Tab[]>([]);
@@ -63,6 +66,34 @@ export function closeTab(id: string): void {
 		const newIndex = Math.min(index, tabs.length - 1);
 		tabs[newIndex].active = true;
 	}
+}
+
+export function markTabPendingClose(id: string): void {
+	const tab = tabs.find((t) => t.id === id);
+	if (tab) {
+		tab.pendingClose = true;
+	}
+}
+
+/**
+ * Orchestrator hook for SSH-aware tab closing (pending-close flow, design
+ * 01 §1.4). Registered by +page.svelte; when unset, SSH tabs close directly.
+ */
+let tabCloseHandler: ((tab: Tab) => void) | null = null;
+
+export function registerTabCloseHandler(handler: ((tab: Tab) => void) | null): void {
+	tabCloseHandler = handler;
+}
+
+/** Close entry point for UI (tab bar, shortcuts). SSH tabs defer to the registered handler. */
+export function requestCloseTab(id: string): void {
+	const tab = tabs.find((t) => t.id === id);
+	if (!tab) return;
+	if (tab.type === 'ssh' && tab.connectionId && tabCloseHandler) {
+		tabCloseHandler(tab);
+		return;
+	}
+	closeTab(id);
 }
 
 export function activateTab(id: string): void {

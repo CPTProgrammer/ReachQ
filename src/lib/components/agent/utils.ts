@@ -1,0 +1,116 @@
+//! Shared helpers for the agent panel components (design 01).
+
+import {
+	findModel,
+	getIdentitySelection,
+	resolveSelection
+} from '$lib/state/agent-settings.svelte';
+import { getThreads } from '$lib/state/agent-threads.svelte';
+import type { AgentSendOpts, PathMessage, ToolCallView } from '$lib/ipc/agent';
+
+export function safeParse(json: string): unknown {
+	try {
+		return JSON.parse(json);
+	} catch {
+		return undefined;
+	}
+}
+
+/** Pretty-print a JSON string; returns the input unchanged when invalid
+ *  (e.g. still streaming). */
+export function prettyJson(json: string): string {
+	try {
+		return JSON.stringify(JSON.parse(json), null, 2);
+	} catch {
+		return json;
+	}
+}
+
+/** First non-empty string arg among the given keys of a tool call's args. */
+export function argString(args: unknown, keys: string[]): string {
+	if (!args || typeof args !== 'object') return '';
+	const o = args as Record<string, unknown>;
+	for (const k of keys) {
+		const v = o[k];
+		if (typeof v === 'string' && v) return v;
+	}
+	return '';
+}
+
+/** Joined text of a message's text blocks (user messages are text-only). */
+export function messageText(msg: PathMessage): string {
+	return msg.content
+		.filter((b) => b.type === 'text')
+		.map((b) => (b as { type: 'text'; text: string }).text)
+		.join('\n');
+}
+
+/** `131072` -> `128K`, `1048576` -> `1M`. */
+export function formatContextLength(n: number): string {
+	if (n >= 1 << 20) return `${Math.round(n / (1 << 20))}M`;
+	if (n >= 1 << 10) return `${Math.round(n / (1 << 10))}K`;
+	return String(n);
+}
+
+export function formatTokens(n: number): string {
+	return n.toLocaleString('en-US');
+}
+
+export function formatDuration(ms: number): string {
+	if (ms < 1000) return `${Math.round(ms)}ms`;
+	return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/**
+ * Extract the unified diff for write_file / edit_file cards. The backend
+ * delivers it via `result.uiPayload` (string or object with a diff field);
+ * the exact envelope is a backend contract — we accept the common shapes.
+ */
+export function extractDiff(call: ToolCallView): string | null {
+	const p = call.result?.uiPayload;
+	if (typeof p === 'string' && p.includes('@@')) return p;
+	if (p && typeof p === 'object') {
+		const o = p as Record<string, unknown>;
+		for (const k of ['diff', 'unifiedDiff', 'unified_diff']) {
+			if (typeof o[k] === 'string') return o[k] as string;
+		}
+	}
+	return null;
+}
+
+/**
+ * Effective send options for a thread (design 01 §3.6 / 05 §5):
+ * thread snapshot -> identity last-used -> global default, with the
+ * thinking flag coerced against model capabilities.
+ */
+export function resolveSendOpts(identity: string, threadId: string | null): AgentSendOpts | null {
+	const summary = threadId ? getThreads().find((t) => t.id === threadId) : undefined;
+	const sel =
+		resolveSelection(identity, summary?.model ?? null) ??
+		getIdentitySelection(identity) ??
+		(summary?.model
+			? { model: summary.model.model, thinking: summary.model.thinking, effort: summary.model.effort ?? null }
+			: null);
+	if (!sel) return null;
+	const meta = findModel(sel.model)?.model;
+	const thinking = meta
+		? meta.thinkingMandatory || (meta.supportsThinking && sel.thinking)
+		: sel.thinking;
+	return { model: sel.model, thinking, effort: thinking ? (sel.effort ?? undefined) : undefined };
+}
+
+export function decodeBase64(b64: string): Uint8Array {
+	const bin = atob(b64);
+	const bytes = new Uint8Array(bin.length);
+	for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+	return bytes;
+}
+
+export async function copyText(text: string): Promise<boolean> {
+	try {
+		await navigator.clipboard.writeText(text);
+		return true;
+	} catch {
+		return false;
+	}
+}

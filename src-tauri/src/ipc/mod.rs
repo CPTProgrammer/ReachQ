@@ -1,4 +1,4 @@
-pub mod ai_commands;
+pub mod agent_commands;
 pub mod plugin_commands;
 pub mod marketplace_commands;
 pub mod credential_commands;

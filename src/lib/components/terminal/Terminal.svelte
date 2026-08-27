@@ -9,6 +9,7 @@
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { ptyWrite, ptyResize } from '$lib/ipc/pty';
 	import { sshSend, sshResize, sshConnect, sshMarkReady, type SshConnectParams } from '$lib/ipc/ssh';
+	import { registerConnectionIdentity } from '$lib/state/agent.svelte';
 	import { registerBufferReader, unregisterBufferReader } from '$lib/state/terminal-buffer.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { getTerminalTheme, type ITheme } from '$lib/data/terminal-themes';
@@ -386,23 +387,24 @@
 		try {
 			term.write(`\r\n\x1b[33m[${t('terminal.reconnecting')}]\x1b[0m\r\n`);
 
-			await sshConnect({
+			const info = await sshConnect({
 				...sshConnectParams,
 				id: newId,
 				cols: term.cols,
 				rows: term.rows,
 			});
+			registerConnectionIdentity(info.id, info.identity);
 
 			// Tear down old event listeners
 			unlistenData?.();
 			unlistenExit?.();
 
 			// Switch to new connection
-			currentConnectionId = newId;
+			currentConnectionId = info.id;
 			await setupEventListeners(term);
 
 			term.write(`\r\n\x1b[32m[${t('terminal.reconnected')}]\x1b[0m\r\n`);
-			onReconnected?.(newId);
+			onReconnected?.(info.id);
 		} catch (err) {
 			term.write(`\r\n\x1b[31m[${t('terminal.reconnect_failed')}: ${err}]\x1b[0m\r\n`);
 			const pendingHK = getPendingHostKey();

@@ -39,10 +39,12 @@ export interface ConnectionInfo {
   host: string;
   port: number;
   username: string;
+  /** Normalized agent identity: "user@host:port[#via=chainhash]" */
+  identity: string;
 }
 
-export async function sshConnect(params: SshConnectParams): Promise<string> {
-  return invoke<string>('ssh_connect', {
+export async function sshConnect(params: SshConnectParams): Promise<ConnectionInfo> {
+  return invoke<ConnectionInfo>('ssh_connect', {
     id: params.id,
     host: params.host,
     port: params.port,
@@ -67,8 +69,8 @@ export async function sshResize(connectionId: string, cols: number, rows: number
   return invoke('ssh_resize', { connectionId, cols, rows });
 }
 
-export async function sshDisconnect(connectionId: string): Promise<void> {
-  return invoke('ssh_disconnect', { connectionId });
+export async function sshDisconnect(connectionId: string, force?: boolean): Promise<boolean> {
+  return invoke<boolean>('ssh_disconnect', { connectionId, force: force ?? null });
 }
 
 export async function sshListConnections(): Promise<ConnectionInfo[]> {

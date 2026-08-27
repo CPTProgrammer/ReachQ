@@ -12,7 +12,6 @@
 	import { initHostKeyListener, stopHostKeyListener } from '$lib/state/host-key.svelte';
 	import { getUpdaterState } from '$lib/state/updater.svelte';
 	import { getActiveTab } from '$lib/state/tabs.svelte';
-	import AIPanel from '$lib/components/ai/AIPanel.svelte';
 
 	const updater = getUpdaterState();
 
@@ -40,7 +39,6 @@
 		<main class="main-content">
 			{@render children()}
 		</main>
-		<AIPanel connectionId={activeConnectionId} activeTabId={activeTab?.id} activeTabType={activeTab?.type} />
 	</div>
 
 	<StatusBar />

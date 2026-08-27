@@ -1,74 +1,198 @@
 <script lang="ts">
-	import Toggle from '$lib/components/shared/Toggle.svelte';
+	import { tick } from 'svelte';
+	import Button from '$lib/components/shared/Button.svelte';
+	import Dropdown from '$lib/components/shared/Dropdown.svelte';
 	import Input from '$lib/components/shared/Input.svelte';
+	import Toggle from '$lib/components/shared/Toggle.svelte';
+	import { getAgentBackend } from '$lib/state/agent.svelte';
 	import {
-		getAISettings,
-		updateAISetting,
-		getModels,
-		getModelsLoading,
-		getModelsError,
-		fetchModels,
-		loadSecureAISettings
-	} from '$lib/state/ai.svelte';
+		findModel,
+		getInstanceModels,
+		getProviderInstances,
+		getTitleModel,
+		getToolSettings,
+		loadModels,
+		loadProviders,
+		loadTitleModel,
+		loadToolSettings,
+		setTitleModel,
+		setToolConfig
+	} from '$lib/state/agent-settings.svelte';
+	import {
+		archiveThread,
+		deleteThread,
+		getAllThreads,
+		loadAllThreads,
+		relativeTime,
+		renameThread,
+		unarchiveThread
+	} from '$lib/state/agent-threads.svelte';
 	import { isLocked } from '$lib/state/vault.svelte';
 	import { t } from '$lib/state/i18n.svelte';
+	import type { ProviderInstance, ThreadSummary, ToolSettingsEntry } from '$lib/ipc/agent';
 
-	const aiSettings = getAISettings();
+	type ToolOption = ToolSettingsEntry['options'][number];
 
-	let searchQuery = $state('');
-	let savingApiKey = $state(false);
-	let savingBaseUrl = $state(false);
-	let apiKeyError = $state<string | null>(null);
+	// ---------------------------------------------------------------------------
+	// View switch: main settings <-> "all threads" sub-view (design 04 §4.5)
+	// ---------------------------------------------------------------------------
 
-	// Load secure settings when vault is unlocked
+	let view = $state<'main' | 'threads'>('main');
+
+	// ---------------------------------------------------------------------------
+	// Data loading (provider config is vault-backed; reload on unlock)
+	// ---------------------------------------------------------------------------
+
+	let presets = $state<[string, string][]>([]);
+
 	$effect(() => {
 		if (!isLocked()) {
-			loadSecureAISettings();
+			void refreshProviders().catch(() => {});
+			void loadModels().catch(() => {});
+			void loadTitleModel().catch(() => {});
 		}
 	});
 
-	const filteredModels = $derived.by(() => {
-		const models = getModels();
-		if (!searchQuery.trim()) return models;
-		const q = searchQuery.toLowerCase();
-		return models.filter(
-			(m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
-		);
+	$effect(() => {
+		void loadToolSettings().catch(() => {});
 	});
 
-	async function onEnabledChange(checked: boolean) {
-		await updateAISetting('enabled', checked);
+	$effect(() => {
+		void getAgentBackend()
+			.providerPresets()
+			.then((p) => (presets = p))
+			.catch(() => {});
+	});
+
+	function errText(e: unknown): string {
+		return e instanceof Error ? e.message : String(e);
 	}
 
-	async function onApiKeyInput(e: Event & { currentTarget: HTMLInputElement }) {
-		const value = e.currentTarget.value;
-		savingApiKey = true;
-		apiKeyError = null;
-		try {
-			await updateAISetting('apiKey', value);
-		} catch (err) {
-			apiKeyError = err instanceof Error ? err.message : String(err);
-		} finally {
-			savingApiKey = false;
+	// ---------------------------------------------------------------------------
+	// Provider instances (design 04 §4.1)
+	// ---------------------------------------------------------------------------
+
+	let nameDrafts = $state<Record<string, string>>({});
+	let keyDrafts = $state<Record<string, string>>({});
+	let urlDrafts = $state<Record<string, string>>({});
+	let validating = $state<Record<string, boolean>>({});
+	let validateMsg = $state<Record<string, { ok: boolean; text: string } | undefined>>({});
+	let confirmDeleteId = $state<string | null>(null);
+
+	async function refreshProviders(): Promise<void> {
+		await loadProviders();
+		const list = getProviderInstances();
+		const ids = new Set(list.map((i) => i.id));
+		for (const inst of list) {
+			if (!(inst.id in nameDrafts)) nameDrafts[inst.id] = inst.name;
+			if (!(inst.id in urlDrafts)) urlDrafts[inst.id] = inst.baseUrl ?? '';
+		}
+		for (const id of Object.keys(nameDrafts)) {
+			if (!ids.has(id)) {
+				delete nameDrafts[id];
+				delete urlDrafts[id];
+				delete keyDrafts[id];
+				delete validating[id];
+				delete validateMsg[id];
+			}
 		}
 	}
 
-	async function onBaseUrlInput(e: Event & { currentTarget: HTMLInputElement }) {
+	function presetLabel(presetId: string): string {
+		return presets.find(([id]) => id === presetId)?.[1] ?? presetId;
+	}
+
+	function onNameInput(inst: ProviderInstance, e: Event & { currentTarget: HTMLInputElement }) {
 		const value = e.currentTarget.value;
-		savingBaseUrl = true;
+		nameDrafts[inst.id] = value;
+		void getAgentBackend()
+			.providerUpdate(inst.id, value)
+			.catch(() => {});
+	}
+
+	function onKeyInput(inst: ProviderInstance, e: Event & { currentTarget: HTMLInputElement }) {
+		const value = e.currentTarget.value;
+		keyDrafts[inst.id] = value;
+		validateMsg[inst.id] = undefined;
+		void getAgentBackend()
+			.providerSetApiKey(inst.id, value)
+			.catch(() => {});
+	}
+
+	function onUrlInput(inst: ProviderInstance, e: Event & { currentTarget: HTMLInputElement }) {
+		const value = e.currentTarget.value;
+		urlDrafts[inst.id] = value;
+		void getAgentBackend()
+			.providerUpdate(inst.id, undefined, value)
+			.catch(() => {});
+	}
+
+	async function onValidate(inst: ProviderInstance) {
+		validating[inst.id] = true;
+		validateMsg[inst.id] = undefined;
 		try {
-			await updateAISetting('baseUrl', value);
+			const models = await getAgentBackend().providerValidate(inst.id);
+			validateMsg[inst.id] = {
+				ok: true,
+				text: t('agent.settings_validate_ok', { count: models.length })
+			};
+			await loadModels().catch(() => {});
+		} catch (e) {
+			validateMsg[inst.id] = { ok: false, text: errText(e) };
 		} finally {
-			savingBaseUrl = false;
+			validating[inst.id] = false;
 		}
 	}
 
-	async function onValidate() {
-		await fetchModels();
+	async function confirmDeleteInstance(id: string) {
+		confirmDeleteId = null;
+		try {
+			await getAgentBackend().providerDelete(id);
+		} catch {
+			/* fall through to refresh */
+		}
+		await refreshProviders().catch(() => {});
+		await loadModels().catch(() => {});
 	}
 
-	async function selectModel(id: string) {
-		await updateAISetting('selectedModel', id);
+	// --- Add provider (preset -> key form; default naming happens backend-side)
+
+	let addOpen = $state(false);
+	let addPreset = $state('');
+	let addName = $state('');
+	let addKey = $state('');
+	let addBaseUrl = $state('');
+	let addBusy = $state(false);
+	let addError = $state<string | null>(null);
+
+	function openAddForm() {
+		addOpen = true;
+		addError = null;
+		addName = '';
+		addKey = '';
+		addBaseUrl = '';
+		addPreset = presets[0]?.[0] ?? '';
+	}
+
+	async function submitAdd() {
+		if (!addPreset || !addKey.trim() || addBusy) return;
+		addBusy = true;
+		addError = null;
+		try {
+			await getAgentBackend().providerAdd(
+				addPreset,
+				addKey.trim(),
+				addName.trim() || undefined,
+				addBaseUrl.trim() || undefined
+			);
+			addOpen = false;
+			await refreshProviders().catch(() => {});
+			await loadModels().catch(() => {});
+		} catch (e) {
+			addError = errText(e);
+		} finally {
+			addBusy = false;
+		}
 	}
 
 	function formatContext(length: number): string {
@@ -78,155 +202,622 @@
 		return String(length);
 	}
 
-	function formatPricing(pricing: { prompt: string; completion: string } | null): string {
-		if (!pricing) return '';
-		const p = parseFloat(pricing.prompt) * 1_000_000;
-		const c = parseFloat(pricing.completion) * 1_000_000;
-		if (p === 0 && c === 0) return 'free';
-		const fmt = (v: number) => (v < 0.01 ? v.toFixed(4) : v.toFixed(2));
-		return `$${fmt(p)} / $${fmt(c)}`;
+	// ---------------------------------------------------------------------------
+	// Tool settings (design 04 §4.2/§4.3, reverse-registered option controls)
+	// ---------------------------------------------------------------------------
+
+	function saveTool(
+		tool: ToolSettingsEntry,
+		enabled: boolean,
+		requireApproval: boolean,
+		options: Record<string, unknown>
+	) {
+		void setToolConfig(tool.name, enabled, requireApproval, options).catch(() => {});
+	}
+
+	function setToolOption(tool: ToolSettingsEntry, key: string, value: unknown) {
+		saveTool(tool, tool.enabled, tool.requireApproval, { ...tool.values, [key]: value });
+	}
+
+	function effectiveValue(tool: ToolSettingsEntry, opt: ToolOption): unknown {
+		const v = tool.values[opt.key];
+		return v === undefined || v === null ? opt.default : v;
+	}
+
+	function optString(v: unknown): string {
+		return typeof v === 'string' ? v : '';
+	}
+
+	function optNumber(v: unknown): number | '' {
+		return typeof v === 'number' ? v : '';
+	}
+
+	function optBool(v: unknown): boolean {
+		return v === true;
+	}
+
+	function optList(v: unknown): string[] {
+		return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+	}
+
+	function onNumberOption(
+		tool: ToolSettingsEntry,
+		key: string,
+		e: Event & { currentTarget: HTMLInputElement }
+	) {
+		const raw = e.currentTarget.value;
+		if (raw === '') return;
+		const num = Number(raw);
+		if (Number.isNaN(num)) return;
+		setToolOption(tool, key, num);
+	}
+
+	let listDrafts = $state<Record<string, string>>({});
+
+	function listKey(tool: string, key: string): string {
+		return `${tool}:${key}`;
+	}
+
+	function listAddItem(tool: ToolSettingsEntry, opt: ToolOption) {
+		const dk = listKey(tool.name, opt.key);
+		const value = (listDrafts[dk] ?? '').trim();
+		if (!value) return;
+		listDrafts[dk] = '';
+		setToolOption(tool, opt.key, [...optList(effectiveValue(tool, opt)), value]);
+	}
+
+	function listRemoveItem(tool: ToolSettingsEntry, opt: ToolOption, index: number) {
+		setToolOption(
+			tool,
+			opt.key,
+			optList(effectiveValue(tool, opt)).filter((_, i) => i !== index)
+		);
+	}
+
+	// ---------------------------------------------------------------------------
+	// Title generation model (design 04 §4.4)
+	// ---------------------------------------------------------------------------
+
+	let titleOpen = $state(false);
+	let titleDdEl = $state<HTMLDivElement | undefined>(undefined);
+
+	$effect(() => {
+		if (!titleOpen) return;
+		function onDocClick(e: MouseEvent) {
+			if (titleDdEl && !titleDdEl.contains(e.target as Node)) titleOpen = false;
+		}
+		document.addEventListener('click', onDocClick, true);
+		return () => document.removeEventListener('click', onDocClick, true);
+	});
+
+	const titleGroups = $derived(
+		getInstanceModels().filter((g) => (g.models?.length ?? 0) > 0)
+	);
+
+	const titleLabel = $derived.by(() => {
+		const sel = getTitleModel();
+		if (!sel) return t('agent.settings_title_model_none');
+		const found = findModel(sel);
+		return found ? `${found.instance.name} / ${found.model.displayName || found.model.id}` : sel;
+	});
+
+	function selectTitleModel(value: string | null) {
+		titleOpen = false;
+		void setTitleModel(value).catch(() => {});
+	}
+
+	// ---------------------------------------------------------------------------
+	// All threads sub-view (design 04 §4.5, 01 §2.1)
+	// ---------------------------------------------------------------------------
+
+	let editingThreadId = $state<string | null>(null);
+	let editingTitle = $state('');
+	let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
+	let confirmDeleteThreadId = $state<string | null>(null);
+
+	const sortedThreads = $derived(
+		[...getAllThreads()].sort((a, b) => b.updatedAt - a.updatedAt)
+	);
+
+	function openThreadsView() {
+		view = 'threads';
+		void loadAllThreads().catch(() => {});
+	}
+
+	function startRename(thread: ThreadSummary) {
+		editingThreadId = thread.id;
+		editingTitle = thread.title;
+		void tick().then(() => renameInputEl?.focus());
+	}
+
+	async function commitRename() {
+		const id = editingThreadId;
+		if (!id) return;
+		editingThreadId = null;
+		const title = editingTitle.trim();
+		if (title) await renameThread(id, title).catch(() => {});
+	}
+
+	function onRenameKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			void commitRename();
+		} else if (e.key === 'Escape') {
+			editingThreadId = null;
+		}
+	}
+
+	async function confirmDeleteThread(id: string) {
+		confirmDeleteThreadId = null;
+		await deleteThread(id).catch(() => {});
 	}
 </script>
 
-<div class="tab-content">
-	<!-- Enable AI row -->
-	<div class="setting-row">
-		<div class="setting-info">
-			<span class="setting-label">{t('ai_settings.enable')}</span>
-			<span class="setting-description">{t('ai_settings.enable_desc')}</span>
+{#if view === 'threads'}
+	<!-- All threads sub-view (design 04 §4.5) -->
+	<div class="tab-content">
+		<div class="threads-header">
+			<button class="back-btn" onclick={() => (view = 'main')}>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M15 18l-6-6 6-6" />
+				</svg>
+				{t('agent.back')}
+			</button>
+			<span class="setting-label">{t('agent.all_threads')}</span>
 		</div>
-		<div class="setting-control">
-			<Toggle
-				checked={aiSettings.enabled}
-				label={t('ai_settings.enable')}
-				onchange={onEnabledChange}
-			/>
-		</div>
-	</div>
 
-	<!-- API Key section -->
-	<div class="ai-section" class:disabled-section={!aiSettings.enabled}>
-		<div class="api-key-section">
-			<span class="setting-label">{t('ai_settings.api_key')}</span>
-			<span class="setting-description">{t('ai_settings.api_key_desc')}</span>
-			<div class="api-key-row">
-				<Input
-					type="password"
-					value={aiSettings.apiKey}
-					placeholder={t('ai_settings.api_key_placeholder')}
-					disabled={!aiSettings.enabled}
-					oninput={onApiKeyInput}
-				/>
-				<button
-					class="validate-btn"
-					disabled={!aiSettings.enabled || !aiSettings.apiKey || getModelsLoading()}
-					onclick={onValidate}
-				>
-					{#if getModelsLoading()}
-						{t('ai_settings.validating')}
-					{:else}
-						{t('ai_settings.validate')}
-					{/if}
-				</button>
-			</div>
-			<div class="api-status">
-				{#if apiKeyError}
-					<span class="status-error">{apiKeyError}</span>
-				{:else if savingApiKey}
-					<span class="status-hint">{t('ai_settings.saving_encrypted')}</span>
-				{:else if getModelsError()}
-					<span class="status-error">{getModelsError()}</span>
-				{:else if getModels().length > 0}
-					<span class="status-success">{t('ai_settings.model_count', { count: getModels().length })}</span>
-				{:else if isLocked()}
-					<span class="status-hint">{t('ai_settings.unlock_vault')}</span>
-				{:else}
-					<span class="status-hint">{t('ai_settings.enter_api_key')}</span>
-				{/if}
-			</div>
-		</div>
-	</div>
-
-	<!-- Custom Base URL section -->
-	<div class="ai-section" class:disabled-section={!aiSettings.enabled}>
-		<div class="base-url-section">
-			<span class="setting-label">{t('ai_settings.base_url')}</span>
-			<span class="setting-description">{t('ai_settings.base_url_desc')}</span>
-			<Input
-				type="text"
-				value={aiSettings.baseUrl}
-				placeholder={t('ai_settings.base_url_placeholder')}
-				disabled={!aiSettings.enabled}
-				oninput={onBaseUrlInput}
-			/>
-			{#if savingBaseUrl}
-				<span class="status-hint">{t('ai_settings.saving_encrypted')}</span>
+		<div class="thread-list">
+			{#if sortedThreads.length === 0}
+				<div class="empty-hint">{t('agent.no_threads')}</div>
 			{/if}
-		</div>
-	</div>
-
-	<!-- Model Browser section -->
-	<div class="ai-section" class:disabled-section={!aiSettings.enabled}>
-		<div class="section-header">
-			<span class="setting-label">{t('ai_settings.model_browser')}</span>
-		</div>
-
-		<div class="model-search">
-			<input
-				class="search-input"
-				type="text"
-				placeholder={t('ai_settings.search_models')}
-				disabled={!aiSettings.enabled}
-				bind:value={searchQuery}
-			/>
-		</div>
-
-		<div class="model-list">
-			{#if getModels().length === 0}
-				<div class="model-empty">
-					{t('ai_settings.no_models')}
-				</div>
-			{:else if filteredModels.length === 0}
-				<div class="model-empty">
-					{t('ai_settings.no_match')}
-				</div>
-			{:else}
-				{#each filteredModels as model (model.id)}
-					<button
-						class="model-row"
-						class:selected={aiSettings.selectedModel === model.id}
-						disabled={!aiSettings.enabled}
-						onclick={() => selectModel(model.id)}
-					>
-						<div class="model-info">
-							<span class="model-name">{model.name || model.id}</span>
-							{#if formatContext(model.context_length)}
-								<span class="model-meta">
-									{formatContext(model.context_length)} ctx
-								</span>
+			{#each sortedThreads as thread (thread.id)}
+				<div class="thread-item">
+					<div class="thread-text">
+						{#if editingThreadId === thread.id}
+							<input
+								bind:this={renameInputEl}
+								class="title-edit"
+								type="text"
+								bind:value={editingTitle}
+								onkeydown={onRenameKeydown}
+								onblur={() => void commitRename()}
+							/>
+						{:else}
+							<span class="thread-title" class:archived={thread.archived}>{thread.title}</span>
+						{/if}
+						<div class="thread-meta">
+							{#if thread.archived}
+								<span>{thread.identity}</span>
+							{/if}
+							<span>{relativeTime(thread.updatedAt)}</span>
+						</div>
+					</div>
+					{#if editingThreadId !== thread.id}
+						<div class="thread-actions">
+							{#if thread.archived}
+								<button
+									class="icon-btn"
+									title={t('agent.unarchive')}
+									onclick={() => void unarchiveThread(thread.id)}
+								>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+										<path d="M3 3v5h5" />
+									</svg>
+								</button>
+								<button
+									class="icon-btn danger"
+									title={t('agent.delete_thread')}
+									onclick={() => (confirmDeleteThreadId = thread.id)}
+								>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+									</svg>
+								</button>
+							{:else}
+								<button
+									class="icon-btn"
+									title={t('agent.edit_title')}
+									onclick={() => startRename(thread)}
+								>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+									</svg>
+								</button>
+								<button
+									class="icon-btn"
+									title={t('agent.archive')}
+									onclick={() => void archiveThread(thread.id)}
+								>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4" />
+									</svg>
+								</button>
 							{/if}
 						</div>
-						{#if formatPricing(model.pricing)}
-							<span class="model-pricing">
-								{formatPricing(model.pricing)}
-							</span>
-						{/if}
-					</button>
-				{/each}
-			{/if}
+					{/if}
+				</div>
+				{#if confirmDeleteThreadId === thread.id}
+					<div class="confirm-bar">
+						<span class="confirm-text">{t('agent.delete_thread_confirm')}</span>
+						<button class="confirm-btn danger" onclick={() => void confirmDeleteThread(thread.id)}>
+							{t('common.confirm')}
+						</button>
+						<button class="confirm-btn" onclick={() => (confirmDeleteThreadId = null)}>
+							{t('common.cancel')}
+						</button>
+					</div>
+				{/if}
+			{/each}
 		</div>
 	</div>
-
-	<!-- Selected model indicator -->
-	{#if aiSettings.selectedModel}
-		<div class="selected-indicator">
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<polyline points="20 6 9 17 4 12" />
-			</svg>
-			<span>{aiSettings.selectedModel}</span>
+{:else}
+	<div class="tab-content">
+		<!-- Providers (design 04 §4.1) -->
+		<div class="section-header">
+			<div class="setting-info">
+				<span class="setting-label">{t('agent.settings_providers')}</span>
+				<span class="setting-description">{t('agent.settings_providers_desc')}</span>
+			</div>
+			{#if !isLocked()}
+				<Button variant="secondary" size="sm" onclick={openAddForm} disabled={addOpen}>
+					{t('agent.settings_add_provider')}
+				</Button>
+			{/if}
 		</div>
-	{/if}
-</div>
+
+		{#if isLocked()}
+			<div class="locked-hint">{t('agent.settings_unlock_vault')}</div>
+		{:else}
+			{#if getProviderInstances().length === 0 && !addOpen}
+				<div class="empty-hint">{t('agent.settings_no_providers')}</div>
+			{/if}
+
+			{#each getProviderInstances() as inst (inst.id)}
+				{@const group = getInstanceModels().find((g) => g.instance.id === inst.id)}
+				{@const models = group?.models ?? []}
+				<div class="provider-card">
+					<div class="provider-head">
+						<input
+							class="name-input"
+							type="text"
+							value={nameDrafts[inst.id] ?? inst.name}
+							oninput={(e) => onNameInput(inst, e)}
+							aria-label={t('agent.settings_provider_name')}
+						/>
+						<span class="preset-badge">{presetLabel(inst.preset)}</span>
+						<button
+							class="icon-btn danger"
+							title={t('agent.settings_delete_provider')}
+							onclick={() => (confirmDeleteId = confirmDeleteId === inst.id ? null : inst.id)}
+						>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+							</svg>
+						</button>
+					</div>
+
+					{#if confirmDeleteId === inst.id}
+						<div class="confirm-bar">
+							<span class="confirm-text">{t('agent.settings_delete_provider_confirm')}</span>
+							<button class="confirm-btn danger" onclick={() => void confirmDeleteInstance(inst.id)}>
+								{t('common.confirm')}
+							</button>
+							<button class="confirm-btn" onclick={() => (confirmDeleteId = null)}>
+								{t('common.cancel')}
+							</button>
+						</div>
+					{/if}
+
+					<div class="field-row">
+						<span class="field-label">{t('agent.settings_api_key')}</span>
+						<Input
+							type="password"
+							value={keyDrafts[inst.id] ?? ''}
+							placeholder={t('agent.settings_api_key')}
+							oninput={(e) => onKeyInput(inst, e)}
+						/>
+					</div>
+
+					<div class="field-row">
+						<span class="field-label">{t('agent.settings_base_url')}</span>
+						<Input
+							type="text"
+							value={urlDrafts[inst.id] ?? inst.baseUrl ?? ''}
+							placeholder="https://"
+							oninput={(e) => onUrlInput(inst, e)}
+						/>
+						<span class="field-desc">{t('agent.settings_base_url_desc')}</span>
+					</div>
+
+					<div class="validate-row">
+						<Button
+							variant="secondary"
+							size="sm"
+							disabled={!!validating[inst.id]}
+							onclick={() => void onValidate(inst)}
+						>
+							{validating[inst.id]
+								? t('agent.settings_validating')
+								: t('agent.settings_validate')}
+						</Button>
+						{#if validateMsg[inst.id]}
+							{@const msg = validateMsg[inst.id]!}
+							<span class="validate-msg" class:ok={msg.ok} class:err={!msg.ok}>{msg.text}</span>
+						{/if}
+					</div>
+
+					{#if models.length > 0}
+						<div class="models-preview">
+							{#each models as model (model.id)}
+								<div class="model-line">
+									<span class="model-name">{model.displayName || model.id}</span>
+									{#if formatContext(model.contextLength)}
+										<span class="model-ctx">{formatContext(model.contextLength)}</span>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					{:else if group?.error}
+						<div class="validate-msg err models-error">{group.error}</div>
+					{/if}
+				</div>
+			{/each}
+
+			{#if addOpen}
+				<div class="provider-card add-form">
+					<div class="preset-row">
+						{#each presets as [id, label] (id)}
+							<button
+								class="preset-chip"
+								class:selected={addPreset === id}
+								onclick={() => (addPreset = id)}
+							>
+								{label}
+							</button>
+						{/each}
+					</div>
+					<div class="field-row">
+						<span class="field-label">{t('agent.settings_provider_name')}</span>
+						<Input type="text" bind:value={addName} placeholder={presetLabel(addPreset)} />
+					</div>
+					<div class="field-row">
+						<span class="field-label">{t('agent.settings_api_key')}</span>
+						<Input type="password" bind:value={addKey} placeholder={t('agent.settings_api_key')} />
+					</div>
+					<div class="field-row">
+						<span class="field-label">{t('agent.settings_base_url')}</span>
+						<Input type="text" bind:value={addBaseUrl} placeholder="https://" />
+					</div>
+					{#if addError}
+						<span class="validate-msg err">{addError}</span>
+					{/if}
+					<div class="add-actions">
+						<Button variant="ghost" size="sm" onclick={() => (addOpen = false)}>
+							{t('common.cancel')}
+						</Button>
+						<Button
+							variant="primary"
+							size="sm"
+							disabled={!addPreset || !addKey.trim() || addBusy}
+							onclick={() => void submitAdd()}
+						>
+							{t('agent.settings_add_provider')}
+						</Button>
+					</div>
+				</div>
+			{/if}
+		{/if}
+
+		<!-- Tools (design 04 §4.2/§4.3) -->
+		<div class="section-header tools-header">
+			<div class="setting-info">
+				<span class="setting-label">{t('agent.settings_tools')}</span>
+				<span class="setting-description">{t('agent.settings_tools_desc')}</span>
+			</div>
+			<div class="tool-col-headers">
+				<span class="col-header">{t('agent.settings_tool_enabled')}</span>
+				<span class="col-header">{t('agent.settings_tool_approval')}</span>
+			</div>
+		</div>
+
+		{#each getToolSettings() as tool (tool.name)}
+			<div class="tool-card">
+				<div class="tool-row">
+					<div class="setting-info">
+						<span class="setting-label mono">{tool.name}</span>
+						<span class="setting-description">{tool.description}</span>
+					</div>
+					<div class="tool-toggles">
+						<div class="toggle-cell">
+							<Toggle
+								checked={tool.enabled}
+								onchange={(c) => saveTool(tool, c, tool.requireApproval, { ...tool.values })}
+							/>
+						</div>
+						<div class="toggle-cell">
+							<Toggle
+								checked={tool.requireApproval}
+								onchange={(c) => saveTool(tool, tool.enabled, c, { ...tool.values })}
+							/>
+						</div>
+					</div>
+				</div>
+
+				{#if tool.options.length > 0}
+					<div class="tool-options">
+						{#each tool.options as opt (opt.key)}
+							<div class="option-row">
+								<div class="setting-info">
+									<span class="option-name mono">{opt.key}</span>
+									<span class="setting-description">{opt.description}</span>
+								</div>
+								<div class="option-control">
+									{#if opt.type === 'boolean'}
+										<Toggle
+											checked={optBool(effectiveValue(tool, opt))}
+											onchange={(c) => setToolOption(tool, opt.key, c)}
+										/>
+									{:else if opt.type === 'number'}
+										<input
+											class="opt-input"
+											type="number"
+											value={optNumber(effectiveValue(tool, opt))}
+											min={opt.min}
+											max={opt.max}
+											onchange={(e) => onNumberOption(tool, opt.key, e)}
+										/>
+									{:else if opt.type === 'enum'}
+										<Dropdown
+											options={opt.values.map((v) => ({ label: v, value: v }))}
+											selected={optString(effectiveValue(tool, opt))}
+											onchange={(v) => setToolOption(tool, opt.key, v)}
+										/>
+									{:else if opt.type === 'string_list'}
+										{@const items = optList(effectiveValue(tool, opt))}
+										<div class="str-list">
+											{#each items as item, i (i)}
+												<div class="str-list-row">
+													<span class="str-list-value">{item}</span>
+													<button
+														class="icon-btn small"
+														aria-label={t('common.delete')}
+														onclick={() => listRemoveItem(tool, opt, i)}
+													>
+														<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+															<path d="M18 6L6 18M6 6l12 12" />
+														</svg>
+													</button>
+												</div>
+											{/each}
+											<div class="str-list-add">
+												<input
+													class="opt-input"
+													type="text"
+													value={listDrafts[listKey(tool.name, opt.key)] ?? ''}
+													oninput={(e) =>
+														(listDrafts[listKey(tool.name, opt.key)] = e.currentTarget.value)}
+													onkeydown={(e) => {
+														if (e.key === 'Enter') {
+															e.preventDefault();
+															listAddItem(tool, opt);
+														}
+													}}
+												/>
+												<button
+													class="icon-btn small add"
+													aria-label={t('agent.settings_add_provider')}
+													onclick={() => listAddItem(tool, opt)}
+												>
+													<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+														<path d="M12 5v14M5 12h14" />
+													</svg>
+												</button>
+											</div>
+										</div>
+									{:else}
+										<input
+											class="opt-input"
+											type="text"
+											value={optString(effectiveValue(tool, opt))}
+											oninput={(e) => setToolOption(tool, opt.key, e.currentTarget.value)}
+										/>
+									{/if}
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/each}
+
+		<!-- Title generation model (design 04 §4.4) -->
+		<div class="setting-row">
+			<div class="setting-info">
+				<span class="setting-label">{t('agent.settings_title_model')}</span>
+				<span class="setting-description">{t('agent.settings_title_model_desc')}</span>
+			</div>
+			<div class="setting-control">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="title-dropdown"
+					bind:this={titleDdEl}
+					onkeydown={(e) => {
+						if (e.key === 'Escape') titleOpen = false;
+					}}
+				>
+					<button
+						class="dropdown-trigger"
+						class:open={titleOpen}
+						class:has-value={!!getTitleModel()}
+						onclick={() => (titleOpen = !titleOpen)}
+						aria-haspopup="listbox"
+						aria-expanded={titleOpen}
+					>
+						<span class="dropdown-text">{titleLabel}</span>
+						<svg class="dropdown-chevron" class:open={titleOpen} width="12" height="12" viewBox="0 0 12 12" fill="none">
+							<path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+						</svg>
+					</button>
+
+					{#if titleOpen}
+						<ul class="dropdown-list" role="listbox">
+							<li role="option" aria-selected={!getTitleModel()}>
+								<button
+									class="dropdown-item-btn"
+									class:selected={!getTitleModel()}
+									onclick={() => selectTitleModel(null)}
+								>
+									<span class="item-label">{t('agent.settings_title_model_none')}</span>
+									{#if !getTitleModel()}
+										<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+											<path d="M2 7L5.5 10.5L12 3.5" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+										</svg>
+									{/if}
+								</button>
+							</li>
+							{#each titleGroups as group (group.instance.id)}
+								<li class="group-header" aria-hidden="true">{group.instance.name}</li>
+								{#each group.models ?? [] as model (model.id)}
+									{@const value = `${group.instance.id}/${model.id}`}
+									<li role="option" aria-selected={getTitleModel() === value}>
+										<button
+											class="dropdown-item-btn"
+											class:selected={getTitleModel() === value}
+											onclick={() => selectTitleModel(value)}
+										>
+											<span class="item-label">{model.displayName || model.id}</span>
+											{#if formatContext(model.contextLength)}
+												<span class="ctx-badge">{formatContext(model.contextLength)}</span>
+											{/if}
+											{#if getTitleModel() === value}
+												<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+													<path d="M2 7L5.5 10.5L12 3.5" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+												</svg>
+											{/if}
+										</button>
+									</li>
+								{/each}
+							{/each}
+						</ul>
+					{/if}
+				</div>
+			</div>
+		</div>
+
+		<!-- All threads (design 04 §4.5) -->
+		<div class="setting-row">
+			<div class="setting-info">
+				<span class="setting-label">{t('agent.threads')}</span>
+			</div>
+			<div class="setting-control">
+				<Button variant="secondary" size="sm" onclick={openThreadsView}>
+					{t('agent.view_all_threads')}
+				</Button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.tab-content {
@@ -238,7 +829,7 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 10px 0;
+		padding: 12px 0;
 		border-bottom: 1px solid var(--color-border);
 		gap: 24px;
 	}
@@ -269,96 +860,368 @@
 		flex-shrink: 0;
 	}
 
-	/* AI sections with reduced opacity when disabled */
-	.ai-section {
-		transition: opacity var(--duration-default) var(--ease-default);
+	.mono {
+		font-family: var(--font-mono);
 	}
 
-	.ai-section.disabled-section {
-		opacity: 0.4;
-		pointer-events: none;
-	}
+	/* --- Sections --- */
 
-	/* API Key section — stacked layout */
-	.api-key-section {
+	.section-header {
 		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		padding: 10px 0;
-		border-bottom: 1px solid var(--color-border);
+		justify-content: space-between;
+		align-items: center;
+		gap: 16px;
+		padding: 14px 0 8px;
 	}
 
-	.api-key-row {
-		display: flex;
-		gap: 8px;
-		align-items: stretch;
-		margin-top: 4px;
+	.section-header:first-child {
+		padding-top: 0;
 	}
 
-	.validate-btn {
-		padding: 0 12px;
-		font-family: var(--font-sans);
+	.locked-hint,
+	.empty-hint {
+		padding: 12px 0;
 		font-size: 0.8125rem;
-		font-weight: 500;
-		color: #fff;
-		background-color: var(--color-accent);
-		border: none;
-		border-radius: var(--radius-btn);
-		cursor: pointer;
-		white-space: nowrap;
-		transition:
-			opacity var(--duration-default) var(--ease-default),
-			background-color var(--duration-default) var(--ease-default);
-		flex-shrink: 0;
-	}
-
-	.validate-btn:hover:not(:disabled) {
-		opacity: 0.85;
-	}
-
-	.validate-btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
-	.api-status {
-		margin-top: 4px;
-		font-size: 0.75rem;
-	}
-
-	.status-hint {
 		color: var(--color-text-secondary);
 	}
 
-	.status-success {
-		color: #34c759;
-	}
+	/* --- Provider cards --- */
 
-	.status-error {
-		color: #ff453a;
-	}
-
-	/* Custom Base URL section */
-	.base-url-section {
+	.provider-card {
 		display: flex;
 		flex-direction: column;
-		gap: 3px;
+		padding: 12px;
+		margin-bottom: 10px;
+		background-color: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-card);
+	}
+
+	.provider-head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.name-input {
+		flex: 1;
+		min-width: 0;
+		padding: 4px 8px;
+		margin-left: -8px;
+		font-family: var(--font-sans);
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--color-text-primary);
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		outline: none;
+		transition:
+			border-color var(--duration-default) var(--ease-default),
+			background-color var(--duration-default) var(--ease-default);
+	}
+
+	.name-input:hover {
+		border-color: var(--color-border);
+	}
+
+	.name-input:focus {
+		border-color: var(--color-accent);
+		background-color: var(--color-bg-elevated);
+	}
+
+	.preset-badge {
+		flex-shrink: 0;
+		padding: 2px 8px;
+		font-size: 0.6875rem;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+	}
+
+	.field-row {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin-top: 10px;
+	}
+
+	.field-label {
+		font-size: 0.6875rem;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+	}
+
+	.field-desc {
+		font-size: 0.6875rem;
+		color: var(--color-text-secondary);
+	}
+
+	.validate-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-top: 10px;
+	}
+
+	.validate-msg {
+		font-size: 0.75rem;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.validate-msg.ok {
+		color: var(--color-success);
+	}
+
+	.validate-msg.err {
+		color: var(--color-danger);
+	}
+
+	.models-error {
+		margin-top: 8px;
+	}
+
+	.models-preview {
+		margin-top: 10px;
+		max-height: 140px;
+		overflow-y: auto;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-btn);
+	}
+
+	.model-line {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+		padding: 4px 10px;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.model-line:last-child {
+		border-bottom: none;
+	}
+
+	.model-name {
+		font-size: 0.75rem;
+		color: var(--color-text-primary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.model-ctx {
+		flex-shrink: 0;
+		font-size: 0.6875rem;
+		color: var(--color-text-secondary);
+	}
+
+	/* --- Add provider form --- */
+
+	.preset-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.preset-chip {
+		padding: 4px 12px;
+		font-family: var(--font-sans);
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+		background: transparent;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		cursor: pointer;
+		transition:
+			color var(--duration-default) var(--ease-default),
+			border-color var(--duration-default) var(--ease-default),
+			background-color var(--duration-default) var(--ease-default);
+	}
+
+	.preset-chip:hover {
+		color: var(--color-text-primary);
+	}
+
+	.preset-chip.selected {
+		color: var(--color-accent);
+		border-color: var(--color-accent);
+		background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+	}
+
+	.add-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
+		margin-top: 12px;
+	}
+
+	/* --- Icon buttons --- */
+
+	.icon-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		flex-shrink: 0;
+		padding: 0;
+		color: var(--color-text-secondary);
+		background: transparent;
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		transition:
+			color var(--duration-default) var(--ease-default),
+			background-color var(--duration-default) var(--ease-default);
+	}
+
+	.icon-btn:hover {
+		color: var(--color-text-primary);
+		background-color: rgba(255, 255, 255, 0.08);
+	}
+
+	.icon-btn.danger:hover {
+		color: var(--color-danger);
+	}
+
+	.icon-btn.small {
+		width: 24px;
+		height: 24px;
+	}
+
+	.icon-btn.add:hover {
+		color: var(--color-accent);
+	}
+
+	/* --- Inline confirm bar --- */
+
+	.confirm-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 10px;
+		padding: 8px 10px;
+		background-color: color-mix(in srgb, var(--color-danger) 10%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-danger) 35%, transparent);
+		border-radius: var(--radius-btn);
+	}
+
+	.confirm-text {
+		flex: 1;
+		min-width: 0;
+		font-size: 0.75rem;
+		color: var(--color-text-primary);
+	}
+
+	.confirm-btn {
+		flex-shrink: 0;
+		padding: 4px 10px;
+		font-family: var(--font-sans);
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--color-text-primary);
+		background: transparent;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		cursor: pointer;
+		transition:
+			background-color var(--duration-default) var(--ease-default),
+			opacity var(--duration-default) var(--ease-default);
+	}
+
+	.confirm-btn:hover {
+		background-color: rgba(255, 255, 255, 0.08);
+	}
+
+	.confirm-btn.danger {
+		color: #fff;
+		background-color: var(--color-danger);
+		border-color: transparent;
+	}
+
+	.confirm-btn.danger:hover {
+		opacity: 0.85;
+	}
+
+	/* --- Tools --- */
+
+	.tools-header {
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.tool-col-headers {
+		display: flex;
+		gap: 16px;
+		flex-shrink: 0;
+	}
+
+	.col-header {
+		width: 44px;
+		text-align: center;
+		font-size: 0.6875rem;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+	}
+
+	.tool-card {
 		padding: 10px 0;
 		border-bottom: 1px solid var(--color-border);
 	}
 
-	/* Model Browser */
-	.section-header {
-		padding: 10px 0 6px;
+	.tool-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 24px;
 	}
 
-	.model-search {
-		padding-bottom: 6px;
+	.tool-toggles {
+		display: flex;
+		gap: 16px;
+		flex-shrink: 0;
 	}
 
-	.search-input {
+	.toggle-cell {
+		width: 44px;
+		display: flex;
+		justify-content: center;
+	}
+
+	.tool-options {
+		margin-top: 6px;
+		padding-left: 8px;
+		border-left: 2px solid var(--color-border);
+	}
+
+	.option-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 16px;
+		padding: 6px 0;
+	}
+
+	.option-name {
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--color-text-primary);
+	}
+
+	.option-control {
+		flex-shrink: 0;
+		width: 220px;
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.opt-input {
 		width: 100%;
-		padding: 8px 12px;
+		padding: 6px 10px;
 		font-family: var(--font-sans);
 		font-size: 0.8125rem;
 		color: var(--color-text-primary);
@@ -370,74 +1233,232 @@
 		transition: border-color var(--duration-default) var(--ease-default);
 	}
 
-	.search-input:focus {
+	.opt-input:focus {
 		border-color: var(--color-accent);
 	}
 
-	.search-input::placeholder {
-		color: var(--color-text-secondary);
-		opacity: 0.5;
+	.opt-input[type='number']::-webkit-inner-spin-button,
+	.opt-input[type='number']::-webkit-outer-spin-button {
+		-webkit-appearance: none;
+		margin: 0;
 	}
 
-	.search-input:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
+	.opt-input[type='number'] {
+		-moz-appearance: textfield;
+		appearance: textfield;
 	}
 
-	.model-list {
-		max-height: 180px;
-		overflow-y: auto;
+	/* string_list control */
+	.str-list {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		width: 100%;
+	}
+
+	.str-list-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.str-list-value {
+		flex: 1;
+		min-width: 0;
+		padding: 5px 10px;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--color-text-primary);
+		background-color: var(--color-bg-elevated);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-btn);
-		background-color: var(--color-bg-secondary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.model-empty {
-		padding: 16px;
-		text-align: center;
+	.str-list-add {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	/* --- Title model dropdown (grouped, mirrors the composer picker) --- */
+
+	.title-dropdown {
+		position: relative;
+		width: 240px;
+	}
+
+	.dropdown-trigger {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 8px 12px;
+		font-family: var(--font-sans);
 		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+		background-color: var(--color-bg-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-btn);
+		cursor: pointer;
+		transition:
+			border-color var(--duration-default) var(--ease-default),
+			box-shadow var(--duration-default) var(--ease-default);
+	}
+
+	.dropdown-trigger.has-value {
+		color: var(--color-text-primary);
+	}
+
+	.dropdown-trigger.open {
+		border-color: var(--color-accent);
+		box-shadow: 0 0 0 1px var(--color-accent);
+	}
+
+	.dropdown-text {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.dropdown-chevron {
+		flex-shrink: 0;
+		color: var(--color-text-secondary);
+		transition: transform var(--duration-default) var(--ease-default);
+	}
+
+	.dropdown-chevron.open {
+		transform: rotate(180deg);
+	}
+
+	.dropdown-list {
+		position: absolute;
+		top: calc(100% + 4px);
+		left: 0;
+		right: 0;
+		z-index: 50;
+		margin: 0;
+		padding: 4px;
+		list-style: none;
+		background-color: var(--color-bg-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-btn);
+		box-shadow: var(--shadow-elevated);
+		max-height: 240px;
+		overflow-y: auto;
+	}
+
+	.group-header {
+		padding: 8px 10px 2px;
+		font-size: 0.6875rem;
+		font-weight: 600;
 		color: var(--color-text-secondary);
 	}
 
-	.model-row {
+	.dropdown-item-btn {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
+		gap: 8px;
 		width: 100%;
-		padding: 8px 12px;
-		border: none;
-		border-bottom: 1px solid var(--color-border);
-		background: transparent;
-		cursor: pointer;
-		text-align: left;
+		padding: 7px 10px;
 		font-family: var(--font-sans);
+		font-size: 0.8125rem;
+		color: var(--color-text-primary);
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
 		transition: background-color var(--duration-default) var(--ease-default);
 	}
 
-	.model-row:last-child {
-		border-bottom: none;
+	.dropdown-item-btn:hover {
+		background-color: rgba(255, 255, 255, 0.06);
 	}
 
-	.model-row:hover:not(:disabled) {
+	.dropdown-item-btn.selected {
+		color: var(--color-accent);
+	}
+
+	.item-label {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		text-align: left;
+	}
+
+	.ctx-badge {
+		flex-shrink: 0;
+		font-size: 0.6875rem;
+		color: var(--color-text-secondary);
+	}
+
+	/* --- All threads sub-view --- */
+
+	.threads-header {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding-bottom: 10px;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.back-btn {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 8px;
+		margin-left: -8px;
+		font-family: var(--font-sans);
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+		background: transparent;
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		transition:
+			color var(--duration-default) var(--ease-default),
+			background-color var(--duration-default) var(--ease-default);
+	}
+
+	.back-btn:hover {
+		color: var(--color-text-primary);
+		background-color: rgba(255, 255, 255, 0.06);
+	}
+
+	.thread-list {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.thread-item {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 6px;
+		border-bottom: 1px solid var(--color-border);
+		border-radius: 6px;
+		transition: background-color var(--duration-default) var(--ease-default);
+	}
+
+	.thread-item:hover {
 		background-color: rgba(255, 255, 255, 0.04);
 	}
 
-	.model-row.selected {
-		background-color: color-mix(in srgb, var(--color-accent) 15%, transparent);
-	}
-
-	.model-row:disabled {
-		cursor: not-allowed;
-	}
-
-	.model-info {
+	.thread-text {
+		flex: 1;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		min-width: 0;
 	}
 
-	.model-name {
+	.thread-title {
 		font-size: 0.8125rem;
 		font-weight: 500;
 		color: var(--color-text-primary);
@@ -446,36 +1467,49 @@
 		white-space: nowrap;
 	}
 
-	.model-meta {
+	.thread-title.archived {
+		color: var(--color-text-secondary);
+	}
+
+	.thread-meta {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		font-size: 0.6875rem;
 		color: var(--color-text-secondary);
 	}
 
-	.model-pricing {
-		font-size: 0.75rem;
-		color: var(--color-text-secondary);
-		white-space: nowrap;
-		flex-shrink: 0;
-		margin-left: 12px;
+	.thread-actions {
+		position: absolute;
+		right: 6px;
+		top: 50%;
+		transform: translateY(-50%);
+		display: none;
+		gap: 2px;
+		padding: 2px;
+		background-color: var(--color-bg-elevated);
+		border-radius: 6px;
 	}
 
-	/* Selected model indicator */
-	.selected-indicator {
+	.thread-item:hover .thread-actions {
 		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 0;
-		font-size: 0.75rem;
-		color: var(--color-accent);
 	}
 
-	.selected-indicator svg {
-		flex-shrink: 0;
+	.thread-list > .confirm-bar {
+		margin: 4px 0 8px;
 	}
 
-	.selected-indicator span {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	.title-edit {
+		width: 100%;
+		padding: 3px 8px;
+		font-family: var(--font-sans);
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--color-text-primary);
+		background-color: var(--color-bg-elevated);
+		border: 1px solid var(--color-accent);
+		border-radius: 6px;
+		outline: none;
+		box-sizing: border-box;
 	}
 </style>

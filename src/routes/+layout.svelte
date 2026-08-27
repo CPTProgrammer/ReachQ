@@ -4,7 +4,9 @@
 	import AppShell from '$lib/components/layout/AppShell.svelte';
 	import WelcomeScreen from '$lib/components/setup/WelcomeScreen.svelte';
 	import { loadSettings, getSettings, syncTraySettings } from '$lib/state/settings.svelte';
-	import { loadAISettings } from '$lib/state/ai.svelte';
+	import { agentMigrateLegacySettings } from '$lib/ipc/agent';
+	import { loadProviders, loadModels } from '$lib/state/agent-settings.svelte';
+	import { initPanelStorageSync } from '$lib/state/agent.svelte';
 	import { initShortcuts, cleanupShortcuts } from '$lib/state/shortcuts.svelte';
 	import { startupUpdateCheck, startPeriodicChecks, stopPeriodicChecks } from '$lib/state/updater.svelte';
 	import { changeLocale } from '$lib/state/i18n.svelte';
@@ -15,9 +17,12 @@
 	let { children }: { children: Snippet } = $props();
 
 	const isEditorWindow = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('editor');
+	// Detached agent panel window (`?agent=<identity>`, design 01 §1.2).
+	const isAgentWindow = typeof window !== 'undefined' && !!new URLSearchParams(window.location.search).get('agent');
 	const settings = getSettings();
 
 	onMount(() => {
+		initPanelStorageSync();
 		loadSettings();
 		Promise.all([
 			syncTraySettings(),
@@ -28,7 +33,6 @@
 				setTimeout(() => preloader.remove(), 400);
 			}
 		});
-		loadAISettings();
 		initShortcuts();
 		// startupUpdateCheck();
 		// startPeriodicChecks();
@@ -47,6 +51,14 @@
 	$effect(() => {
 		if (!vaultState.locked) {
 			loadSnippets();
+			// Agent bootstrap: one-time legacy AI settings migration (idempotent,
+			// decided backend-side), then provider/model lists. Failures are
+			// silent (e.g. pure-browser dev mode without Tauri).
+			void (async () => {
+				try { await agentMigrateLegacySettings(); } catch { /* silent */ }
+				try { await loadProviders(); } catch { /* silent */ }
+				try { await loadModels(); } catch { /* silent */ }
+			})();
 		}
 	});
 
@@ -68,7 +80,7 @@
 	});
 </script>
 
-{#if isEditorWindow}
+{#if isEditorWindow || isAgentWindow}
 	{@render children()}
 {:else}
 	{#if !settings.setupComplete}

@@ -89,6 +89,23 @@ impl RemoteFs {
         browser::write_text_file(&self.backend, &self.handle, path, content).await
     }
 
+    /// Stat a remote path (mtime+size+permissions). Added for the agent's
+    /// fingerprint logic (design 02 §3).
+    pub async fn stat(&self, path: &str) -> Result<browser::RemoteStat, SftpBrowserError> {
+        browser::stat_entry(&self.backend, &self.handle, path).await
+    }
+
+    /// Read raw bytes of a remote file (no UTF-8 validation, caller-chosen
+    /// size cap). Used by the agent's encoding pipeline.
+    pub async fn read_bytes(&self, path: &str, max_size: u64) -> Result<Vec<u8>, SftpBrowserError> {
+        browser::read_bytes(&self.backend, &self.handle, path, max_size).await
+    }
+
+    /// Write raw bytes to a remote file (truncate + write).
+    pub async fn write_bytes(&self, path: &str, data: &[u8]) -> Result<(), SftpBrowserError> {
+        browser::write_bytes(&self.backend, &self.handle, path, data).await
+    }
+
     /// Upload a local file, reporting progress through `on_progress`.
     pub async fn upload<F: Fn(TransferProgress)>(
         &self,

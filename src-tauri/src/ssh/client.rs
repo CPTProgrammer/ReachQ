@@ -306,6 +306,8 @@ pub struct ConnectionInfo {
     pub host: String,
     pub port: u16,
     pub username: String,
+    /// Normalized agent identity: "user@host:port[#via=chainhash]".
+    pub identity: String,
 }
 
 struct ActiveConnection {
@@ -316,6 +318,12 @@ struct ActiveConnection {
     /// These are intentionally stored but never directly read — dropping them closes the tunnels.
     #[allow(dead_code)]
     jump_handles: Vec<SharedHandle>,
+    /// Agent tool-call leases (design 02 §3.1). A lease blocks the implicit
+    /// tab-close disconnect for the duration of one tool call.
+    lease_count: u32,
+    /// Tab was closed while leased: the connection is torn down for real
+    /// once the last lease is released.
+    pending_close: bool,
 }
 
 /// Decision returned by the frontend after the user confirms a host key.
@@ -416,7 +424,8 @@ impl SshManager {
             .await
             .map_err(|_| SshError::ConnectionFailed("Connection timed out".into()))??;
 
-        self.open_session_and_register(id, host, port, username, handle, cols, rows, color_init, app_handle, Vec::new()).await
+        self.open_session_and_register(id, host, port, username, handle, cols, rows, color_init, app_handle, Vec::new(),
+            crate::agent::identity::compute_identity(username, host, port, None, proxy.as_ref())).await
     }
 
     /// Connect to a target host through one or more jump hosts (ProxyJump).
@@ -513,6 +522,13 @@ impl SshManager {
         pending_host_keys: Arc<tokio::sync::Mutex<HashMap<String, Vec<oneshot::Sender<HostKeyDecision>>>>>,
         known_hosts: Arc<tokio::sync::RwLock<KnownHosts>>,
     ) -> Result<ConnectionInfo, SshError> {
+        let identity = crate::agent::identity::compute_identity(
+            target_username,
+            target_host,
+            target_port,
+            Some(&jump_chain.iter().map(crate::agent::identity::ChainHop::from).collect::<Vec<_>>()),
+            None,
+        );
         tracing::info!(
             "SSH connecting to {}@{}:{} via {} jump host(s)",
             target_username, target_host, target_port, jump_chain.len()
@@ -737,7 +753,7 @@ impl SshManager {
 
         self.open_session_and_register(
             id, target_host, target_port, target_username,
-            target_handle, cols, rows, color_init, app_handle, jump_handles,
+            target_handle, cols, rows, color_init, app_handle, jump_handles, identity,
         ).await
     }
 
@@ -769,6 +785,7 @@ impl SshManager {
         color_init: bool,
         app_handle: tauri::AppHandle,
         jump_handles: Vec<SharedHandle>,
+        identity: String,
     ) -> Result<ConnectionInfo, SshError> {
         let channel = handle
             .channel_open_session()
@@ -805,6 +822,7 @@ impl SshManager {
             host: host.to_string(),
             port,
             username: username.to_string(),
+            identity,
         };
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
@@ -824,6 +842,8 @@ impl SshManager {
                 info: info.clone(),
                 handle: shared_handle,
                 jump_handles,
+                lease_count: 0,
+                pending_close: false,
             },
         );
 
@@ -844,12 +864,72 @@ impl SshManager {
             .map_err(|e| SshError::SendError(format!("{}", e)))
     }
 
+    /// Lease-aware disconnect used by implicit tab closes (design 02 §3.1):
+    /// while an agent tool call holds a lease, mark the connection
+    /// pending-close instead of tearing it down; the last lease release
+    /// performs the real disconnect.
     pub fn disconnect(&mut self, id: &str) -> Result<(), SshError> {
+        let conn = self.connections.get_mut(id)
+            .ok_or_else(|| SshError::NotFound(id.to_string()))?;
+        if conn.lease_count > 0 {
+            conn.pending_close = true;
+            tracing::info!("SSH pending close (leased by agent): {}", id);
+            return Ok(());
+        }
+        self.force_disconnect(id)
+    }
+
+    /// Unconditional disconnect: explicit user action (SessionList) or
+    /// dead-connection cleanup.
+    pub fn force_disconnect(&mut self, id: &str) -> Result<(), SshError> {
         let conn = self.connections.remove(id)
             .ok_or_else(|| SshError::NotFound(id.to_string()))?;
         let _ = conn.cmd_tx.send(SessionCommand::Close);
         tracing::info!("SSH disconnected: {}", id);
         Ok(())
+    }
+
+    /// Acquire a tool-call lease on a connection.
+    pub fn acquire_lease(&mut self, id: &str) -> Result<(), SshError> {
+        let conn = self.connections.get_mut(id)
+            .ok_or_else(|| SshError::NotFound(id.to_string()))?;
+        conn.lease_count += 1;
+        Ok(())
+    }
+
+    /// Release a lease. Returns true when this release triggered the real
+    /// disconnect of a pending-close connection (caller should invalidate
+    /// caches and notify the frontend).
+    pub fn release_lease(&mut self, id: &str) -> bool {
+        let Some(conn) = self.connections.get_mut(id) else {
+            return false;
+        };
+        conn.lease_count = conn.lease_count.saturating_sub(1);
+        if conn.lease_count == 0 && conn.pending_close {
+            let _ = self.force_disconnect(id);
+            return true;
+        }
+        false
+    }
+
+    /// Find a live connection id for an agent identity, preferring
+    /// `prefer` (e.g. the active tab's connection).
+    pub fn find_by_identity(&self, identity: &str, prefer: Option<&str>) -> Option<String> {
+        if let Some(p) = prefer {
+            if let Some(conn) = self.connections.get(p) {
+                if conn.info.identity == identity {
+                    return Some(p.to_string());
+                }
+            }
+        }
+        self.connections
+            .values()
+            .find(|c| c.info.identity == identity)
+            .map(|c| c.info.id.clone())
+    }
+
+    pub fn is_pending_close(&self, id: &str) -> bool {
+        self.connections.get(id).map(|c| c.pending_close).unwrap_or(false)
     }
 
     pub fn list_connections(&self) -> Vec<ConnectionInfo> {
@@ -1328,9 +1408,8 @@ async fn cleanup_dead_connection(app_handle: &tauri::AppHandle, connection_id: &
         monitoring.remove(connection_id);
     }
 
-    // Remove the dead connection from SshManager.
-    // `disconnect()` is safe to call even if the connection was already
-    // removed — it just returns NotFound, which we ignore.
+    // Remove the dead connection from SshManager. Unconditional: leases
+    // cannot ride a dead channel; the next tool call re-resolves.
     let mut manager = state.ssh_manager.lock().await;
-    let _ = manager.disconnect(connection_id);
+    let _ = manager.force_disconnect(connection_id);
 }

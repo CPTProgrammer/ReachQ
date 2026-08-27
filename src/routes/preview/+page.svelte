@@ -5,6 +5,12 @@
 			title: 'Distro Icons',
 			description:
 				'All OS/distro SVG icons from $lib/data/distro-icons and the os-release ID → icon mapping resolution.'
+		},
+		{
+			href: '/preview/agent',
+			title: 'AI Agent Panel',
+			description:
+				'The real agent panel driven by an in-browser mock backend: streaming text/thinking, tool cards, approvals, queueing, branches, and error states.'
 		}
 	];
 </script>

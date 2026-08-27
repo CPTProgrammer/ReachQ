@@ -8,6 +8,7 @@ use tokio::sync::{oneshot, RwLock};
 use serde::{Deserialize, Serialize};
 
 use crate::monitoring::collector::MonitoringCollector;
+use crate::agent::AgentState;
 #[cfg(desktop)]
 use crate::pty::manager::PtyManager;
 #[cfg(desktop)]
@@ -187,6 +188,8 @@ pub struct AppState {
     #[cfg(desktop)]
     pub serial_manager: Arc<tokio::sync::Mutex<SerialManager>>,
     pub vault_manager: Arc<tokio::sync::Mutex<VaultManager>>,
+    /// AI agent subsystem state (threads, runs, approvals, caches).
+    pub agent: Arc<AgentState>,
     pub plugin_manager: Arc<tokio::sync::Mutex<PluginManager>>,
     /// URL of the marketplace registry JSON file.
     pub marketplace_index_url: Arc<RwLock<String>>,
@@ -225,6 +228,7 @@ impl AppState {
             #[cfg(desktop)]
             serial_manager: Arc::new(tokio::sync::Mutex::new(SerialManager::new())),
             vault_manager: Arc::new(tokio::sync::Mutex::new(VaultManager::new(app_dir.clone()))),
+            agent: Arc::new(AgentState::new(app_dir.clone())),
             plugin_manager: Arc::new(tokio::sync::Mutex::new(PluginManager::new(app_dir.join("plugins")))),
             marketplace_index_url: Arc::new(RwLock::new(
                 crate::plugin::marketplace::DEFAULT_INDEX_URL.to_string(),

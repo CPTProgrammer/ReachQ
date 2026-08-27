@@ -1,5 +1,4 @@
-import { createTab, closeTab, getActiveTab, getTabs, activateTab } from './tabs.svelte';
-import { toggleAIPanel } from './ai-chat.svelte';
+import { createTab, requestCloseTab, getActiveTab, getTabs, activateTab } from './tabs.svelte';
 
 export interface Shortcut {
 	key: string;
@@ -42,7 +41,7 @@ function previousTab(): void {
 function closeActiveTab(): void {
 	const active = getActiveTab();
 	if (active) {
-		closeTab(active.id);
+		requestCloseTab(active.id);
 	}
 }
 
@@ -74,8 +73,7 @@ const shortcuts: Shortcut[] = [
 	{ key: 'Tab', ctrl: true, action: 'Next tab', handler: nextTab },
 	{ key: 'Tab', ctrl: true, shift: true, action: 'Previous tab', handler: previousTab },
 	{ key: ',', ctrl: true, action: 'Open settings', handler: openSettings },
-	{ key: 'p', ctrl: true, shift: true, action: 'Command palette', handler: openCommandPalette },
-	{ key: 'a', ctrl: true, shift: true, action: 'Toggle AI panel', handler: toggleAIPanel }
+	{ key: 'p', ctrl: true, shift: true, action: 'Command palette', handler: openCommandPalette }
 ];
 
 function matchesShortcut(e: KeyboardEvent, shortcut: Shortcut): boolean {

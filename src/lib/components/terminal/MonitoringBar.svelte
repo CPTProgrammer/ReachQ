@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getStats } from '$lib/state/monitoring.svelte';
+	import { identityForConnection, getPanelState, togglePanel } from '$lib/state/agent.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 
 	interface Props {
@@ -10,6 +11,16 @@
 	let { connectionId, sshUser }: Props = $props();
 
 	let stats = $derived(connectionId ? getStats(connectionId) : undefined);
+
+	// Agent panel toggle for the connection's identity (design 01 §1.3).
+	let identity = $derived(identityForConnection(connectionId));
+	let panelOpen = $state(false);
+	$effect(() => {
+		const id = identity;
+		// Read from an effect so `panelOpen` stays reactively in sync with the
+		// identity's panel state.
+		panelOpen = id ? getPanelState(id).open : false;
+	});
 
 	let cpuColor = $derived.by(() => {
 		if (!stats) return 'var(--color-text-secondary)';
@@ -131,12 +142,35 @@
 				</div>
 			{/if}
 		</div>
+
+		{@render agentToggle()}
 	</div>
 {:else}
 	<div class="monitoring-bar disconnected">
 		<span class="disconnected-text">{t('monitoring.not_connected')}</span>
+		{@render agentToggle()}
 	</div>
 {/if}
+
+{#snippet agentToggle()}
+	{#if identity}
+		<div class="agent-toggle" class:push-right={!stats}>
+			<div class="agent-sep"></div>
+			<button
+				class="agent-btn"
+				class:active={panelOpen}
+				onclick={() => togglePanel(identity!)}
+				title={t('agent.toggle')}
+				aria-label={t('agent.toggle')}
+			>
+				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 2l2.09 6.26L20.18 10l-6.09 1.74L12 18l-2.09-6.26L3.82 10l6.09-1.74L12 2z" />
+					<path d="M20 16l.88 2.64L23.52 20l-2.64.76L20 23.4l-.88-2.64L16.48 20l2.64-.76L20 16z" />
+				</svg>
+			</button>
+		</div>
+	{/if}
+{/snippet}
 
 <style>
 	.monitoring-bar {
@@ -285,5 +319,51 @@
 		font-size: 11px;
 		line-height: 1;
 		color: var(--color-text-secondary);
+	}
+
+	.agent-toggle {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-shrink: 0;
+	}
+
+	/* No stats/users block on the left: keep the toggle right-aligned. */
+	.agent-toggle.push-right {
+		margin-left: auto;
+	}
+
+	.agent-sep {
+		width: 1px;
+		height: 14px;
+		background: var(--color-border);
+	}
+
+	.agent-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		border: none;
+		border-radius: var(--radius-btn);
+		background: transparent;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		transition:
+			background-color var(--duration-default) var(--ease-default),
+			color var(--duration-default) var(--ease-default),
+			box-shadow var(--duration-default) var(--ease-default);
+	}
+
+	.agent-btn:hover {
+		background-color: rgba(255, 255, 255, 0.06);
+		color: var(--color-text-primary);
+	}
+
+	.agent-btn.active {
+		background-color: rgba(10, 132, 255, 0.15);
+		color: var(--color-accent);
+		box-shadow: 0 0 8px rgba(10, 132, 255, 0.25);
 	}
 </style>

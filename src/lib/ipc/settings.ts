@@ -5,19 +5,14 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
-/** App settings structure */
-export interface AppSettings {
-	openrouterApiKey: string | null;
-	openrouterUrl: string | null;
-	defaultAiModel: string | null;
-}
-
-/** Setting keys for O(1) lookup */
-export const SETTING_KEYS = {
-	OPENROUTER_API_KEY: 'openrouter_api_key',
-	OPENROUTER_URL: 'openrouter_url',
-	DEFAULT_AI_MODEL: 'default_ai_model'
-} as const;
+/**
+ * App settings structure.
+ * The legacy fixed AI fields (openrouter_*) were removed (design 04 §5);
+ * agent configuration now lives in the vault's generic kv via the agent
+ * commands. The struct is kept (empty) so `settings_get_all` /
+ * `settings_save_all` stay wire-compatible.
+ */
+export interface AppSettings {}
 
 /** Get all app settings. O(1) per setting. */
 export async function getAll(): Promise<AppSettings> {

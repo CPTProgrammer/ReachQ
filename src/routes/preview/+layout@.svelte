@@ -17,6 +17,7 @@
 		<nav class="preview-nav">
 			<a href="/preview">Index</a>
 			<a href="/preview/icons">Distro Icons</a>
+			<a href="/preview/agent">AI Agent</a>
 		</nav>
 	</header>
 	<main class="preview-main">
@@ -26,7 +27,7 @@
 
 <style>
 	.preview-shell {
-		height: 100vh;
+		height: 100%;
 		display: flex;
 		flex-direction: column;
 		background-color: var(--color-bg-primary);

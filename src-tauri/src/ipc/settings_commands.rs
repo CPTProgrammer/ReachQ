@@ -11,42 +11,23 @@ use tauri::State;
 
 const SETTINGS_VAULT_NAME: &str = "__settings__";
 
-/// Known setting keys for O(1) lookup.
-pub mod keys {
-    pub const OPENROUTER_API_KEY: &str = "openrouter_api_key";
-    pub const OPENROUTER_URL: &str = "openrouter_url";
-    pub const DEFAULT_AI_MODEL: &str = "default_ai_model";
-}
-
 /// App settings structure returned to frontend.
+///
+/// The legacy fixed AI fields (`openrouter_api_key` etc.) were removed
+/// (design 04 §5): agent configuration now lives in the vault's generic kv
+/// via `agent_commands`. The struct is kept (empty) so `settings_get_all` /
+/// `settings_save_all` stay wire-compatible with existing callers.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct AppSettings {
-    pub openrouter_api_key: Option<String>,
-    pub openrouter_url: Option<String>,
-    pub default_ai_model: Option<String>,
-}
+pub struct AppSettings {}
 
 /// Get all app settings. O(1) per setting.
 #[tauri::command]
 #[tracing::instrument(skip(state))]
 pub async fn settings_get_all(state: State<'_, AppState>) -> Result<AppSettings, String> {
-    let manager = state.vault_manager.lock().await;
-
-    if manager.is_locked() {
-        return Ok(AppSettings::default());
-    }
-
-    let vault_id = match get_settings_vault_id_if_exists(&manager) {
-        Some(id) => id,
-        None => return Ok(AppSettings::default()),
-    };
-
-    Ok(AppSettings {
-        openrouter_api_key: read_setting(&manager, &vault_id, keys::OPENROUTER_API_KEY).await,
-        openrouter_url: read_setting(&manager, &vault_id, keys::OPENROUTER_URL).await,
-        default_ai_model: read_setting(&manager, &vault_id, keys::DEFAULT_AI_MODEL).await,
-    })
+    // No fixed fields remain; generic kv access goes through `settings_get`.
+    let _ = &state;
+    Ok(AppSettings::default())
 }
 
 /// Get a single setting by key. O(1) lookup.
@@ -126,33 +107,16 @@ pub async fn settings_delete(state: State<'_, AppState>, key: String) -> Result<
     Ok(())
 }
 
-/// Save all app settings at once. O(n) where n = number of settings.
+/// Save all app settings at once. No-op: no fixed fields remain (the agent
+/// config moved to the vault's generic kv). Kept for wire compatibility.
 #[tauri::command]
 #[tracing::instrument(skip(settings, state))]
 pub async fn settings_save_all(
     state: State<'_, AppState>,
     settings: AppSettings,
 ) -> Result<(), String> {
-    let mut manager = state.vault_manager.lock().await;
-
-    if manager.is_locked() {
-        return Err("Vault is locked. Set a master password first.".to_string());
-    }
-
-    let vault_id = ensure_settings_vault(&mut manager).await?;
-
-    // Save each setting (O(1) each)
-    if let Some(value) = settings.openrouter_api_key {
-        save_setting(&mut manager, &vault_id, keys::OPENROUTER_API_KEY, &value).await?;
-    }
-    if let Some(value) = settings.openrouter_url {
-        save_setting(&mut manager, &vault_id, keys::OPENROUTER_URL, &value).await?;
-    }
-    if let Some(value) = settings.default_ai_model {
-        save_setting(&mut manager, &vault_id, keys::DEFAULT_AI_MODEL, &value).await?;
-    }
-
-    tracing::info!("Saved all settings");
+    let _ = &state;
+    let _ = &settings;
     Ok(())
 }
 
@@ -171,32 +135,6 @@ async fn read_setting(
         }
         Err(_) => None,
     }
-}
-
-/// Save a single setting. O(1) upsert.
-async fn save_setting(
-    manager: &mut crate::vault::VaultManager,
-    vault_id: &str,
-    key: &str,
-    value: &str,
-) -> Result<(), String> {
-    let value_bytes = value.as_bytes().to_vec();
-
-    if manager.secret_exists(vault_id, key).await {
-        let plaintext = SecretBox::new(Box::new(value_bytes));
-        manager
-            .update_secret(vault_id, key, plaintext)
-            .await
-            .map_err(|e| e.to_string())?;
-    } else {
-        let plaintext = SecretBox::new(Box::new(value_bytes));
-        manager
-            .create_secret_with_id(vault_id, key, key, SecretCategory::ApiToken, plaintext)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
 }
 
 /// Ensure the settings vault exists. O(1).

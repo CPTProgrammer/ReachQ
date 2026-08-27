@@ -63,7 +63,7 @@ pub async fn ssh_connect(
     jump_chain: Option<Vec<JumpHostConnectParams>>,
     proxy: Option<crate::state::ProxyConfig>,
     color_init: Option<bool>,
-) -> Result<String, String> {
+) -> Result<ConnectionInfo, String> {
     tracing::info!(
         "ssh_connect IPC: id={}, host={}, port={}, user={}, auth_method='{}', has_key_path={}, has_password={}, has_passphrase={}, has_proxy={}, has_jump={}, color_init={}",
         id, host, port, username, auth_method,
@@ -167,7 +167,8 @@ pub async fn ssh_connect(
         mgr.dispatch_hook(&hook, Some(&app_for_hook)).await;
     });
 
-    Ok(connection_id)
+    // Includes the normalized agent identity (design 01 §1.1).
+    Ok(info)
 }
 
 #[tauri::command]
@@ -191,15 +192,31 @@ pub async fn ssh_resize(
     manager.resize(&connection_id, cols, rows).map_err(|e| e.to_string())
 }
 
+/// Disconnect a connection. `force` (SessionList's explicit disconnect)
+/// bypasses agent leases; without it, a leased connection is marked
+/// pending-close and torn down when the last lease releases (design 02 §3.1).
+/// Returns true when the connection was actually torn down now.
 #[tauri::command]
 pub async fn ssh_disconnect(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     connection_id: String,
-) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().await;
-    manager.disconnect(&connection_id).map_err(|e| e.to_string())?;
-    drop(manager);
+    force: Option<bool>,
+) -> Result<bool, String> {
+    let actually_disconnected = {
+        let mut manager = state.ssh_manager.lock().await;
+        if force.unwrap_or(false) {
+            manager.force_disconnect(&connection_id).map_err(|e| e.to_string())?;
+            true
+        } else {
+            manager.disconnect(&connection_id).map_err(|e| e.to_string())?;
+            !manager.is_connected(&connection_id)
+        }
+    };
+
+    if !actually_disconnected {
+        return Ok(false); // pending close, leased by the agent
+    }
 
     // Release the cached SFTP backend (closes the SFTP session if any).
     state.sftp_backend_manager.lock().await.invalidate(&connection_id);
@@ -213,7 +230,7 @@ pub async fn ssh_disconnect(
         mgr.dispatch_hook(&hook, Some(&app_for_hook)).await;
     });
 
-    Ok(())
+    Ok(true)
 }
 
 #[tauri::command]

@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod ansible;
 pub mod plugin;
 pub mod ipc;
@@ -21,7 +22,7 @@ use state::AppState;
 use tracing_subscriber::EnvFilter;
 
 use ipc::ansible_commands::*;
-use ipc::ai_commands::*;
+use ipc::agent_commands::*;
 use ipc::plugin_commands::*;
 use ipc::marketplace_commands::*;
 use ipc::credential_commands::*;
@@ -153,9 +154,36 @@ pub fn run() {
             monitoring_start,
             monitoring_stop,
             monitoring_get_stats,
-            // AI commands
-            ai_chat,
-            ai_fetch_models,
+            // AI agent commands
+            agent_send_message,
+            agent_cancel,
+            agent_dequeue,
+            agent_approve,
+            agent_terminal_resize,
+            agent_terminal_stop,
+            agent_threads_list,
+            agent_threads_list_all,
+            agent_thread_create,
+            agent_thread_rename,
+            agent_thread_archive,
+            agent_thread_delete,
+            agent_thread_messages,
+            agent_get_thread_state,
+            agent_edit_message,
+            agent_set_active_branch,
+            agent_providers_list,
+            agent_provider_presets,
+            agent_provider_add,
+            agent_provider_update,
+            agent_provider_delete,
+            agent_provider_set_api_key,
+            agent_provider_validate,
+            agent_models_list,
+            agent_tool_schemas,
+            agent_set_tool_config,
+            agent_title_model_get,
+            agent_title_model_set,
+            agent_migrate_legacy_settings,
             // Credential commands
             credential_set_master_password,
             credential_verify_master_password,
@@ -358,9 +386,36 @@ pub fn run() {
             monitoring_start,
             monitoring_stop,
             monitoring_get_stats,
-            // AI commands
-            ai_chat,
-            ai_fetch_models,
+            // AI agent commands
+            agent_send_message,
+            agent_cancel,
+            agent_dequeue,
+            agent_approve,
+            agent_terminal_resize,
+            agent_terminal_stop,
+            agent_threads_list,
+            agent_threads_list_all,
+            agent_thread_create,
+            agent_thread_rename,
+            agent_thread_archive,
+            agent_thread_delete,
+            agent_thread_messages,
+            agent_get_thread_state,
+            agent_edit_message,
+            agent_set_active_branch,
+            agent_providers_list,
+            agent_provider_presets,
+            agent_provider_add,
+            agent_provider_update,
+            agent_provider_delete,
+            agent_provider_set_api_key,
+            agent_provider_validate,
+            agent_models_list,
+            agent_tool_schemas,
+            agent_set_tool_config,
+            agent_title_model_get,
+            agent_title_model_set,
+            agent_migrate_legacy_settings,
             // Credential commands
             credential_set_master_password,
             credential_verify_master_password,
@@ -682,6 +737,13 @@ pub fn run() {
                     return;
                 }
 
+                // Only the main window participates in close-to-tray / quit
+                // semantics — detached agent windows (label `agent-*`) must
+                // close (and be destroyed) normally.
+                if window.label() != "main" {
+                    return;
+                }
+
                 // Main window: hide to tray if enabled
                 use tauri::Manager;
                 let app_state = window.state::<AppState>();
@@ -689,7 +751,7 @@ pub fn run() {
                     api.prevent_close();
                     #[cfg(desktop)]
                     let _ = window.hide();
-                } else if window.label() == "main" {
+                } else {
                     // Main window really closing = app quit. The editor window is
                     // designed to never be destroyed (hidden instead, to avoid a
                     // WebView2 crash on Windows), so without an explicit exit the

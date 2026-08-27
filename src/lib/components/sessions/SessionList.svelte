@@ -8,6 +8,7 @@
 	import { sshConnect, sshDisconnect, sshDetectOs, type JumpHostConnectParams } from '$lib/ipc/ssh';
 	// Passwords are now stored encrypted in vault, not in memory cache
 	import { createTab, updateTabOs } from '$lib/state/tabs.svelte';
+	import { registerConnectionIdentity } from '$lib/state/agent.svelte';
 	import { addToast } from '$lib/state/toasts.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import { getPendingHostKey, clearPendingHostKey } from '$lib/state/host-key.svelte';
@@ -348,17 +349,18 @@
 				} : undefined,
 				colorInit: session.color_init ?? true,
 			};
-			await sshConnect(connectParams);
+			const info = await sshConnect(connectParams);
+			registerConnectionIdentity(info.id, info.identity);
 
 			// Cancelled while the handshake was in flight: connectingId was
 			// cleared by cancelConnect, so this connection is unwanted — tear
 			// it down instead of opening a tab.
 			if (connectingId !== id) {
-				sshDisconnect(id).catch(() => {});
+				sshDisconnect(info.id).catch(() => {});
 				return;
 			}
 
-			const tab = createTab('ssh', `${session.username}@${session.host}`, id, session.name, session.detected_os);
+			const tab = createTab('ssh', `${session.username}@${session.host}`, info.id, session.name, session.detected_os);
 			tab.sshConnectParams = connectParams;
 			addToast(t('session.connected_toast', { name: session.name }), 'success');
 			connectSession = undefined;

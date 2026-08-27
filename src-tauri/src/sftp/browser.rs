@@ -328,95 +328,9 @@ pub(crate) async fn read_text_file(
     handle: &SharedHandle,
     path: &str,
 ) -> Result<String, SftpBrowserError> {
-    match backend.protocol() {
-        Some(proto) => read_text_file_sftp(proto, path).await,
-        None => read_text_file_exec(handle, path).await,
-    }
-}
-
-async fn read_text_file_sftp(
-    proto: &SftpProtocol,
-    path: &str,
-) -> Result<String, SftpBrowserError> {
-    let meta = proto
-        .session
-        .stat(path)
-        .await
-        .map_err(|e| map_sftp_error(path, e))?;
-
-    let size = meta.attrs.size.unwrap_or(0);
-    if size > MAX_EDIT_SIZE {
-        return Err(too_large_error(size));
-    }
-
-    if size == 0 {
-        return Ok(String::new());
-    }
-
-    let mut buf = vec![0u8; size as usize];
-    let read = read_remote_pipelined(
-        proto,
-        path,
-        size,
-        |offset, data| {
-            let start = offset as usize;
-            let end = start + data.len();
-            if end > buf.len() {
-                return Err(super::transfer::TransferError::IoError(
-                    "Remote returned more data than expected".to_string(),
-                ));
-            }
-            buf[start..end].copy_from_slice(&data);
-            Ok(())
-        },
-        |_| {},
-    )
-    .await
-    .map_err(|e| SftpBrowserError::Protocol(e.to_string()))?;
-
-    // The file may have shrunk on the server mid-read.
-    buf.truncate(read as usize);
-
-    String::from_utf8(buf)
+    let bytes = read_bytes(backend, handle, path, MAX_EDIT_SIZE).await?;
+    String::from_utf8(bytes)
         .map_err(|_| SftpBrowserError::ParseError("File is not valid UTF-8 text".to_string()))
-}
-
-/// Read a text file's content from the remote host via base64 encoding.
-async fn read_text_file_exec(
-    handle: &SharedHandle,
-    path: &str,
-) -> Result<String, SftpBrowserError> {
-    // Check file size first
-    let stat_cmd = format!("stat -c %s {} 2>/dev/null || stat -f %z {}", shell_escape(path), shell_escape(path));
-    let size_output = exec_on_connection(handle, &stat_cmd).await?;
-    let size: u64 = size_output
-        .trim()
-        .parse()
-        .map_err(|_| SftpBrowserError::ParseError(format!("Cannot determine file size: {}", path)))?;
-
-    if size > MAX_EDIT_SIZE {
-        return Err(too_large_error(size));
-    }
-
-    // Read file via base64 to handle binary-safe transport
-    let cmd = format!("base64 {}", shell_escape(path));
-    let b64_output = exec_on_connection(handle, &cmd).await?;
-
-    // Remove all whitespace from base64 output (line breaks etc.)
-    let b64_clean: String = b64_output.chars().filter(|c| !c.is_whitespace()).collect();
-
-    if b64_clean.is_empty() {
-        return Ok(String::new());
-    }
-
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(&b64_clean)
-        .map_err(|e| SftpBrowserError::ParseError(format!("Base64 decode failed: {}", e)))?;
-
-    String::from_utf8(bytes).map_err(|_| {
-        SftpBrowserError::ParseError("File is not valid UTF-8 text".to_string())
-    })
 }
 
 /// Write text content to a remote file.
@@ -426,16 +340,161 @@ pub(crate) async fn write_text_file(
     path: &str,
     content: &str,
 ) -> Result<(), SftpBrowserError> {
+    write_bytes(backend, handle, path, content.as_bytes()).await
+}
+
+/// Structured stat for the agent's fingerprint logic (mtime+size).
+pub struct RemoteStat {
+    pub size: u64,
+    pub mtime: u64,
+    pub permissions: String,
+    pub is_dir: bool,
+}
+
+/// Stat a remote path. Protocol backend uses STAT; the exec fallback tries
+/// GNU `stat -c` first, then BSD `stat -f`.
+pub(crate) async fn stat_entry(
+    backend: &SftpBackend,
+    handle: &SharedHandle,
+    path: &str,
+) -> Result<RemoteStat, SftpBrowserError> {
     match backend.protocol() {
         Some(proto) => {
-            let bytes = content.as_bytes();
+            let meta = proto
+                .session
+                .stat(path)
+                .await
+                .map_err(|e| map_sftp_error(path, e))?;
+            let file_type = meta.attrs.file_type();
+            Ok(RemoteStat {
+                size: meta.attrs.size.unwrap_or(0),
+                mtime: meta.attrs.mtime.map(u64::from).unwrap_or(0),
+                permissions: format_permissions(&file_type, meta.attrs.permissions),
+                is_dir: file_type.is_dir(),
+            })
+        }
+        None => {
+            let cmd = format!(
+                "stat -c '%s|%Y|%A|%F' {0} 2>/dev/null || stat -f '%z|%Sm|%Sp|%HT' -t '%s' {0}",
+                shell_escape(path)
+            );
+            let (stdout, _stderr, code) =
+                crate::ssh::client::exec_on_connection_with_exit_code(handle, &cmd).await?;
+            if code != 0 {
+                return Err(SftpBrowserError::PathNotFound(path.to_string()));
+            }
+            let line = stdout.trim();
+            let parts: Vec<&str> = line.split('|').collect();
+            if parts.len() < 4 {
+                return Err(SftpBrowserError::ParseError(format!(
+                    "Cannot stat {}: unexpected output {:?}",
+                    path, line
+                )));
+            }
+            let size: u64 = parts[0]
+                .trim()
+                .parse()
+                .map_err(|_| SftpBrowserError::ParseError(format!("Cannot stat size: {}", path)))?;
+            let mtime: u64 = parts[1]
+                .trim()
+                .parse()
+                .map_err(|_| SftpBrowserError::ParseError(format!("Cannot stat mtime: {}", path)))?;
+            Ok(RemoteStat {
+                size,
+                mtime,
+                permissions: parts[2].to_string(),
+                is_dir: parts[3].to_lowercase().contains("directory"),
+            })
+        }
+    }
+}
+
+/// Read raw bytes from a remote file (no UTF-8 validation). Used by the
+/// agent's encoding pipeline; the text editor path uses read_text_file.
+pub(crate) async fn read_bytes(
+    backend: &SftpBackend,
+    handle: &SharedHandle,
+    path: &str,
+    max_size: u64,
+) -> Result<Vec<u8>, SftpBrowserError> {
+    match backend.protocol() {
+        Some(proto) => {
+            let meta = proto
+                .session
+                .stat(path)
+                .await
+                .map_err(|e| map_sftp_error(path, e))?;
+            let size = meta.attrs.size.unwrap_or(0);
+            if size > max_size {
+                return Err(too_large_error(size));
+            }
+            if size == 0 {
+                return Ok(Vec::new());
+            }
+            let mut buf = vec![0u8; size as usize];
+            let read = read_remote_pipelined(
+                proto,
+                path,
+                size,
+                |offset, data| {
+                    let start = offset as usize;
+                    let end = start + data.len();
+                    if end > buf.len() {
+                        return Err(super::transfer::TransferError::IoError(
+                            "Remote returned more data than expected".to_string(),
+                        ));
+                    }
+                    buf[start..end].copy_from_slice(&data);
+                    Ok(())
+                },
+                |_| {},
+            )
+            .await
+            .map_err(|e| SftpBrowserError::Protocol(e.to_string()))?;
+            buf.truncate(read as usize);
+            Ok(buf)
+        }
+        None => {
+            let stat_cmd = format!("stat -c %s {} 2>/dev/null || stat -f %z {}", shell_escape(path), shell_escape(path));
+            let size_output = exec_on_connection(handle, &stat_cmd).await?;
+            let size: u64 = size_output
+                .trim()
+                .parse()
+                .map_err(|_| SftpBrowserError::ParseError(format!("Cannot determine file size: {}", path)))?;
+            if size > max_size {
+                return Err(too_large_error(size));
+            }
+            let cmd = format!("base64 {}", shell_escape(path));
+            let b64_output = exec_on_connection(handle, &cmd).await?;
+            let b64_clean: String = b64_output.chars().filter(|c| !c.is_whitespace()).collect();
+            if b64_clean.is_empty() {
+                return Ok(Vec::new());
+            }
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD
+                .decode(&b64_clean)
+                .map_err(|e| SftpBrowserError::ParseError(format!("Base64 decode failed: {}", e)))
+        }
+    }
+}
+
+/// Write raw bytes to a remote file (truncate + write). Used by the agent's
+/// encoding pipeline; the text editor path uses write_text_file.
+pub(crate) async fn write_bytes(
+    backend: &SftpBackend,
+    handle: &SharedHandle,
+    path: &str,
+    data: &[u8],
+) -> Result<(), SftpBrowserError> {
+    match backend.protocol() {
+        Some(proto) => {
             let mut pos = 0usize;
             let producer = |max_len: usize| {
-                if pos >= bytes.len() {
+                if pos >= data.len() {
                     return Ok(None);
                 }
-                let end = (pos + max_len).min(bytes.len());
-                let chunk = bytes[pos..end].to_vec();
+                let end = (pos + max_len).min(data.len());
+                let chunk = data[pos..end].to_vec();
                 pos = end;
                 Ok(Some(chunk))
             };
@@ -444,20 +503,18 @@ pub(crate) async fn write_text_file(
                 .map(|_| ())
                 .map_err(|e| SftpBrowserError::Protocol(e.to_string()))
         }
-        None => write_text_file_exec(handle, path, content).await,
+        None => write_bytes_exec(handle, path, data).await,
     }
 }
 
-/// Write text content to a remote file via streaming base64 over a single SSH channel.
-async fn write_text_file_exec(
+/// Write bytes to a remote file via streaming base64 over a single SSH channel.
+async fn write_bytes_exec(
     handle: &SharedHandle,
     path: &str,
-    content: &str,
+    data: &[u8],
 ) -> Result<(), SftpBrowserError> {
     use base64::Engine;
     use russh::ChannelMsg;
-
-    let data = content.as_bytes();
 
     // Empty file: simple truncate
     if data.is_empty() {

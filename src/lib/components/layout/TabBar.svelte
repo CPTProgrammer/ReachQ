@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getTabs, getActiveTab, createTab, closeTab, activateTab } from '$lib/state/tabs.svelte';
+	import { getTabs, getActiveTab, createTab, requestCloseTab, activateTab } from '$lib/state/tabs.svelte';
 	import { getActivePage, setActivePage, type Page } from '$lib/state/navigation.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import DistroIcon from '$lib/components/sessions/DistroIcon.svelte';
@@ -15,7 +15,7 @@
 
 	function handleCloseTab(e: MouseEvent, id: string): void {
 		e.stopPropagation();
-		closeTab(id);
+		requestCloseTab(id);
 	}
 
 	const pages: { id: Page; label: () => string }[] = [
@@ -51,6 +51,7 @@
 				<div
 					class="tab"
 					class:active={tab.id === activeTab?.id}
+					class:pending={tab.pendingClose}
 					onclick={() => activateTab(tab.id)}
 					onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') activateTab(tab.id); }}
 					role="tab"
@@ -71,6 +72,10 @@
 					{/if}
 
 					<span class="tab-title">{tab.sessionName || tab.title}</span>
+
+					{#if tab.pendingClose}
+						<span class="pending-dot" title={t('agent.pending_close_title')}></span>
+					{/if}
 
 					<button
 						class="tab-close"
@@ -226,6 +231,36 @@
 
 	.tab:hover .tab-close {
 		opacity: 1;
+	}
+
+	/* Pending-close tabs (agent lease held) keep their close button visible:
+	 * clicking it again force-disconnects (design 01 §1.4). */
+	.tab.pending .tab-close {
+		opacity: 1;
+	}
+
+	.tab.pending .tab-title,
+	.tab.pending .tab-icon {
+		opacity: 0.6;
+	}
+
+	.pending-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--color-accent);
+		flex-shrink: 0;
+		animation: pending-pulse 1.2s ease-in-out infinite;
+	}
+
+	@keyframes pending-pulse {
+		0%,
+		100% {
+			opacity: 0.4;
+		}
+		50% {
+			opacity: 1;
+		}
 	}
 
 	.tab-close:hover {
