@@ -47,8 +47,21 @@
 
 	let fontSearch = $state('');
 	let fontDropdownOpen = $state(false);
+	let fontPickerEl = $state<HTMLDivElement | undefined>(undefined);
 	let systemFonts = $state<string[]>([]);
 	let fontsLoading = $state(false);
+
+	$effect(() => {
+		if (!fontDropdownOpen) return;
+		function onDocClick(e: MouseEvent) {
+			if (fontPickerEl && !fontPickerEl.contains(e.target as Node)) {
+				fontDropdownOpen = false;
+				fontSearch = '';
+			}
+		}
+		document.addEventListener('click', onDocClick, true);
+		return () => document.removeEventListener('click', onDocClick, true);
+	});
 
 	let filteredFonts = $derived.by(() => {
 		const q = fontSearch.toLowerCase();
@@ -141,7 +154,7 @@
 			<span class="setting-description">{t('settings.font_desc')}</span>
 		</div>
 		<div class="setting-control">
-			<div class="font-picker">
+			<div class="font-picker" bind:this={fontPickerEl}>
 				<button
 					class="font-picker-btn"
 					style="font-family: '{currentFont}', monospace"
