@@ -33,7 +33,7 @@
 	function onScroll(): void {
 		const el = scrollEl;
 		if (!el) return;
-		nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+		nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 1;
 	}
 
 	/** Reactive signature of everything that can grow the message list. */
