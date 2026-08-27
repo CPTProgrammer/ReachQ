@@ -112,6 +112,7 @@
 	}
 
 	.input-field[type='number'] {
+		appearance: textfield;
 		-moz-appearance: textfield;
 	}
 
