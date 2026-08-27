@@ -7,6 +7,7 @@
 </script>
 
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Terminal } from '@xterm/xterm';
 	import { FitAddon } from '@xterm/addon-fit';
 	import '@xterm/xterm/css/xterm.css';
@@ -40,7 +41,11 @@
 	$effect(() => {
 		if (!containerEl) return;
 		const el = containerEl;
-		const s = getSettings();
+		// Creation-time inputs are untracked: re-running this effect would
+		// dispose the xterm and lose its content. `toolCallId` never changes
+		// for a mounted card; settings changes are applied live below.
+		const id = untrack(() => toolCallId);
+		const s = untrack(getSettings);
 		const t = new Terminal({
 			fontFamily: s.fontFamily || 'monospace',
 			fontSize: Math.max(10, (s.fontSize ?? 14) - 1),
@@ -56,7 +61,7 @@
 		term = t;
 		fit = f;
 
-		unsubscribe = onTerminalOutput(toolCallId, (dataB64) => {
+		unsubscribe = onTerminalOutput(id, (dataB64) => {
 			t.write(decodeBase64(dataB64));
 		});
 
@@ -77,11 +82,32 @@
 			unsubscribe?.();
 			// Leaving the layout: remote PTY returns to the default width
 			// (design 01 §2.3 terminal section).
-			agentResizeTerminal(toolCallId, 100, 24).catch(() => {});
+			agentResizeTerminal(id, 100, 24).catch(() => {});
 			t.dispose();
 			term = undefined;
 			fit = undefined;
 		};
+	});
+
+	// Apply font/theme setting changes live, without recreating the terminal
+	// (same pattern as the main Terminal view: options + refit, no dispose).
+	$effect(() => {
+		const s = getSettings();
+		const t = term;
+		if (!t) return;
+		const fontFamily = s.fontFamily || 'monospace';
+		const fontSize = Math.max(10, (s.fontSize ?? 14) - 1);
+		const theme = getTerminalTheme(s.terminalTheme);
+		if (t.options.fontFamily !== fontFamily || t.options.fontSize !== fontSize) {
+			t.options.fontFamily = fontFamily;
+			t.options.fontSize = fontSize;
+			t.clearTextureAtlas();
+			fitAndNotify();
+		}
+		if (t.options.theme !== theme) {
+			t.options.theme = theme;
+			t.clearTextureAtlas();
+		}
 	});
 
 	// Collapse -> shrink the remote PTY to 100 cols; expand -> real width.

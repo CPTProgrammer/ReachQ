@@ -403,7 +403,16 @@ function handleEvent(e: AgentEvent): void {
 		}
 		case 'tool_call': {
 			const rt = ensureThreadRuntime(e.threadId);
-			rt.toolCalls[e.toolCall.id] = e.toolCall;
+			const existing = rt.toolCalls[e.toolCall.id];
+			if (existing) {
+				// Mutate in place: replacing the view object bumps the record's
+				// source, which propagates down the bare-getter prop chain
+				// (Svelte 5 read-only props) into ToolTerminal's xterm effect and
+				// recreates the terminal, wiping live output on every status change.
+				Object.assign(existing, e.toolCall);
+			} else {
+				rt.toolCalls[e.toolCall.id] = e.toolCall;
+			}
 			rt.running = true;
 			// Attach to the assistant message if it exists yet.
 			const msg = rt.messages.find((m) => m.id === e.toolCall.messageId);
@@ -483,8 +492,7 @@ function handleEvent(e: AgentEvent): void {
 			break;
 		}
 		case 'terminal_output': {
-			// Fan out to card-level subscribers (xterm views).
-			terminalListeners[e.toolCallId]?.(e.dataB64);
+			appendTerminalOutput(e.toolCallId, e.dataB64);
 			break;
 		}
 		case 'title_updated': {
@@ -507,18 +515,49 @@ function safeParse(json: string): unknown {
 }
 
 // ---------------------------------------------------------------------------
-// Terminal output fan-out (card xterm views subscribe per tool_call_id)
+// Terminal output buffer + fan-out (card xterm views subscribe per tool_call_id)
 // ---------------------------------------------------------------------------
 
+/** Decoded-byte cap per tool call; oldest chunks are dropped past the cap. */
+const TERMINAL_BUFFER_LIMIT = 256 * 1024;
+
+interface TerminalBuffer {
+	chunks: string[];
+	bytes: number;
+}
+
+const terminalBuffers: Record<string, TerminalBuffer> = {};
 const terminalListeners: Record<string, (dataB64: string) => void> = {};
+
+function appendTerminalOutput(toolCallId: string, dataB64: string): void {
+	let buf = terminalBuffers[toolCallId];
+	if (!buf) {
+		buf = { chunks: [], bytes: 0 };
+		terminalBuffers[toolCallId] = buf;
+	}
+	buf.chunks.push(dataB64);
+	buf.bytes += (dataB64.length * 3) / 4; // base64 -> decoded bytes (approx.)
+	while (buf.bytes > TERMINAL_BUFFER_LIMIT && buf.chunks.length > 1) {
+		const dropped = buf.chunks.shift();
+		if (dropped) buf.bytes -= (dropped.length * 3) / 4;
+	}
+	terminalListeners[toolCallId]?.(dataB64);
+}
 
 export function onTerminalOutput(
 	toolCallId: string,
 	cb: (dataB64: string) => void
 ): () => void {
+	// Replay buffered output so a (re)mounted view catches up with everything
+	// emitted while it was gone (thread switch, remount, pre-mount race), then
+	// go live. Synchronous, so no chunk can interleave between the two phases.
+	const buf = terminalBuffers[toolCallId];
+	if (buf) {
+		for (const chunk of buf.chunks) cb(chunk);
+	}
 	terminalListeners[toolCallId] = cb;
 	return () => {
-		delete terminalListeners[toolCallId];
+		if (terminalListeners[toolCallId] === cb) delete terminalListeners[toolCallId];
 	};
 }
 
