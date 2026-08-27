@@ -19,6 +19,7 @@
 	import { t } from '$lib/state/i18n.svelte';
 	import { getDraft, setDraft } from './composer-draft.svelte';
 	import { formatContextLength, formatTokens } from './utils';
+	import { formatEffort } from '$lib/utils/formatters';
 
 	let { identity, threadId }: Props = $props();
 
@@ -217,7 +218,7 @@
 						title={t('agent.effort')}
 						onclick={() => (effortOpen = !effortOpen)}
 					>
-						<span>{currentEffort}</span>
+						<span>{formatEffort(currentEffort)}</span>
 						<svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
 					</button>
 					{#if effortOpen}
@@ -229,7 +230,7 @@
 											<svg width="11" height="11" viewBox="0 0 14 14" fill="none"><path d="M2 7l3.5 3.5L12 3.5" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
 										{/if}
 									</span>
-									<span>{effort}</span>
+									<span>{formatEffort(effort)}</span>
 								</button>
 							{/each}
 						</div>

@@ -85,3 +85,24 @@ export function truncate(str: string, maxLength: number): string {
 	if (str.length <= maxLength) return str;
 	return str.slice(0, maxLength - 1) + '\u2026';
 }
+
+const EFFORT_DISPLAY_NAMES: Record<string, string> = {
+	low: 'Low',
+	medium: 'Medium',
+	high: 'High',
+	max: 'Max',
+	xhigh: 'xHigh'
+};
+
+/**
+ * Format a thinking effort level for display.
+ * e.g., "high" → "High", "xhigh" → "xHigh"
+ *
+ * TODO: This hardcoded mapping is a temporary solution. The proper approach
+ * is for each backend provider to include a display name for each thinking
+ * effort level in `ModelMeta` (e.g. `thinking_effort_labels`), since the
+ * provider knows the official naming of its own levels.
+ */
+export function formatEffort(effort: string): string {
+	return EFFORT_DISPLAY_NAMES[effort] ?? effort.charAt(0).toUpperCase() + effort.slice(1);
+}
