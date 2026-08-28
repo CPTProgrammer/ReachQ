@@ -366,17 +366,18 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
+		align-items: center;
 		min-height: 0;
+		overflow-y: auto;
 	}
 
 	.messages {
 		flex: 1;
-		overflow-y: auto;
-		padding: 12px 10px;
+		padding: 10px;
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
-		min-height: 0;
+		max-width: var(--chat-max-width);
 	}
 
 	.empty-state {
@@ -475,7 +476,7 @@
 	.assistant-block {
 		position: relative;
 		width: 100%;
-		padding-left: 20px;
+		padding: 0 20px;
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
@@ -662,7 +663,7 @@
 	.meta-anchor {
 		position: absolute;
 		left: 0;
-		bottom: 0;
+		bottom: 2px;
 		z-index: 6;
 	}
 

@@ -97,8 +97,10 @@
 	function autogrow(): void {
 		const el = inputEl;
 		if (!el) return;
+		el.style.overflowY = 'hidden';
 		el.style.height = 'auto';
-		el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+		el.style.height = `${el.scrollHeight + 1}px`;
+		el.style.overflowY = 'auto';
 	}
 
 	$effect(() => {
@@ -170,185 +172,196 @@
 	});
 </script>
 
-<div class="composer">
-	<textarea
-		bind:this={inputEl}
-		bind:value={() => getDraft(draftKey), (v) => setDraft(draftKey, v)}
-		onkeydown={onKeydown}
-		placeholder={t('agent.placeholder')}
-		rows="4"
-		disabled={!threadId}
-	></textarea>
+<div class="composer-area">
+	<div class="composer">
+		<textarea
+			bind:this={inputEl}
+			bind:value={() => getDraft(draftKey), (v) => setDraft(draftKey, v)}
+			onkeydown={onKeydown}
+			placeholder={t('agent.placeholder')}
+			rows="4"
+			disabled={!threadId}
+		></textarea>
 
-	<div class="bar">
-		<div class="button-bar thinking-button-bar">
-			<!-- Thinking toggle (design 01 §3.1) -->
-			<button
-				type="button"
-				class="bar-btn icon-only"
-				class:active={thinkingOn}
-				disabled={!modelMeta || !modelMeta.supportsThinking || modelMeta.thinkingMandatory}
-				title={!modelMeta || !modelMeta.supportsThinking
-					? t('agent.thinking_unavailable')
-					: modelMeta.thinkingMandatory
-						? t('agent.thinking_locked')
-						: t('agent.thinking')}
-				aria-label={t('agent.thinking')}
-				onclick={toggleThinking}
-			>
-				<!-- <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-6 .1 4 4 0 0 0-2.5 5.8 4 4 0 0 0 .6 6.6A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 6 .1 4 4 0 0 1 2.5 5.8 4 4 0 0 1-.6 6.6A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/></svg> -->
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					{#if thinkingOn}
-						<path d="M 16.19 13.29 A 4 4 0 0 0 15 16.12 V 19 a 1 1 0 0 1 -1 1 H 10 a 1 1 0 0 1 -1 -1 V 16.13 a 4.13 4.13 0 0 0 -1.26 -2.91 a 6 6 0 1 1 8.45 0.07 Z M 9 16 a 0.57 0.57 0 0 1 0 0.13 V 19 a 1 1 0 0 0 1 1 h 4 a 1 1 0 0 0 1 -1 V 16.12 A 0.49 0.49 0 0 1 15 16 Z m 4 4 H 11 v 1 h 2 Z"/>
-					{:else}
-						<path d="M 4 4 L 20 20 M 15.129 15.133 A 4 4 0 0 0 15 16.12 V 19 a 1 1 0 0 1 -1 1 H 10 a 1 1 0 0 1 -1 -1 V 16.13 a 4.13 4.13 0 0 0 -1.26 -2.91 a 6 6 0 0 1 -1.219 -6.68 M 9.456 3.575 A 6 6 0 0 1 17.522 11.355 M 9 16 a 0.57 0.57 0 0 1 0 0.13 V 19 a 1 1 0 0 0 1 1 h 4 a 1 1 0 0 0 1 -1 V 16.12 A 0.49 0.49 0 0 1 15 16 Z m 4 4 H 11 v 1 h 2 Z"/>
-					{/if}
-				</svg>
-			</button>
+		<div class="bar">
+			<div class="button-bar thinking-button-bar">
+				<!-- Thinking toggle (design 01 §3.1) -->
+				<button
+					type="button"
+					class="bar-btn icon-only"
+					class:active={thinkingOn}
+					disabled={!modelMeta || !modelMeta.supportsThinking || modelMeta.thinkingMandatory}
+					title={!modelMeta || !modelMeta.supportsThinking
+						? t('agent.thinking_unavailable')
+						: modelMeta.thinkingMandatory
+							? t('agent.thinking_locked')
+							: t('agent.thinking')}
+					aria-label={t('agent.thinking')}
+					onclick={toggleThinking}
+				>
+					<!-- <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-6 .1 4 4 0 0 0-2.5 5.8 4 4 0 0 0 .6 6.6A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 6 .1 4 4 0 0 1 2.5 5.8 4 4 0 0 1-.6 6.6A4 4 0 1 1 12 18Z"/><path d="M12 5v13"/></svg> -->
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						{#if thinkingOn}
+							<path d="M 16.19 13.29 A 4 4 0 0 0 15 16.12 V 19 a 1 1 0 0 1 -1 1 H 10 a 1 1 0 0 1 -1 -1 V 16.13 a 4.13 4.13 0 0 0 -1.26 -2.91 a 6 6 0 1 1 8.45 0.07 Z M 9 16 a 0.57 0.57 0 0 1 0 0.13 V 19 a 1 1 0 0 0 1 1 h 4 a 1 1 0 0 0 1 -1 V 16.12 A 0.49 0.49 0 0 1 15 16 Z m 4 4 H 11 v 1 h 2 Z"/>
+						{:else}
+							<path d="M 4 4 L 20 20 M 15.129 15.133 A 4 4 0 0 0 15 16.12 V 19 a 1 1 0 0 1 -1 1 H 10 a 1 1 0 0 1 -1 -1 V 16.13 a 4.13 4.13 0 0 0 -1.26 -2.91 a 6 6 0 0 1 -1.219 -6.68 M 9.456 3.575 A 6 6 0 0 1 17.522 11.355 M 9 16 a 0.57 0.57 0 0 1 0 0.13 V 19 a 1 1 0 0 0 1 1 h 4 a 1 1 0 0 0 1 -1 V 16.12 A 0.49 0.49 0 0 1 15 16 Z m 4 4 H 11 v 1 h 2 Z"/>
+						{/if}
+					</svg>
+				</button>
 
-			<!-- Reasoning effort (design 01 §3.2) -->
-			{#if efforts.length > 0}
-				<div class="split"></div>
+				<!-- Reasoning effort (design 01 §3.2) -->
+				{#if efforts.length > 0}
+					<div class="split"></div>
 
-				<div class="menu-anchor effort-menu-anchor" bind:this={effortEl}>
-					<button
-						type="button"
-						class="bar-btn"
-						disabled={!thinkingOn}
-						title={t('agent.effort')}
-						onclick={() => (effortOpen = !effortOpen)}
-					>
-						<span>{formatEffort(currentEffort)}</span>
-						<svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-					</button>
-					{#if effortOpen}
-						<div class="menu">
-							{#each efforts as effort (effort)}
-								<button type="button" class="menu-item" class:selected={effort === currentEffort} onclick={() => pickEffort(effort)}>
+					<div class="menu-anchor effort-menu-anchor" bind:this={effortEl}>
+						<button
+							type="button"
+							class="bar-btn"
+							disabled={!thinkingOn}
+							title={t('agent.effort')}
+							onclick={() => (effortOpen = !effortOpen)}
+						>
+							<span>{formatEffort(currentEffort)}</span>
+							<svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+						</button>
+						{#if effortOpen}
+							<div class="menu">
+								{#each efforts as effort (effort)}
+									<button type="button" class="menu-item" class:selected={effort === currentEffort} onclick={() => pickEffort(effort)}>
+										<span class="menu-check">
+											{#if effort === currentEffort}
+												<svg width="11" height="11" viewBox="0 0 14 14" fill="none"><path d="M2 7l3.5 3.5L12 3.5" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+											{/if}
+										</span>
+										<span>{formatEffort(effort)}</span>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+			<span class="spacer"></span>
+
+			<!-- Context usage ring (design 01 §3.3; hidden without usage) -->
+			{#if usage && contextLength > 0}
+				<span
+					class="usage-ring"
+					title={t('agent.context_usage', {
+						used: formatTokens(usage.promptTokens),
+						total: formatTokens(contextLength)
+					})}
+				>
+					<svg width="16" height="16" viewBox="0 0 18 18">
+						<circle cx="9" cy="9" r="7" fill="none" stroke="var(--color-border)" stroke-width="2.4" />
+						<circle
+							cx="9" cy="9" r="7" fill="none"
+							stroke={ringColor}
+							stroke-width="2.4"
+							stroke-linecap="round"
+							stroke-dasharray={`${Math.min(1, usageFraction) * 43.98} 43.98`}
+							transform="rotate(-90 9 9)"
+						/>
+					</svg>
+				</span>
+			{/if}
+
+			<!-- Model picker (design 01 §3.6) -->
+			<div class="menu-anchor" bind:this={modelEl}>
+				<button
+					type="button"
+					class="bar-btn model-btn"
+					title={t('agent.model')}
+					onclick={() => (modelOpen = !modelOpen)}
+				>
+					<span class="model-name">{modelMeta?.displayName ?? t('agent.model')}</span>
+					<svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				</button>
+				{#if modelOpen}
+					<div class="menu model-menu">
+						{#each modelGroups as group (group.instance.id)}
+							<div class="menu-group">{group.instance.name}</div>
+							{#each group.models ?? [] as m (m.id)}
+								<button
+									type="button"
+									class="menu-item"
+									class:selected={sel?.model === `${group.instance.id}/${m.id}`}
+									onclick={() => pickModel(group, m)}
+								>
 									<span class="menu-check">
-										{#if effort === currentEffort}
+										{#if sel?.model === `${group.instance.id}/${m.id}`}
 											<svg width="11" height="11" viewBox="0 0 14 14" fill="none"><path d="M2 7l3.5 3.5L12 3.5" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
 										{/if}
 									</span>
-									<span>{formatEffort(effort)}</span>
+									<span class="menu-label">{m.displayName}</span>
+									<span class="menu-badge">{formatContextLength(m.contextLength)}</span>
 								</button>
 							{/each}
-						</div>
-					{/if}
-				</div>
-			{/if}
-		</div>
+						{/each}
+						{#if modelGroups.length === 0}
+							<div class="menu-empty">{t('agent.configure_models')}</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
 
-		<span class="spacer"></span>
-
-		<!-- Context usage ring (design 01 §3.3; hidden without usage) -->
-		{#if usage && contextLength > 0}
-			<span
-				class="usage-ring"
-				title={t('agent.context_usage', {
-					used: formatTokens(usage.promptTokens),
-					total: formatTokens(contextLength)
-				})}
-			>
-				<svg width="16" height="16" viewBox="0 0 18 18">
-					<circle cx="9" cy="9" r="7" fill="none" stroke="var(--color-border)" stroke-width="2.4" />
-					<circle
-						cx="9" cy="9" r="7" fill="none"
-						stroke={ringColor}
-						stroke-width="2.4"
-						stroke-linecap="round"
-						stroke-dasharray={`${Math.min(1, usageFraction) * 43.98} 43.98`}
-						transform="rotate(-90 9 9)"
-					/>
-				</svg>
-			</span>
-		{/if}
-
-		<!-- Model picker (design 01 §3.6) -->
-		<div class="menu-anchor" bind:this={modelEl}>
+			<!-- Action button: send / stop / queue (design 01 §3.4) -->
 			<button
 				type="button"
-				class="bar-btn model-btn"
-				title={t('agent.model')}
-				onclick={() => (modelOpen = !modelOpen)}
+				class="action-btn"
+				class:stop={mode === 'stop'}
+				disabled={(mode === 'send' && (!hasText || !threadId || !sendOpts)) ||
+					(mode === 'queue' && !!runtime?.queued)}
+				title={mode === 'send' ? t('agent.send') : mode === 'stop' ? t('agent.stop') : t('agent.queue')}
+				aria-label={mode === 'send' ? t('agent.send') : mode === 'stop' ? t('agent.stop') : t('agent.queue')}
+				onclick={onActionClick}
 			>
-				<span class="model-name">{modelMeta?.displayName ?? t('agent.model')}</span>
-				<svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				{#if mode === 'send'}
+					<svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5003 12H5.41872M5.24634 12.7972L4.24158 15.7986C3.69128 17.4424 3.41613 18.2643 3.61359 18.7704C3.78506 19.21 4.15335 19.5432 4.6078 19.6701C5.13111 19.8161 5.92151 19.4604 7.50231 18.7491L17.6367 14.1886C19.1797 13.4942 19.9512 13.1471 20.1896 12.6648C20.3968 12.2458 20.3968 11.7541 20.1896 11.3351C19.9512 10.8529 19.1797 10.5057 17.6367 9.81135L7.48483 5.24303C5.90879 4.53382 5.12078 4.17921 4.59799 4.32468C4.14397 4.45101 3.77572 4.78336 3.60365 5.22209C3.40551 5.72728 3.67772 6.54741 4.22215 8.18767L5.24829 11.2793C5.34179 11.561 5.38855 11.7019 5.407 11.8459C5.42338 11.9738 5.42321 12.1032 5.40651 12.231C5.38768 12.375 5.34057 12.5157 5.24634 12.7972Z"></path></svg>
+				{:else if mode === 'stop'}
+					<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="0" y="0" width="24" height="24"/></svg>
+				{:else}
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h12"/><path d="M4 10h12"/><path d="M4 15h7"/><path d="M17 14v7"/><path d="M13.5 17.5h7"/></svg>
+				{/if}
 			</button>
-			{#if modelOpen}
-				<div class="menu model-menu">
-					{#each modelGroups as group (group.instance.id)}
-						<div class="menu-group">{group.instance.name}</div>
-						{#each group.models ?? [] as m (m.id)}
-							<button
-								type="button"
-								class="menu-item"
-								class:selected={sel?.model === `${group.instance.id}/${m.id}`}
-								onclick={() => pickModel(group, m)}
-							>
-								<span class="menu-check">
-									{#if sel?.model === `${group.instance.id}/${m.id}`}
-										<svg width="11" height="11" viewBox="0 0 14 14" fill="none"><path d="M2 7l3.5 3.5L12 3.5" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-									{/if}
-								</span>
-								<span class="menu-label">{m.displayName}</span>
-								<span class="menu-badge">{formatContextLength(m.contextLength)}</span>
-							</button>
-						{/each}
-					{/each}
-					{#if modelGroups.length === 0}
-						<div class="menu-empty">{t('agent.configure_models')}</div>
-					{/if}
-				</div>
-			{/if}
 		</div>
-
-		<!-- Action button: send / stop / queue (design 01 §3.4) -->
-		<button
-			type="button"
-			class="action-btn"
-			class:stop={mode === 'stop'}
-			disabled={(mode === 'send' && (!hasText || !threadId || !sendOpts)) ||
-				(mode === 'queue' && !!runtime?.queued)}
-			title={mode === 'send' ? t('agent.send') : mode === 'stop' ? t('agent.stop') : t('agent.queue')}
-			aria-label={mode === 'send' ? t('agent.send') : mode === 'stop' ? t('agent.stop') : t('agent.queue')}
-			onclick={onActionClick}
-		>
-			{#if mode === 'send'}
-				<svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5003 12H5.41872M5.24634 12.7972L4.24158 15.7986C3.69128 17.4424 3.41613 18.2643 3.61359 18.7704C3.78506 19.21 4.15335 19.5432 4.6078 19.6701C5.13111 19.8161 5.92151 19.4604 7.50231 18.7491L17.6367 14.1886C19.1797 13.4942 19.9512 13.1471 20.1896 12.6648C20.3968 12.2458 20.3968 11.7541 20.1896 11.3351C19.9512 10.8529 19.1797 10.5057 17.6367 9.81135L7.48483 5.24303C5.90879 4.53382 5.12078 4.17921 4.59799 4.32468C4.14397 4.45101 3.77572 4.78336 3.60365 5.22209C3.40551 5.72728 3.67772 6.54741 4.22215 8.18767L5.24829 11.2793C5.34179 11.561 5.38855 11.7019 5.407 11.8459C5.42338 11.9738 5.42321 12.1032 5.40651 12.231C5.38768 12.375 5.34057 12.5157 5.24634 12.7972Z"></path></svg>
-			{:else if mode === 'stop'}
-				<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="0" y="0" width="24" height="24"/></svg>
-			{:else}
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h12"/><path d="M4 10h12"/><path d="M4 15h7"/><path d="M17 14v7"/><path d="M13.5 17.5h7"/></svg>
-			{/if}
-		</button>
 	</div>
 </div>
 
 <style>
-	.composer {
-		flex-shrink: 0;
+	.composer-area {
 		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		padding: 8px;
+		justify-content: center;
 		border-top: 1px solid var(--color-border);
 		background: var(--color-bg-elevated);
 	}
 
+	.composer {
+		flex-shrink: 0;
+		flex-grow: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 8px;
+		max-width: var(--chat-max-width);
+	}
+
 	textarea {
-		width: 100%;
 		box-sizing: border-box;
 		border: none;
 		background: transparent;
 		color: var(--color-text-primary);
 		font-family: var(--font-sans);
 		font-size: 0.8rem;
-		line-height: 1.45;
 		resize: none;
 		outline: none;
 		max-height: 180px;
-		padding: 2px;
+		margin: 4px 4px 0px;
+	}
+
+	textarea:focus {
+		border-radius: 0;
 	}
 
 	textarea::placeholder {
