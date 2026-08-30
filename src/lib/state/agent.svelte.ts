@@ -469,6 +469,17 @@ function handleEvent(e: AgentEvent): void {
 		}
 		case 'message_done': {
 			const rt = ensureThreadRuntime(e.threadId);
+			if (e.metadata) {
+				// Tool-call rounds emit the persisted message id, which differs
+				// from the streaming placeholder id the runtime knows; fall back
+				// to the currently streaming message in that case.
+				const msg =
+					rt.messages.find((m) => m.id === e.messageId) ??
+					(rt.streamingMessageId
+						? rt.messages.find((m) => m.id === rt.streamingMessageId)
+						: undefined);
+				if (msg) msg.metadata = e.metadata;
+			}
 			if (rt.streamingMessageId === e.messageId) rt.streamingMessageId = null;
 			break;
 		}

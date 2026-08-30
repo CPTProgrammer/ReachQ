@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::types::{ContentBlock, ToolCallStatus, Usage};
+use super::types::{ContentBlock, MessageMetadata, ToolCallStatus, Usage};
 
 /// A tool call as rendered by the frontend ToolCallCard.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,7 +80,15 @@ pub enum AgentEvent {
     #[serde(rename_all = "camelCase")]
     Usage { thread_id: String, usage: Usage },
     #[serde(rename_all = "camelCase")]
-    MessageDone { thread_id: String, message_id: String },
+    MessageDone {
+        thread_id: String,
+        message_id: String,
+        /// Final metadata of the finished assistant message; the frontend
+        /// attaches it to the live message so the meta anchor renders
+        /// without waiting for a snapshot reload.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        metadata: Option<MessageMetadata>,
+    },
     #[serde(rename_all = "camelCase")]
     Error { thread_id: String, message: String },
     #[serde(rename_all = "camelCase")]

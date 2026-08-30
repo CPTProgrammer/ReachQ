@@ -378,6 +378,7 @@
 		flex-direction: column;
 		gap: 10px;
 		max-width: var(--chat-max-width);
+		width: 100%;
 	}
 
 	.empty-state {

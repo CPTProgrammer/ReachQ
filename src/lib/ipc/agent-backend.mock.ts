@@ -15,6 +15,7 @@ import type {
 	ApprovalRequest,
 	ContentBlock,
 	InstanceModels,
+	MessageMetadata,
 	ModelMeta,
 	PathMessage,
 	ProviderInstance,
@@ -786,6 +787,7 @@ class MockAgentBackend implements AgentBackend {
 			},
 			finishMessage: (messageId, toolCallCount, startedAt) => {
 				const msg = thread.messages.get(messageId);
+				let metadata: MessageMetadata | undefined;
 				if (msg) {
 					const [instanceId, ...rest] = (opts?.model ??
 						thread.summary.model?.model ??
@@ -800,8 +802,9 @@ class MockAgentBackend implements AgentBackend {
 						durationMs: Date.now() - startedAt,
 						toolCallCount
 					};
+					metadata = msg.metadata;
 				}
-				this.emit(identity, { kind: 'message_done', threadId, messageId });
+				this.emit(identity, { kind: 'message_done', threadId, messageId, metadata });
 			},
 			emitError: (message) => {
 				this.emit(identity, { kind: 'error', threadId, message });

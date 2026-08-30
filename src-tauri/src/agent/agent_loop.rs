@@ -669,6 +669,7 @@ async fn run_loop(
             emit(app, identity, AgentEvent::MessageDone {
                 thread_id: thread_id.to_string(),
                 message_id: message_id.clone(),
+                metadata: Some(metadata),
             });
             return Ok(());
         }
@@ -701,6 +702,7 @@ async fn run_loop(
             emit(app, identity, AgentEvent::MessageDone {
                 thread_id: thread_id.to_string(),
                 message_id: message_id.clone(),
+                metadata: Some(metadata),
             });
             // Run ends when the model produced no tool calls and the queue
             // is empty; otherwise the top of the loop injects the queued
@@ -739,6 +741,7 @@ async fn run_loop(
         emit(app, identity, AgentEvent::MessageDone {
             thread_id: thread_id.to_string(),
             message_id: assistant_msg.id.clone(),
+            metadata: Some(metadata),
         });
 
         if cancel.is_cancelled() {

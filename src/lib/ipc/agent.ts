@@ -120,7 +120,7 @@ export type AgentEvent =
 	| { kind: 'approval_needed'; threadId: string; approval: ApprovalRequest }
 	| { kind: 'user_message'; threadId: string; message: StoredMessage }
 	| { kind: 'usage'; threadId: string; usage: Usage }
-	| { kind: 'message_done'; threadId: string; messageId: string }
+	| { kind: 'message_done'; threadId: string; messageId: string; metadata?: MessageMetadata }
 	| { kind: 'error'; threadId: string; message: string }
 	| { kind: 'cancelled'; threadId: string }
 	| { kind: 'terminal_output'; toolCallId: string; dataB64: string }
