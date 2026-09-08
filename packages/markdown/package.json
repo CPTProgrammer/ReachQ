@@ -1,0 +1,29 @@
+{
+  "name": "@reach/markdown",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "dev": "vite playground",
+    "build": "vite build playground",
+    "preview": "vite preview playground",
+    "test": "vitest test",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@lezer/common": "^1.5.1",
+    "@lezer/markdown": "^1.6.3",
+    "entities": "^6.0.1"
+  },
+  "devDependencies": {
+    "@testing-library/svelte": "^5.4.2",
+    "jsdom": "^26.1.0",
+    "vitest": "^4.1.11"
+  }
+}

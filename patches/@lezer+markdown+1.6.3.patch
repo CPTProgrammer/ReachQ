@@ -1,0 +1,24 @@
+diff --git a/node_modules/@lezer/markdown/dist/index.cjs b/node_modules/@lezer/markdown/dist/index.cjs
+index c7a9a06..252db21 100644
+--- a/node_modules/@lezer/markdown/dist/index.cjs
++++ b/node_modules/@lezer/markdown/dist/index.cjs
+@@ -1305,6 +1305,7 @@ class Buffer {
+             nodeSet: this.nodeSet,
+             reused: this.nodes,
+             topID: type,
++            maxBufferLength: 0,
+             length
+         });
+     }
+diff --git a/node_modules/@lezer/markdown/dist/index.js b/node_modules/@lezer/markdown/dist/index.js
+index 07ce727..12f3c1c 100644
+--- a/node_modules/@lezer/markdown/dist/index.js
++++ b/node_modules/@lezer/markdown/dist/index.js
+@@ -1303,6 +1303,7 @@ class Buffer {
+             nodeSet: this.nodeSet,
+             reused: this.nodes,
+             topID: type,
++            maxBufferLength: 0,
+             length
+         });
+     }

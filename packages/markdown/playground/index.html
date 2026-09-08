@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>@reach/markdown · Preview</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				height: 100%;
+			}
+			body {
+				background: #0f1115;
+				color: #e6e8ee;
+				font-family: system-ui, sans-serif;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			}
+			main {
+				max-width: 480px;
+				padding: 24px;
+			}
+			h1 {
+				font-size: 1.25rem;
+				margin: 0 0 8px;
+			}
+			p {
+				color: #9aa0ae;
+				font-size: 0.875rem;
+				margin: 0 0 24px;
+			}
+			a.card {
+				display: block;
+				padding: 16px;
+				margin-bottom: 12px;
+				border: 1px solid #2a2f3a;
+				border-radius: 8px;
+				background: #171a21;
+				color: inherit;
+				text-decoration: none;
+			}
+			a.card:hover {
+				border-color: #4a5160;
+			}
+			.card-title {
+				display: block;
+				font-weight: 600;
+				margin-bottom: 4px;
+			}
+			.card-desc {
+				display: block;
+				font-size: 0.8125rem;
+				color: #9aa0ae;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>@reach/markdown · Preview</h1>
+			<p>Dev-only playground for the StreamingMarkdown component.</p>
+			<a class="card" href="/stream.html">
+				<span class="card-title">Streaming Preview</span>
+				<span class="card-desc">
+					Feed the source text to the renderer one character at a time, with
+					adjustable speed and start / pause / reset controls.
+				</span>
+			</a>
+			<a class="card" href="/static.html">
+				<span class="card-title">Static Preview</span>
+				<span class="card-desc">
+					Edit markdown on the left, see the rendered result live on the right.
+				</span>
+			</a>
+		</main>
+	</body>
+</html>
