@@ -174,7 +174,21 @@
 
 	// ── Message metadata hover card ───────────────────────────────────────────
 
-	let metaHoverId = $state<string | null>(null);
+	let metaHover = $state<{ id: string; below: boolean } | null>(null);
+
+	// Flip the card downward when the anchor sits in the upper half of the
+	// scroll viewport, so it isn't clipped by the container's top edge.
+	function metaEnter(e: MouseEvent, id: string): void {
+		const anchor = e.currentTarget as HTMLElement;
+		const scroller = scrollEl;
+		let below = false;
+		if (scroller) {
+			const a = anchor.getBoundingClientRect();
+			const s = scroller.getBoundingClientRect();
+			below = a.top + a.height / 2 < s.top + s.height / 2;
+		}
+		metaHover = { id, below };
+	}
 
 	function hasMeta(meta: MessageMetadata): boolean {
 		return !!(
@@ -324,14 +338,14 @@
 								{@const meta = msg.metadata}
 								<div
 									class="meta-anchor"
-									onmouseenter={() => (metaHoverId = msg.id)}
-									onmouseleave={() => (metaHoverId = null)}
+									onmouseenter={(e) => metaEnter(e, msg.id)}
+									onmouseleave={() => (metaHover = null)}
 								>
 									<button type="button" class="meta-icon" aria-label="metadata">
 										<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>
 									</button>
-									{#if metaHoverId === msg.id}
-										<div class="meta-card">
+									{#if metaHover?.id === msg.id}
+										<div class="meta-card" class:below={metaHover?.below ?? false}>
 											{#if meta.providerInstance}
 												<div class="meta-row"><span>{t('agent.meta_provider')}</span><span>{meta.providerInstance}</span></div>
 											{/if}
@@ -772,6 +786,11 @@
 		gap: 3px;
 	}
 
+	.meta-card.below {
+		bottom: auto;
+		top: calc(100% + 6px);
+	}
+
 	/* Hover bridge from the card's bottom edge down through the gap and the
 	   icon to the anchor's bottom edge, so the cursor can travel between
 	   anchor and card without closing it. Right trapezoid: full anchor width
@@ -785,6 +804,14 @@
 		right: 0;
 		height: 22px; /* 6px gap + 16px icon: reaches the anchor's bottom edge */
 		clip-path: polygon(0 0, 50% 0, 16px 100%, 0 100%);
+	}
+
+	/* Mirrored bridge for the flipped card: from the anchor's top edge
+	   (narrow, icon width) down to the card's top edge (wide). */
+	.meta-card.below::after {
+		top: auto;
+		bottom: 100%;
+		clip-path: polygon(0 0, 16px 0, 50% 100%, 0 100%);
 	}
 
 	.meta-row {
