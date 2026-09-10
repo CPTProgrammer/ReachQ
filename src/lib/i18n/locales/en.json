@@ -262,7 +262,7 @@
   "agent.tool_fetch": "Fetch `{{url}}`",
   "agent.copy_command": "Copy command",
   "agent.stop_command": "Stop command",
-  "agent.context_usage": "{{used}} / {{total}} tokens",
+  "agent.context": "Context",
   "agent.pending_close_title": "Agent is using this session",
   "agent.pending_close_body": "This tab will close automatically when the agent finishes. Clicking close again force-disconnects it.",
   "agent.branch_nav_tooltip": "Switching branches only changes what is shown; it does not undo actions already performed on the remote host.",

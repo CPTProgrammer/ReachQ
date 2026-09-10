@@ -262,7 +262,7 @@
   "agent.tool_fetch": "`{{url}}` abrufen",
   "agent.copy_command": "Befehl kopieren",
   "agent.stop_command": "Befehl stoppen",
-  "agent.context_usage": "{{used}} / {{total}} Tokens",
+  "agent.context": "Kontext",
   "agent.pending_close_title": "Der Agent nutzt diese Sitzung",
   "agent.pending_close_body": "Dieser Tab wird automatisch geschlossen, wenn der Agent fertig ist. Erneutes Klicken auf Schließen trennt die Verbindung sofort.",
   "agent.branch_nav_tooltip": "Der Wechsel zwischen Zweigen ändert nur die Anzeige; bereits auf dem Remote-Host ausgeführte Aktionen werden nicht rückgängig gemacht.",

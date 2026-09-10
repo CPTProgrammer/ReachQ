@@ -18,7 +18,7 @@
 	import { getThreads } from '$lib/state/agent-threads.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import { getDraft, setDraft } from './composer-draft.svelte';
-	import { formatContextLength, formatTokens } from './utils';
+	import { formatContextLength } from './utils';
 	import { formatEffort } from '$lib/utils/formatters';
 
 	let { identity, threadId }: Props = $props();
@@ -146,6 +146,21 @@
 		}
 	}
 
+	// ── Usage hover card (delayed, non-native tooltip) ────────────────────────
+
+	let usageCardOpen = $state(false);
+	let usageTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function scheduleUsageCard(): void {
+		clearTimeout(usageTimer);
+		usageTimer = setTimeout(() => (usageCardOpen = true), 400);
+	}
+
+	function hideUsageCard(): void {
+		clearTimeout(usageTimer);
+		usageCardOpen = false;
+	}
+
 	// ── Menus (click-outside) ────────────────────────────────────────────────
 
 	let modelOpen = $state(false);
@@ -246,25 +261,37 @@
 
 			<!-- Context usage ring (design 01 §3.3; hidden without usage) -->
 			{#if usage && contextLength > 0}
-				<span
-					class="usage-ring"
-					title={t('agent.context_usage', {
-						used: formatTokens(usage.promptTokens),
-						total: formatTokens(contextLength)
-					})}
+				<div
+					class="menu-anchor usage-anchor"
+					onmouseenter={scheduleUsageCard}
+					onmouseleave={hideUsageCard}
+					role="presentation"
 				>
-					<svg width="16" height="16" viewBox="0 0 18 18">
-						<circle cx="9" cy="9" r="7" fill="none" stroke="var(--color-border)" stroke-width="2.4" />
-						<circle
-							cx="9" cy="9" r="7" fill="none"
-							stroke={ringColor}
-							stroke-width="2.4"
-							stroke-linecap="round"
-							stroke-dasharray={`${Math.min(1, usageFraction) * 43.98} 43.98`}
-							transform="rotate(-90 9 9)"
-						/>
-					</svg>
-				</span>
+					<span class="usage-ring">
+						<svg width="16" height="16" viewBox="0 0 18 18">
+							<circle cx="9" cy="9" r="7" fill="none" stroke="var(--color-border)" stroke-width="2.4" />
+							<circle
+								cx="9" cy="9" r="7" fill="none"
+								stroke={ringColor}
+								stroke-width="2.4"
+								stroke-linecap="round"
+								stroke-dasharray={`${Math.min(1, usageFraction) * 43.98} 43.98`}
+								transform="rotate(-90 9 9)"
+							/>
+						</svg>
+					</span>
+					{#if usageCardOpen}
+						<div class="menu usage-card">
+							<div class="usage-card-title">{t('agent.context')}</div>
+							<div class="usage-card-row">
+								<span>
+									{formatContextLength(usage.promptTokens)}<span class="usage-card-dim">{' / '}{formatContextLength(contextLength)}</span>
+								</span>
+								<span>{Math.round(usageFraction * 100)}%</span>
+							</div>
+						</div>
+					{/if}
+				</div>
 			{/if}
 
 			<!-- Model picker (design 01 §3.6) -->
@@ -462,6 +489,56 @@
 		align-items: center;
 		padding: 0 4px;
 		cursor: default;
+	}
+
+	.usage-anchor {
+		display: flex;
+		align-items: center;
+	}
+
+	/* More specific than .menu so these overrides win regardless of order. */
+	.menu.usage-card {
+		max-height: none;
+		overflow: visible;
+		padding: 7px 9px;
+		white-space: nowrap;
+		cursor: default;
+	}
+
+	/* Hover bridge from the card's bottom edge down through the gap to the
+	   ring, so the cursor can travel between ring and card without closing it
+	   (same technique as .meta-card::after, mirrored: the card is right-aligned
+	   to the anchor). Hit-testing follows the clip-path. */
+	.menu.usage-card::after {
+		content: '';
+		position: absolute;
+		top: 100%;
+		left: 0;
+		right: 0;
+		height: 22px; /* 6px gap + 16px ring: reaches the anchor's bottom edge */
+		clip-path: polygon(50% 0, 100% 0, 100% 100%, calc(100% - 24px) 100%);
+	}
+
+	.usage-card-title {
+		font-size: 0.62rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--color-text-secondary);
+		margin-bottom: 4px;
+	}
+
+	.usage-card-row {
+		display: flex;
+		justify-content: space-between;
+		gap: 16px;
+		font-size: 0.75rem;
+		font-family: var(--font-mono);
+		color: var(--color-text-primary);
+	}
+
+	.usage-card-dim {
+		color: var(--color-text-secondary);
 	}
 
 	/* ── pop-up menus ── */

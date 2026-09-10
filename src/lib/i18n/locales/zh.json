@@ -262,7 +262,7 @@
   "agent.tool_fetch": "获取 `{{url}}`",
   "agent.copy_command": "复制命令",
   "agent.stop_command": "停止命令",
-  "agent.context_usage": "{{used}} / {{total}} Token",
+  "agent.context": "上下文",
   "agent.pending_close_title": "智能体正在使用此会话",
   "agent.pending_close_body": "智能体完成后，此标签页将自动关闭。再次点击关闭将强制断开连接。",
   "agent.branch_nav_tooltip": "切换分支仅改变显示内容，不会撤销已在远程主机上执行的操作。",

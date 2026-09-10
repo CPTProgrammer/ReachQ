@@ -262,7 +262,7 @@
   "agent.tool_fetch": "Recupera `{{url}}`",
   "agent.copy_command": "Copia comando",
   "agent.stop_command": "Interrompi comando",
-  "agent.context_usage": "{{used}} / {{total}} token",
+  "agent.context": "Contesto",
   "agent.pending_close_title": "L'agente sta usando questa sessione",
   "agent.pending_close_body": "Questa scheda si chiuderà automaticamente quando l'agente avrà finito. Cliccando di nuovo su Chiudi la connessione verrà interrotta forzatamente.",
   "agent.branch_nav_tooltip": "Cambiare ramo modifica solo ciò che viene mostrato; non annulla le azioni già eseguite sull'host remoto.",

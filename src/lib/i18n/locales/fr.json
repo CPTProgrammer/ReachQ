@@ -262,7 +262,7 @@
   "agent.tool_fetch": "Récupérer `{{url}}`",
   "agent.copy_command": "Copier la commande",
   "agent.stop_command": "Arrêter la commande",
-  "agent.context_usage": "{{used}} / {{total}} tokens",
+  "agent.context": "Contexte",
   "agent.pending_close_title": "L'agent utilise cette session",
   "agent.pending_close_body": "Cet onglet se fermera automatiquement lorsque l'agent aura terminé. Cliquer à nouveau sur Fermer forcera la déconnexion.",
   "agent.branch_nav_tooltip": "Changer de branche ne modifie que ce qui est affiché ; cela n'annule pas les actions déjà effectuées sur l'hôte distant.",
