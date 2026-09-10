@@ -132,8 +132,8 @@ const CANCELLED = Symbol('cancelled');
 
 interface MockRun {
 	cancelled: boolean;
-	/** Rejects a pending waitApproval when the run is cancelled. */
-	rejectApproval?: () => void;
+	/** Rejects all pending waitApproval calls when the run is cancelled. */
+	rejectApprovals: Set<() => void>;
 }
 
 interface MockThread {
@@ -181,7 +181,13 @@ interface Ctx {
 	terminalStopped(toolCallId: string): boolean;
 	/** Emits a usage event with a growing prompt size. */
 	addUsage(completionTokens: number, cachedTokens?: number): void;
-	finishMessage(messageId: string, toolCallCount: number, startedAt: number): void;
+	/**
+	 * Persists final metadata and emits message_done. Tool-call rounds should
+	 * pass `emitId`: the real backend emits the persisted message id there,
+	 * which never matches the streaming placeholder id the panel knows (the
+	 * frontend falls back to the streaming message).
+	 */
+	finishMessage(messageId: string, toolCallCount: number, startedAt: number, emitId?: string): void;
 	emitError(message: string): void;
 }
 
@@ -280,6 +286,30 @@ const NGINX_DIFF = `--- a/etc/nginx/sites-available/reach.conf
 
      location / {
          try_files $uri $uri/ =404;`;
+
+/** The reach.conf site before the HTTPS edit, as read_file would return it. */
+const NGINX_SITE_CONFIG = `     1\tserver {
+     2\t    listen 80;
+     3\t    server_name reach.example.com;
+     4\t
+     5\t    root /var/www/reach;
+     6\t    index index.html;
+     7\t
+     8\t    location / {
+     9\t        try_files $uri $uri/ =404;
+    10\t    }
+    11\t}`;
+
+const NGINX_RELOAD_COMMAND = 'nginx -t && systemctl reload nginx';
+
+const NGINX_RELOAD_CHUNKS: string[] = [
+	'\x1b[1;36m$ nginx -t\x1b[0m\r\n',
+	'nginx: the configuration file /etc/nginx/nginx.conf syntax is ok\r\n',
+	'nginx: configuration file /etc/nginx/nginx.conf test is successful\r\n',
+	'\x1b[1;36m$ systemctl reload nginx\x1b[0m\r\n',
+	'\x1b[33m●\x1b[0m waiting for nginx to reload...\r\n',
+	'\x1b[32m✓\x1b[0m nginx reloaded, 0 errors\r\n'
+];
 
 const TERMINAL_COMMAND = 'cd /var/www/reach && git pull && systemctl reload nginx';
 
@@ -510,7 +540,7 @@ class MockAgentBackend implements AgentBackend {
 			return 'queued';
 		}
 		thread.running = true;
-		thread.run = { cancelled: false };
+		thread.run = { cancelled: false, rejectApprovals: new Set() };
 		// Model snapshot on the thread (design 05 §5).
 		thread.summary.model = { model: opts.model, thinking: opts.thinking, effort: opts.effort };
 		const msg = this.appendUserMessage(thread, text);
@@ -523,7 +553,7 @@ class MockAgentBackend implements AgentBackend {
 		const run = this.threads.get(threadId)?.run;
 		if (!run) return; // no active run: no-op, no event (mirrors agent_cancel)
 		run.cancelled = true;
-		run.rejectApproval?.();
+		for (const reject of run.rejectApprovals) reject();
 	}
 
 	async dequeue(threadId: string): Promise<boolean> {
@@ -545,7 +575,7 @@ class MockAgentBackend implements AgentBackend {
 		thread.queued = null;
 		if (thread.run) {
 			thread.run.cancelled = true;
-			thread.run.rejectApproval?.();
+			for (const reject of thread.run.rejectApprovals) reject();
 			// Wait for the dying run to fully exit (mirrors agent_send_now).
 			const deadline = Date.now() + 10_000;
 			while (thread.running && Date.now() < deadline) {
@@ -560,7 +590,7 @@ class MockAgentBackend implements AgentBackend {
 		}
 		// Fresh run (same as sendMessage's 'started' branch).
 		thread.running = true;
-		thread.run = { cancelled: false };
+		thread.run = { cancelled: false, rejectApprovals: new Set() };
 		thread.summary.model = { model: opts.model, thinking: opts.thinking, effort: opts.effort };
 		const msg = this.appendUserMessage(thread, text);
 		this.emit(identity, { kind: 'user_message', threadId, message: msg });
@@ -751,14 +781,16 @@ class MockAgentBackend implements AgentBackend {
 						payload,
 						warnings
 					};
-					run.rejectApproval = () => {
+					const rejectPending = () => {
+						run.rejectApprovals.delete(rejectPending);
 						this.pendingApprovals.delete(call.id);
 						reject(CANCELLED);
 					};
+					run.rejectApprovals.add(rejectPending);
 					this.pendingApprovals.set(call.id, {
 						request,
 						resolve: (ok) => {
-							run.rejectApproval = undefined;
+							run.rejectApprovals.delete(rejectPending);
 							resolve(ok);
 						}
 					});
@@ -785,7 +817,7 @@ class MockAgentBackend implements AgentBackend {
 				thread.summary.lastUsage = usage;
 				this.emit(identity, { kind: 'usage', threadId, usage });
 			},
-			finishMessage: (messageId, toolCallCount, startedAt) => {
+			finishMessage: (messageId, toolCallCount, startedAt, emitId) => {
 				const msg = thread.messages.get(messageId);
 				let metadata: MessageMetadata | undefined;
 				if (msg) {
@@ -804,7 +836,12 @@ class MockAgentBackend implements AgentBackend {
 					};
 					metadata = msg.metadata;
 				}
-				this.emit(identity, { kind: 'message_done', threadId, messageId, metadata });
+				this.emit(identity, {
+					kind: 'message_done',
+					threadId,
+					messageId: emitId ?? messageId,
+					metadata
+				});
 			},
 			emitError: (message) => {
 				this.emit(identity, { kind: 'error', threadId, message });
@@ -844,7 +881,7 @@ class MockAgentBackend implements AgentBackend {
 			const thread = this.threads.get(threadId);
 			if (thread?.run) {
 				thread.run.cancelled = true;
-				thread.run.rejectApproval?.();
+				for (const reject of thread.run.rejectApprovals) reject();
 			}
 			this.threads.delete(threadId);
 		}
@@ -882,7 +919,7 @@ class MockAgentBackend implements AgentBackend {
 			this.link(thread, msg);
 			this.emit(identity, { kind: 'user_message', threadId, message: msg });
 			thread.running = true;
-			thread.run = { cancelled: false };
+			thread.run = { cancelled: false, rejectApprovals: new Set() };
 			void this.executeRun(identity, thread, thread.run, opts);
 			return msg.id;
 		}
@@ -1194,6 +1231,235 @@ class MockAgentBackend implements AgentBackend {
 					}
 					ctx.addUsage(160);
 					ctx.finishMessage(msg, 1, startedAt);
+				}
+			},
+			'multi-round-tools': {
+				label: 'Multi-round tools',
+				description:
+					'read → edit → reload across three rounds; each round is its own message with its own meta anchor.',
+				prompt: 'Check the nginx site config, switch it to HTTPS, and reload nginx.',
+				run: async (ctx) => {
+					// Round 1: read the current config (auto-approved read).
+					let startedAt = Date.now();
+					let msg = ctx.beginAssistant();
+					await ctx.sleep(300);
+					await ctx.streamText(msg, "I'll start by reading the current site config.\n");
+					const readCall = await ctx.streamToolCall(msg, 'read_file', {
+						path: '/etc/nginx/sites-available/reach.conf'
+					});
+					ctx.setToolStatus(readCall, 'running');
+					await ctx.sleep(450);
+					ctx.setToolStatus(readCall, 'success', {
+						llmText: NGINX_SITE_CONFIG,
+						isError: false,
+						uiPayload: {
+							path: '/etc/nginx/sites-available/reach.conf',
+							content: NGINX_SITE_CONFIG
+						}
+					});
+					ctx.addUsage(80);
+					// Persisted id ≠ streaming id, like the real backend's tool-call rounds.
+					ctx.finishMessage(msg, 1, startedAt, `${msg}p`);
+
+					// Round 2: apply the HTTPS edit (diff approval).
+					startedAt = Date.now();
+					msg = ctx.beginAssistant();
+					await ctx.sleep(350);
+					await ctx.streamText(
+						msg,
+						"The site is still plain HTTP on port 80. I'll switch it to 443 with the LE certs.\n"
+					);
+					const editCall = await ctx.streamToolCall(msg, 'edit_file', NGINX_EDIT_ARGS);
+					const ok = await ctx.requestApproval(
+						editCall,
+						'/etc/nginx/sites-available/reach.conf',
+						[],
+						{ diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+					);
+					if (!ok) {
+						ctx.setToolStatus(editCall, 'rejected', {
+							llmText: 'Permission to run tool denied by user\nNo edits were made.',
+							isError: true,
+							uiPayload: { diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+						});
+						ctx.addUsage(60);
+						ctx.finishMessage(msg, 1, startedAt, `${msg}p`);
+						// Final round: acknowledge the rejection; no reload.
+						startedAt = Date.now();
+						msg = ctx.beginAssistant();
+						await ctx.sleep(300);
+						await ctx.streamText(
+							msg,
+							"Understood — the site stays on port 80 and I won't reload nginx. Nothing was changed."
+						);
+						ctx.addUsage(40);
+						ctx.finishMessage(msg, 0, startedAt);
+						return;
+					}
+					ctx.setToolStatus(editCall, 'running');
+					await ctx.sleep(500);
+					ctx.setToolStatus(editCall, 'success', {
+						llmText: `Edited ${NGINX_EDIT_ARGS.path}:\n\n\`\`\`diff\n${NGINX_DIFF}\n\`\`\``,
+						isError: false,
+						uiPayload: { diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+					});
+					ctx.addUsage(120);
+					ctx.finishMessage(msg, 1, startedAt, `${msg}p`);
+
+					// Round 3: test the config and reload nginx, with live output.
+					startedAt = Date.now();
+					msg = ctx.beginAssistant();
+					await ctx.sleep(350);
+					await ctx.streamText(msg, "Config updated. Now I'll test it and reload nginx.\n");
+					const termCall = await ctx.streamToolCall(msg, 'terminal', {
+						command: NGINX_RELOAD_COMMAND
+					});
+					ctx.setToolStatus(termCall, 'running');
+					for (const chunk of NGINX_RELOAD_CHUNKS) {
+						if (ctx.terminalStopped(termCall.id)) break;
+						ctx.emitTerminal(termCall.id, chunk);
+						await ctx.sleep(280);
+					}
+					const out = NGINX_RELOAD_CHUNKS.map(stripAnsi).join('');
+					ctx.setToolStatus(termCall, 'success', {
+						llmText: `Command executed successfully.\n\n\`\`\`\n${out.trim()}\n\`\`\``,
+						isError: false,
+						uiPayload: {
+							command: NGINX_RELOAD_COMMAND,
+							output: out.trim(),
+							exitCode: 0
+						}
+					});
+					ctx.addUsage(100);
+					ctx.finishMessage(msg, 1, startedAt, `${msg}p`);
+
+					// Round 4: final summary, no tool calls.
+					startedAt = Date.now();
+					msg = ctx.beginAssistant();
+					await ctx.sleep(300);
+					await ctx.streamText(
+						msg,
+						'All done — the site now listens on 443 with the LE certs, `nginx -t` passed, and the reload came back clean.'
+					);
+					ctx.addUsage(50);
+					ctx.finishMessage(msg, 0, startedAt);
+				}
+			},
+			'parallel-tools': {
+				label: 'Parallel tool calls',
+				description:
+					'One round with three tool calls: two approvals pending at once, one auto-run.',
+				prompt: 'Check the sshd and nginx configs, then test and reload nginx.',
+				run: async (ctx) => {
+					const startedAt = Date.now();
+					const msg = ctx.beginAssistant();
+					await ctx.sleep(300);
+					await ctx.streamText(
+						msg,
+						"I'll pull both configs and reload nginx — all in one go.\n"
+					);
+
+					// All three calls stream into the same message, then run
+					// concurrently; each approval resolves independently.
+					const sshdCall = await ctx.streamToolCall(msg, 'read_file', {
+						path: '/etc/ssh/sshd_config'
+					});
+					const nginxCall = await ctx.streamToolCall(msg, 'read_file', {
+						path: '/etc/nginx/sites-available/reach.conf'
+					});
+					const reloadCall = await ctx.streamToolCall(msg, 'terminal', {
+						command: NGINX_RELOAD_COMMAND
+					});
+
+					let sshdApproved = false;
+					let reloadApproved = false;
+
+					const sshdFlow = (async () => {
+						const ok = await ctx.requestApproval(sshdCall, '/etc/ssh/sshd_config', [
+							'matches sensitive pattern `**/.ssh/*`'
+						]);
+						sshdApproved = ok;
+						if (!ok) {
+							ctx.setToolStatus(sshdCall, 'rejected', {
+								llmText: 'Permission to run tool denied by user',
+								isError: true
+							});
+							return;
+						}
+						ctx.setToolStatus(sshdCall, 'running');
+						await ctx.sleep(500);
+						ctx.setToolStatus(sshdCall, 'success', {
+							llmText: SSHD_CONFIG,
+							isError: false,
+							uiPayload: { path: '/etc/ssh/sshd_config', content: SSHD_CONFIG }
+						});
+					})();
+
+					const nginxFlow = (async () => {
+						// Not approval-gated: starts running right away.
+						ctx.setToolStatus(nginxCall, 'running');
+						await ctx.sleep(450);
+						ctx.setToolStatus(nginxCall, 'success', {
+							llmText: NGINX_SITE_CONFIG,
+							isError: false,
+							uiPayload: {
+								path: '/etc/nginx/sites-available/reach.conf',
+								content: NGINX_SITE_CONFIG
+							}
+						});
+					})();
+
+					const reloadFlow = (async () => {
+						const ok = await ctx.requestApproval(reloadCall, NGINX_RELOAD_COMMAND, [
+							'Command contains potentially dangerous keyword: systemctl'
+						]);
+						reloadApproved = ok;
+						if (!ok) {
+							ctx.setToolStatus(reloadCall, 'rejected', {
+								llmText: 'Permission to run tool denied by user',
+								isError: true
+							});
+							return;
+						}
+						ctx.setToolStatus(reloadCall, 'running');
+						for (const chunk of NGINX_RELOAD_CHUNKS) {
+							if (ctx.terminalStopped(reloadCall.id)) break;
+							ctx.emitTerminal(reloadCall.id, chunk);
+							await ctx.sleep(280);
+						}
+						const out = NGINX_RELOAD_CHUNKS.map(stripAnsi).join('');
+						ctx.setToolStatus(reloadCall, 'success', {
+							llmText: `Command executed successfully.\n\n\`\`\`\n${out.trim()}\n\`\`\``,
+							isError: false,
+							uiPayload: {
+								command: NGINX_RELOAD_COMMAND,
+								output: out.trim(),
+								exitCode: 0
+							}
+						});
+					})();
+
+					await Promise.all([sshdFlow, nginxFlow, reloadFlow]);
+					ctx.addUsage(160);
+					// Persisted id ≠ streaming id, like the real backend's tool-call rounds.
+					ctx.finishMessage(msg, 3, startedAt, `${msg}p`);
+
+					// Round 2: summarize what actually happened.
+					const round2At = Date.now();
+					const follow = ctx.beginAssistant();
+					await ctx.sleep(350);
+					const notes = [
+						sshdApproved
+							? 'sshd is in good shape: root login is key-only and password auth is off.'
+							: 'You declined the sshd read, so I could not check it.',
+						'The nginx site is still plain HTTP on port 80.',
+						reloadApproved
+							? '`nginx -t` passed and the reload came back clean.'
+							: 'You declined the reload, so nginx was not reloaded.'
+					];
+					await ctx.streamText(follow, notes.join(' '));
+					ctx.addUsage(60);
+					ctx.finishMessage(follow, 0, round2At);
 				}
 			},
 			queued: {
