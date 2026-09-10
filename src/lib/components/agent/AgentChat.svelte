@@ -20,6 +20,7 @@
 	import { renderMarkdown } from './markdown';
 	import { appendDraft } from './composer-draft.svelte';
 	import { formatDuration, formatSpeed, formatTokens, messageText, resolveSendOpts } from './utils';
+	import { autogrowTextarea } from '$lib/utils/autogrow';
 
 	let { identity, threadId }: Props = $props();
 
@@ -62,8 +63,9 @@
 
 	// ── User message inline editing / fork (design 01 §2.4) ──────────────────
 
-	let editing: { id: string; text: string } | null = $state(null);
+	let editing: { id: string; text: string; original: string } | null = $state(null);
 	let editEl: HTMLTextAreaElement | undefined = $state();
+	let editBoxEl: HTMLDivElement | undefined = $state();
 
 	// Jump to the bottom on thread switch.
 	let lastThreadId = $state<string | null>(null);
@@ -84,7 +86,10 @@
 
 	function startEdit(msg: PathMessage): void {
 		if (msg.role !== 'user') return;
-		editing = { id: msg.id, text: messageText(msg) };
+		// A modified edit in progress can only be discarded via cancel button / Escape.
+		if (editing && editing.text !== editing.original) return;
+		const text = messageText(msg);
+		editing = { id: msg.id, text, original: text };
 	}
 
 	function cancelEdit(): void {
@@ -117,9 +122,23 @@
 	$effect(() => {
 		if (editing && editEl) {
 			editEl.focus();
-			editEl.style.height = 'auto';
-			editEl.style.height = `${Math.min(editEl.scrollHeight, 240)}px`;
+			autogrowTextarea(editEl);
 		}
+	});
+
+	// Click-outside cancels an unmodified edit (a modified one requires the
+	// cancel button or Escape). Used instead of blur so that window focus
+	// loss doesn't discard the edit.
+	$effect(() => {
+		const ed = editing;
+		if (!ed) return;
+		const handler = (e: MouseEvent) => {
+			if (editBoxEl && !editBoxEl.contains(e.target as Node) && ed.text === ed.original) {
+				cancelEdit();
+			}
+		};
+		document.addEventListener('mousedown', handler, true);
+		return () => document.removeEventListener('mousedown', handler, true);
 	});
 
 	// ── Thinking blocks (auto-expand while streaming; manual toggle wins) ─────
@@ -231,22 +250,35 @@
 				>
 					{#if msg.role === 'user'}
 						{#if editing?.id === msg.id}
-							<div class="user-editing">
+							<div class="user-editing" bind:this={editBoxEl}>
 								<textarea
 									bind:this={editEl}
 									bind:value={editing.text}
 									onkeydown={editKeydown}
+									oninput={() => autogrowTextarea(editEl)}
 									rows="1"
 								></textarea>
-								<button
-									type="button"
-									class="edit-send"
-									title={t('agent.send')}
-									aria-label={t('agent.send')}
-									onclick={() => void submitEdit()}
-								>
-									<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-								</button>
+								<div class="edit-actions">
+									<button
+										type="button"
+										class="edit-btn"
+										title={t('common.cancel')}
+										aria-label={t('common.cancel')}
+										onclick={cancelEdit}
+									>
+										<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+									</button>
+									<button
+										type="button"
+										class="edit-btn send"
+										title={t('agent.send')}
+										aria-label={t('agent.send')}
+										disabled={!editing.text.trim()}
+										onclick={() => void submitEdit()}
+									>
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5003 12H5.41872M5.24634 12.7972L4.24158 15.7986C3.69128 17.4424 3.41613 18.2643 3.61359 18.7704C3.78506 19.21 4.15335 19.5432 4.6078 19.6701C5.13111 19.8161 5.92151 19.4604 7.50231 18.7491L17.6367 14.1886C19.1797 13.4942 19.9512 13.1471 20.1896 12.6648C20.3968 12.2458 20.3968 11.7541 20.1896 11.3351C19.9512 10.8529 19.1797 10.5057 17.6367 9.81135L7.48483 5.24303C5.90879 4.53382 5.12078 4.17921 4.59799 4.32468C4.14397 4.45101 3.77572 4.78336 3.60365 5.22209C3.40551 5.72728 3.67772 6.54741 4.22215 8.18767L5.24829 11.2793C5.34179 11.561 5.38855 11.7019 5.407 11.8459C5.42338 11.9738 5.42321 12.1032 5.40651 12.231C5.38768 12.375 5.34057 12.5157 5.24634 12.7972Z"/></svg>
+									</button>
+								</div>
 							</div>
 						{:else}
 							<button
@@ -410,6 +442,7 @@
 
 	.msg-row.dimmed {
 		opacity: 0.4;
+		pointer-events: none;
 	}
 
 	/* ── user bubble ── */
@@ -437,10 +470,11 @@
 
 	.user-editing {
 		position: relative;
-		width: 100%;
+		width: 88%;
 	}
 
 	.user-editing textarea {
+		display: block;
 		width: 100%;
 		box-sizing: border-box;
 		padding: 7px 11px;
@@ -453,24 +487,49 @@
 		line-height: 1.45;
 		resize: none;
 		outline: none;
+		overflow-y: hidden;
 	}
 
-	.edit-send {
+	.edit-actions {
 		position: absolute;
-		right: 0;
-		bottom: -13px;
+		right: 4px;
+		bottom: -20px;
+		display: flex;
+		gap: 2px;
+		padding: 2px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-bg-elevated);
+		box-shadow: var(--shadow-elevated);
+		z-index: 5;
+	}
+
+	.edit-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 26px;
-		height: 26px;
-		border: 1px solid var(--color-border);
-		border-radius: 50%;
-		background: var(--color-accent);
-		color: #fff;
+		width: 22px;
+		height: 22px;
+		border: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--color-text-secondary);
 		cursor: pointer;
-		box-shadow: var(--shadow-elevated);
-		z-index: 5;
+	}
+
+	.edit-btn:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.08);
+		color: var(--color-text-primary);
+	}
+
+	.edit-btn.send,
+	.edit-btn.send:hover:not(:disabled) {
+		color: var(--color-accent);
+	}
+
+	.edit-btn:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	/* ── assistant blocks ── */

@@ -20,6 +20,7 @@
 	import { getDraft, setDraft } from './composer-draft.svelte';
 	import { formatContextLength } from './utils';
 	import { formatEffort } from '$lib/utils/formatters';
+	import { autogrowTextarea } from '$lib/utils/autogrow';
 
 	let { identity, threadId }: Props = $props();
 
@@ -94,18 +95,9 @@
 
 	let inputEl: HTMLTextAreaElement | undefined = $state();
 
-	function autogrow(): void {
-		const el = inputEl;
-		if (!el) return;
-		el.style.overflowY = 'hidden';
-		el.style.height = 'auto';
-		el.style.height = `${el.scrollHeight + 1}px`;
-		el.style.overflowY = 'auto';
-	}
-
 	$effect(() => {
 		getDraft(draftKey); // subscribe
-		autogrow();
+		autogrowTextarea(inputEl);
 	});
 
 	let sendOpts = $derived.by(() => {
