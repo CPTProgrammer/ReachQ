@@ -89,6 +89,11 @@ pub enum AgentEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         metadata: Option<MessageMetadata>,
     },
+    /// The run finished normally: no more rounds and the queue is empty.
+    /// Terminal event of the Ok path (abnormal exits use Cancelled/Error);
+    /// the frontend settles running=false on any of the three.
+    #[serde(rename_all = "camelCase")]
+    RunEnd { thread_id: String },
     #[serde(rename_all = "camelCase")]
     Error { thread_id: String, message: String },
     #[serde(rename_all = "camelCase")]

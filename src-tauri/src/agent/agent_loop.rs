@@ -243,6 +243,41 @@ fn emit(app: &AppHandle, identity: &str, event: AgentEvent) {
     }
 }
 
+/// Fused "queue empty + unregister" check for normal run exits. Holding
+/// both locks makes it atomic with agent_send_message's queue-or-start
+/// decision (same lock order): a message queued before this point keeps
+/// the run alive (injected at the top of the loop), while one sent after
+/// finds no registered run and starts a fresh one — nothing can strand in
+/// `queued` with no run left to consume it. RunEnd is emitted while still
+/// holding the locks, so the events of any successor run are guaranteed to
+/// come after it.
+async fn try_finish_run(
+    app: &AppHandle,
+    agent: &crate::agent::AgentState,
+    identity: &str,
+    thread_id: &str,
+    handle: &Arc<RunHandle>,
+) -> bool {
+    let mut runs = agent.runs.lock().await;
+    let queued = agent.queued.lock().await;
+    if queued.contains_key(thread_id) {
+        return false;
+    }
+    // Identity check: an agent_send_now successor may already occupy the
+    // slot; a dying run must never unregister it.
+    if matches!(runs.get(thread_id), Some(h) if Arc::ptr_eq(h, handle)) {
+        runs.remove(thread_id);
+    }
+    emit(
+        app,
+        identity,
+        AgentEvent::RunEnd {
+            thread_id: thread_id.to_string(),
+        },
+    );
+    true
+}
+
 /// Entry point: run the agent loop for a thread until the model stops
 /// calling tools and the queue is empty. `text` is None when the caller
 /// already appended the user message (fork path).
@@ -340,12 +375,14 @@ pub async fn run_agent(
         &resolved,
         detected_os.as_deref(),
         &handle.token,
+        &handle,
     )
     .await;
 
     // Emit the terminal event before unregistering/waking agent_send_now
     // waiters, so the frontend settles running=false before the successor
-    // run starts.
+    // run starts. (The Ok path's terminal event — RunEnd — is emitted by
+    // run_loop itself at its fused exit point, try_finish_run.)
     let failed = result.is_err();
     match result {
         Ok(()) => {}
@@ -372,7 +409,8 @@ pub async fn run_agent(
     {
         let mut runs = agent.runs.lock().await;
         // Identity check: an agent_send_now successor may already occupy the
-        // slot; a dying run must never unregister it.
+        // slot; a dying run must never unregister it. (On the Ok path the
+        // handle was already removed by try_finish_run — this is a no-op.)
         if matches!(runs.get(&thread_id), Some(h) if Arc::ptr_eq(h, &handle)) {
             runs.remove(&thread_id);
         }
@@ -439,6 +477,7 @@ async fn run_loop(
     resolved: &ResolvedModel,
     detected_os: Option<&str>,
     cancel: &CancellationToken,
+    handle: &Arc<RunHandle>,
 ) -> Result<(), LoopExit> {
     let agent = &deps.agent;
     let system_prompt = build_system_prompt(identity, detected_os);
@@ -671,7 +710,10 @@ async fn run_loop(
                 message_id: message_id.clone(),
                 metadata: Some(metadata),
             });
-            return Ok(());
+            if try_finish_run(app, agent, identity, thread_id, handle).await {
+                return Ok(());
+            }
+            continue;
         }
 
         for (id, name, args) in &parsed_calls {
@@ -707,8 +749,7 @@ async fn run_loop(
             // Run ends when the model produced no tool calls and the queue
             // is empty; otherwise the top of the loop injects the queued
             // message and we continue.
-            let queue_empty = agent.queued.lock().await.get(thread_id).is_none();
-            if queue_empty {
+            if try_finish_run(app, agent, identity, thread_id, handle).await {
                 return Ok(());
             }
             continue;

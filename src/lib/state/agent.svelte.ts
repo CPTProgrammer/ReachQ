@@ -483,6 +483,15 @@ function handleEvent(e: AgentEvent): void {
 			if (rt.streamingMessageId === e.messageId) rt.streamingMessageId = null;
 			break;
 		}
+		case 'run_end': {
+			// Normal run exit (no more rounds, queue empty); settles the
+			// composer back to the send button. Abnormal exits use
+			// error/cancelled instead.
+			const rt = ensureThreadRuntime(e.threadId);
+			rt.running = false;
+			rt.streamingMessageId = null;
+			break;
+		}
 		case 'error': {
 			const rt = ensureThreadRuntime(e.threadId);
 			rt.running = false;

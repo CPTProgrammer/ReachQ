@@ -642,6 +642,12 @@ class MockAgentBackend implements AgentBackend {
 				ctx.finishMessage(follow, 0, startedAt);
 			}
 			this.maybeTitle(identity, thread);
+			// Normal exit: unregister first, then emit the terminal event
+			// (mirrors try_finish_run in the Rust agent loop), so the
+			// composer settles back to the send button.
+			thread.running = false;
+			thread.run = null;
+			this.emit(identity, { kind: 'run_end', threadId });
 		} catch (e) {
 			// Abnormal exit: the queued message dies with the run (mirrors the
 			// real backend's cleanup; no ghost injection into the next run).

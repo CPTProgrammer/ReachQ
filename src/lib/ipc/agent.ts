@@ -121,6 +121,7 @@ export type AgentEvent =
 	| { kind: 'user_message'; threadId: string; message: StoredMessage }
 	| { kind: 'usage'; threadId: string; usage: Usage }
 	| { kind: 'message_done'; threadId: string; messageId: string; metadata?: MessageMetadata }
+	| { kind: 'run_end'; threadId: string }
 	| { kind: 'error'; threadId: string; message: string }
 	| { kind: 'cancelled'; threadId: string }
 	| { kind: 'terminal_output'; toolCallId: string; dataB64: string }

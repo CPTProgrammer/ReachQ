@@ -27,6 +27,12 @@ async fn store(state: &AppState) -> Result<Arc<ThreadStore>, String> {
 /// Send a user message and start the agent loop. When a run is already
 /// active the message is queued (max 1) and injected at the next round
 /// boundary (design 01 §3.5). Returns "started" | "queued".
+///
+/// The queue-or-start decision holds both locks (order: runs -> queued,
+/// same as run_loop's try_finish_run) so it is atomic with the run's
+/// fused exit: a message can never land in `queued` after the last round
+/// decided the queue was empty, which would strand it with no run left
+/// to consume it.
 #[tauri::command]
 pub async fn agent_send_message(
     app: AppHandle,
@@ -36,14 +42,16 @@ pub async fn agent_send_message(
     text: String,
     opts: SendOpts,
 ) -> Result<String, String> {
-    let running = state.agent.runs.lock().await.contains_key(&thread_id);
-    if running {
+    {
+        let runs = state.agent.runs.lock().await;
         let mut queued = state.agent.queued.lock().await;
-        if queued.contains_key(&thread_id) {
-            return Ok("queued_full".to_string());
+        if runs.contains_key(&thread_id) {
+            if queued.contains_key(&thread_id) {
+                return Ok("queued_full".to_string());
+            }
+            queued.insert(thread_id.clone(), text.clone());
+            return Ok("queued".to_string());
         }
-        queued.insert(thread_id.clone(), text);
-        return Ok("queued".to_string());
     }
 
     let deps = AgentDeps::from_state(state.inner());
