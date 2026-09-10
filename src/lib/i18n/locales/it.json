@@ -276,6 +276,8 @@
   "agent.meta_cached": "In cache",
   "agent.meta_duration": "Durata",
   "agent.meta_tool_calls": "Chiamate agli strumenti",
+  "agent.meta_tokens_value": "input {{input}} / output {{output}}",
+  "agent.meta_speed": "Velocità",
 
   "agent.settings_providers": "Provider",
   "agent.settings_providers_desc": "Aggiungi istanze di provider con chiavi API. Lo stesso preset può essere aggiunto più volte.",

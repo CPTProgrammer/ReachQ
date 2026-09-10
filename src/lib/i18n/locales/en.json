@@ -276,6 +276,8 @@
   "agent.meta_cached": "Cached",
   "agent.meta_duration": "Duration",
   "agent.meta_tool_calls": "Tool calls",
+  "agent.meta_tokens_value": "in {{input}} / out {{output}}",
+  "agent.meta_speed": "Speed",
 
   "agent.settings_providers": "Providers",
   "agent.settings_providers_desc": "Add provider instances with API keys. The same preset can be added multiple times.",

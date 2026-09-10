@@ -19,7 +19,7 @@
 	import ToolCallCard from './ToolCallCard.svelte';
 	import { renderMarkdown } from './markdown';
 	import { appendDraft } from './composer-draft.svelte';
-	import { formatDuration, formatTokens, messageText, resolveSendOpts } from './utils';
+	import { formatDuration, formatSpeed, formatTokens, messageText, resolveSendOpts } from './utils';
 
 	let { identity, threadId }: Props = $props();
 
@@ -290,14 +290,12 @@
 							{/if}
 							{#if msg.metadata && hasMeta(msg.metadata)}
 								{@const meta = msg.metadata}
-								<div class="meta-anchor">
-									<button
-										type="button"
-										class="meta-icon"
-										aria-label="metadata"
-										onmouseenter={() => (metaHoverId = msg.id)}
-										onmouseleave={() => (metaHoverId = null)}
-									>
+								<div
+									class="meta-anchor"
+									onmouseenter={() => (metaHoverId = msg.id)}
+									onmouseleave={() => (metaHoverId = null)}
+								>
+									<button type="button" class="meta-icon" aria-label="metadata">
 										<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>
 									</button>
 									{#if metaHoverId === msg.id}
@@ -309,13 +307,16 @@
 												<div class="meta-row"><span>{t('agent.meta_model')}</span><span>{meta.model}</span></div>
 											{/if}
 											{#if meta.usage}
-												<div class="meta-row"><span>{t('agent.meta_tokens')}</span><span>{formatTokens(meta.usage.promptTokens)} / {formatTokens(meta.usage.completionTokens)}</span></div>
+												<div class="meta-row"><span>{t('agent.meta_tokens')}</span><span>{t('agent.meta_tokens_value', { input: formatTokens(meta.usage.promptTokens), output: formatTokens(meta.usage.completionTokens) })}</span></div>
 												{#if meta.usage.cachedTokens != null}
 													<div class="meta-row"><span>{t('agent.meta_cached')}</span><span>{formatTokens(meta.usage.cachedTokens)}</span></div>
 												{/if}
 											{/if}
 											{#if meta.durationMs != null}
 												<div class="meta-row"><span>{t('agent.meta_duration')}</span><span>{formatDuration(meta.durationMs)}</span></div>
+											{/if}
+											{#if meta.usage && meta.durationMs != null && meta.durationMs > 0}
+												<div class="meta-row"><span>{t('agent.meta_speed')}</span><span>{formatSpeed(meta.usage.completionTokens, meta.durationMs)} tok/s</span></div>
 											{/if}
 											{#if meta.toolCallCount != null}
 												<div class="meta-row"><span>{t('agent.meta_tool_calls')}</span><span>{meta.toolCallCount}</span></div>
@@ -348,7 +349,7 @@
 
 	{#if runtime?.queued}
 		<div class="queued-bar">
-			<svg class="queued-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12"/><path d="M6 22h12"/><path d="M8 2v4l4 4 4-4V2"/><path d="M8 22v-4l4-4 4 4v4"/></svg>
+			<svg class="queued-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 21h12"/><path d="M8 3v5l4 4 4-4V3"/><path d="M8 21v-5l4-4 4 4v5"/></svg>
 			<span class="queued-text">{t('agent.queued', { text: runtime.queued.text })}</span>
 			<button type="button" class="icon-btn" title={t('agent.edit_queued')} aria-label={t('agent.edit_queued')} onclick={queuedEdit}>
 				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
@@ -368,7 +369,6 @@
 		flex-direction: column;
 		align-items: center;
 		min-height: 0;
-		overflow-y: auto;
 	}
 
 	.messages {
@@ -379,6 +379,7 @@
 		gap: 10px;
 		max-width: var(--chat-max-width);
 		width: 100%;
+		overflow-y: auto;
 	}
 
 	.empty-state {
@@ -512,6 +513,15 @@
 	.md :global(ol) {
 		margin: 4px 0 8px;
 		padding-left: 20px;
+	}
+
+	/* Preflight resets list-style to none; restore markers for markdown lists. */
+	.md :global(ul) {
+		list-style: disc;
+	}
+
+	.md :global(ol) {
+		list-style: decimal;
 	}
 
 	.md :global(blockquote) {
@@ -682,7 +692,8 @@
 		opacity: 0.7;
 	}
 
-	.meta-icon:hover {
+	/* The ::after bridge overlays the icon, so brighten on anchor hover. */
+	.meta-anchor:hover .meta-icon {
 		opacity: 1;
 		color: var(--color-text-primary);
 	}
@@ -702,12 +713,28 @@
 		gap: 3px;
 	}
 
+	/* Hover bridge from the card's bottom edge down through the gap and the
+	   icon to the anchor's bottom edge, so the cursor can travel between
+	   anchor and card without closing it. Right trapezoid: full anchor width
+	   (16px) at the bottom, half card width at the top. Hit-testing follows
+	   the clip-path, so only the trapezoid area is hoverable. */
+	.meta-card::after {
+		content: '';
+		position: absolute;
+		top: 100%;
+		left: 0;
+		right: 0;
+		height: 22px; /* 6px gap + 16px icon: reaches the anchor's bottom edge */
+		clip-path: polygon(0 0, 50% 0, 16px 100%, 0 100%);
+	}
+
 	.meta-row {
 		display: flex;
 		justify-content: space-between;
 		gap: 12px;
 		font-size: 0.68rem;
 		white-space: nowrap;
+		user-select: text;
 	}
 
 	.meta-row span:first-child {
@@ -755,8 +782,10 @@
 	/* ── error + queued bars ── */
 
 	.error-bar {
+		width: 100%;
+		box-sizing: border-box;
 		flex-shrink: 0;
-		padding: 6px 12px;
+		padding: 6px max(12px, calc((100% - var(--chat-max-width)) / 2 + 10px));
 		border-top: 1px solid var(--color-border);
 		background: color-mix(in srgb, var(--color-danger) 10%, transparent);
 		color: var(--color-danger);
@@ -765,11 +794,13 @@
 	}
 
 	.queued-bar {
+		width: 100%;
+		box-sizing: border-box;
 		flex-shrink: 0;
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 5px 10px;
+		padding: 5px max(10px, calc((100% - var(--chat-max-width)) / 2 + 10px));
 		border-top: 1px solid var(--color-border);
 		background: var(--color-bg-secondary);
 	}

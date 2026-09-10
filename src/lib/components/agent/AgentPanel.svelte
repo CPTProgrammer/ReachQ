@@ -116,7 +116,7 @@
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="panel-resizer" onmousedown={startPanelDrag}></div>
 		{/if}
-		<div class="panel-body">
+		<div class="panel-body" class:has-threads={!panel.threadsCollapsed} style:--threads-w="{panel.threadsWidth}px">
 			<div class="chat-col">
 				<AgentChat {identity} threadId={activeThreadId} />
 				<AgentComposer {identity} threadId={activeThreadId} />
@@ -159,6 +159,19 @@
 		display: flex;
 		min-width: 0;
 		min-height: 0;
+		position: relative;
+	}
+
+	.panel-body :global(.threads-col) {
+		position: absolute;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		z-index: 20;
+	}
+
+	.has-threads .chat-col {
+		margin-right: clamp(0px, calc(100% - 360px), var(--threads-w));
 	}
 
 	.chat-col {
@@ -171,10 +184,14 @@
 	}
 
 	.threads-resizer {
+		position: absolute;
+		right: var(--threads-w);
+		top: 0;
+		bottom: 0;
 		width: 4px;
 		margin-left: -2px;
 		margin-right: -2px;
-		z-index: 5;
+		z-index: 21;
 		flex-shrink: 0;
 		cursor: col-resize;
 		background: transparent;

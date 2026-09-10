@@ -276,6 +276,8 @@
   "agent.meta_cached": "Кеширано",
   "agent.meta_duration": "Продължителност",
   "agent.meta_tool_calls": "Извиквания на инструменти",
+  "agent.meta_tokens_value": "вход {{input}} / изход {{output}}",
+  "agent.meta_speed": "Скорост",
 
   "agent.settings_providers": "Доставчици",
   "agent.settings_providers_desc": "Добавете екземпляри на доставчици с API ключове. Една и съща предустановка може да бъде добавена многократно.",

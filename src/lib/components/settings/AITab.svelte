@@ -1488,7 +1488,7 @@
 		gap: 2px;
 		padding: 2px;
 		background-color: var(--color-bg-elevated);
-		border-radius: 6px;
+		border-radius: 8px;
 	}
 
 	.thread-item:hover .thread-actions {

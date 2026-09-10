@@ -276,6 +276,8 @@
   "agent.meta_cached": "Zwischengespeichert",
   "agent.meta_duration": "Dauer",
   "agent.meta_tool_calls": "Tool-Aufrufe",
+  "agent.meta_tokens_value": "Eingabe {{input}} / Ausgabe {{output}}",
+  "agent.meta_speed": "Geschwindigkeit",
 
   "agent.settings_providers": "Anbieter",
   "agent.settings_providers_desc": "Füge Anbieter-Instanzen mit API-Schlüsseln hinzu. Dieselbe Vorlage kann mehrmals hinzugefügt werden.",

@@ -276,6 +276,8 @@
   "agent.meta_cached": "En cache",
   "agent.meta_duration": "Durée",
   "agent.meta_tool_calls": "Appels d'outils",
+  "agent.meta_tokens_value": "entrée {{input}} / sortie {{output}}",
+  "agent.meta_speed": "Vitesse",
 
   "agent.settings_providers": "Fournisseurs",
   "agent.settings_providers_desc": "Ajoutez des instances de fournisseurs avec des clés API. Le même préréglage peut être ajouté plusieurs fois.",

@@ -267,6 +267,8 @@
   "agent.meta_cached": "Из кэша",
   "agent.meta_duration": "Длительность",
   "agent.meta_tool_calls": "Вызовы инструментов",
+  "agent.meta_tokens_value": "вход {{input}} / выход {{output}}",
+  "agent.meta_speed": "Скорость",
   "agent.settings_providers": "Провайдеры",
   "agent.settings_providers_desc": "Добавляйте экземпляры провайдеров с ключами API. Один и тот же пресет можно добавить несколько раз.",
   "agent.settings_add_provider": "Добавить провайдера",

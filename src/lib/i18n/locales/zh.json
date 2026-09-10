@@ -276,6 +276,8 @@
   "agent.meta_cached": "已缓存",
   "agent.meta_duration": "耗时",
   "agent.meta_tool_calls": "工具调用",
+  "agent.meta_tokens_value": "输入 {{input}} / 输出 {{output}}",
+  "agent.meta_speed": "速度",
 
   "agent.settings_providers": "提供商",
   "agent.settings_providers_desc": "添加带有 API 密钥的提供商实例。同一预设可以添加多次。",

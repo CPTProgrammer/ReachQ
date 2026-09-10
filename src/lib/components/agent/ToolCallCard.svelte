@@ -430,6 +430,21 @@
 		margin: 0 0 6px;
 	}
 
+	/* Preflight resets list-style to none; restore markers for markdown lists. */
+	.md :global(ul),
+	.md :global(ol) {
+		margin: 4px 0 6px;
+		padding-left: 18px;
+	}
+
+	.md :global(ul) {
+		list-style: disc;
+	}
+
+	.md :global(ol) {
+		list-style: decimal;
+	}
+
 	.md :global(pre) {
 		margin: 6px 0;
 		padding: 8px;

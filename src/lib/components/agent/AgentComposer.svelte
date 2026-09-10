@@ -358,6 +358,7 @@
 		outline: none;
 		max-height: 180px;
 		margin: 4px 4px 0px;
+		scrollbar-gutter: stable;
 	}
 
 	textarea:focus {

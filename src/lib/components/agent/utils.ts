@@ -61,6 +61,13 @@ export function formatDuration(ms: number): string {
 	return `${(ms / 1000).toFixed(1)}s`;
 }
 
+/** Output throughput: `340` tokens in `4200`ms -> `"81"` (`"45.3"` below 100). */
+export function formatSpeed(completionTokens: number, durationMs: number): string {
+	if (durationMs <= 0) return '0';
+	const tps = completionTokens / (durationMs / 1000);
+	return tps >= 100 ? String(Math.round(tps)) : tps.toFixed(1);
+}
+
 /**
  * Extract the unified diff for write_file / edit_file cards. The backend
  * delivers it via `result.uiPayload` (string or object with a diff field);
