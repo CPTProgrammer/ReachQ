@@ -37,6 +37,27 @@ export interface ToolResult {
 	uiPayload?: unknown;
 }
 
+/** Structured diff for write_file / edit_file: streamed previews, approval
+ *  payloads, and result uiPayloads all share this shape. */
+export interface DiffPreviewLine {
+	kind: 'add' | 'del' | 'ctx';
+	text: string;
+	oldNo?: number;
+	newNo?: number;
+}
+
+export interface DiffPreviewHunk {
+	oldStart: number;
+	newStart: number;
+	lines: DiffPreviewLine[];
+}
+
+export interface DiffPreview {
+	path: string;
+	isNewFile: boolean;
+	hunks: DiffPreviewHunk[];
+}
+
 export type ContentBlock =
 	| { type: 'text'; text: string }
 	| { type: 'thinking'; text: string; providerPayload?: unknown }
@@ -92,6 +113,8 @@ export interface ThreadSnapshot {
 
 export interface ThreadState extends ThreadSnapshot {
 	running: boolean;
+	/** Live diff previews for streaming tool calls, keyed by tool_call id. */
+	previews?: Record<string, DiffPreview>;
 }
 
 export interface ToolCallView {
@@ -117,6 +140,9 @@ export type AgentEvent =
 	| { kind: 'thinking_delta'; threadId: string; messageId: string; delta: string }
 	| { kind: 'tool_call'; threadId: string; toolCall: ToolCallView }
 	| { kind: 'tool_call_args_delta'; threadId: string; toolCallId: string; argsJsonDelta: string }
+	// Patched partial args; always valid JSON (safe to JSON.parse directly).
+	| { kind: 'tool_call_args_patched'; threadId: string; toolCallId: string; argsJson: string }
+	| { kind: 'tool_call_preview'; threadId: string; toolCallId: string; preview: DiffPreview }
 	| { kind: 'approval_needed'; threadId: string; approval: ApprovalRequest }
 	| { kind: 'user_message'; threadId: string; message: StoredMessage }
 	| { kind: 'usage'; threadId: string; usage: Usage }

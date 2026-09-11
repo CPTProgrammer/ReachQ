@@ -3,9 +3,12 @@
 //! semantics only — no streaming) plus the indentation reindent helper and a
 //! unified-diff builder used by the edit tool's approval UI.
 //!
-//! Pure algorithm module: depends only on `strsim` and `imara-diff`.
+//! Pure algorithm module: depends only on `strsim` and `imara-diff` (plus
+//! serde derives on the structured diff wire types).
 
 use std::ops::Range;
+
+use serde::{Deserialize, Serialize};
 
 /// Cost of pairing a query line with a similar (but not equal) buffer line.
 const REPLACEMENT_COST: u32 = 1;
@@ -259,9 +262,84 @@ pub fn first_line_indent_mismatch(
     })
 }
 
-/// Unified diff of `old_text` vs `new_text` using imara-diff's Histogram
-/// algorithm with 3 lines of context per hunk.
-pub fn unified_diff(old_text: &str, new_text: &str) -> String {
+// ---------------------------------------------------------------------------
+// Structured diff (wire format shared with the frontend)
+// ---------------------------------------------------------------------------
+
+/// Structured diff preview. `path`/`is_new_file` are envelope context, not
+/// part of the diff computation; the Sink below only produces `hunks`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffPreview {
+    pub path: String,
+    pub is_new_file: bool,
+    pub hunks: Vec<DiffHunk>,
+}
+
+/// One hunk: a run of changes plus DIFF_CONTEXT lines around them.
+/// `old_start`/`new_start` are 1-based line numbers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffHunk {
+    pub old_start: u32,
+    pub new_start: u32,
+    pub lines: Vec<DiffLine>,
+}
+
+/// One diff line (1-based numbers): del/ctx carry `old_no`, add/ctx carry
+/// `new_no`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffLine {
+    pub kind: DiffLineKind,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub old_no: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_no: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffLineKind {
+    Add,
+    Del,
+    Ctx,
+}
+
+impl DiffLine {
+    fn add(text: &str, new_no: u32) -> Self {
+        Self {
+            kind: DiffLineKind::Add,
+            text: text.to_string(),
+            old_no: None,
+            new_no: Some(new_no),
+        }
+    }
+
+    fn del(text: &str, old_no: u32) -> Self {
+        Self {
+            kind: DiffLineKind::Del,
+            text: text.to_string(),
+            old_no: Some(old_no),
+            new_no: None,
+        }
+    }
+
+    fn ctx(text: &str, old_no: u32, new_no: u32) -> Self {
+        Self {
+            kind: DiffLineKind::Ctx,
+            text: text.to_string(),
+            old_no: Some(old_no),
+            new_no: Some(new_no),
+        }
+    }
+}
+
+/// Structured diff of `old_text` vs `new_text` using imara-diff's Histogram
+/// algorithm with 3 lines of context per hunk. This is the single source of
+/// truth: `unified_diff` is these hunks plus text formatting.
+pub fn structured_diff(old_text: &str, new_text: &str) -> Vec<DiffHunk> {
     let input = imara_diff::intern::InternedInput::new(old_text, new_text);
     imara_diff::diff(
         imara_diff::Algorithm::Histogram,
@@ -271,6 +349,36 @@ pub fn unified_diff(old_text: &str, new_text: &str) -> String {
             changes: Vec::new(),
         },
     )
+}
+
+/// Unified diff of `old_text` vs `new_text` (text form of `structured_diff`).
+pub fn unified_diff(old_text: &str, new_text: &str) -> String {
+    format_hunks(&structured_diff(old_text, new_text))
+}
+
+/// Format structured hunks as unified-diff text. Hunk line counts are derived
+/// from the lines themselves: within a hunk the old side covers exactly the
+/// del+ctx lines and the new side exactly the add+ctx lines.
+pub fn format_hunks(hunks: &[DiffHunk]) -> String {
+    let mut out = String::new();
+    for hunk in hunks {
+        let old_count = hunk.lines.iter().filter(|l| l.old_no.is_some()).count();
+        let new_count = hunk.lines.iter().filter(|l| l.new_no.is_some()).count();
+        out.push_str(&format!(
+            "@@ -{},{} +{},{} @@\n",
+            hunk.old_start, old_count, hunk.new_start, new_count
+        ));
+        for line in &hunk.lines {
+            out.push(match line.kind {
+                DiffLineKind::Add => '+',
+                DiffLineKind::Del => '-',
+                DiffLineKind::Ctx => ' ',
+            });
+            out.push_str(&line.text);
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// Number of context lines on each side of a change within a hunk.
@@ -285,16 +393,15 @@ struct UnifiedDiffBuilder<'a> {
 }
 
 impl imara_diff::Sink for UnifiedDiffBuilder<'_> {
-    type Out = String;
+    type Out = Vec<DiffHunk>;
 
     fn process_change(&mut self, before: Range<u32>, after: Range<u32>) {
         self.changes.push((before, after));
     }
 
-    fn finish(self) -> String {
+    fn finish(self) -> Vec<DiffHunk> {
         let before_total = self.input.before.len() as u32;
-        let after_total = self.input.after.len() as u32;
-        let mut out = String::new();
+        let mut hunks = Vec::new();
 
         let mut i = 0;
         while i < self.changes.len() {
@@ -311,46 +418,59 @@ impl imara_diff::Sink for UnifiedDiffBuilder<'_> {
             let before_start = group[0].0.start.saturating_sub(DIFF_CONTEXT);
             let before_end = (group.last().unwrap().0.end + DIFF_CONTEXT).min(before_total);
             let after_start = group[0].1.start.saturating_sub(DIFF_CONTEXT);
-            let after_end = (group.last().unwrap().1.end + DIFF_CONTEXT).min(after_total);
+            // (The after-side hunk end equals after_start + hunk height:
+            // unchanged regions have equal length on both sides, so the `a`
+            // cursor below reaches it exactly when `b` reaches before_end.)
 
-            out.push_str(&format!(
-                "@@ -{},{} +{},{} @@\n",
-                before_start + 1,
-                before_end - before_start,
-                after_start + 1,
-                after_end - after_start,
-            ));
-
+            let mut lines = Vec::new();
+            // `a` tracks the after-side counterpart of before-line `b`:
+            // unchanged regions between changes have equal length on both
+            // sides, so the two cursors stay in lockstep through ctx runs.
             let mut b = before_start;
+            let mut a = after_start;
             for (before, after) in group {
                 while b < before.start {
-                    out.push(' ');
-                    out.push_str(&self.input.interner[self.input.before[b as usize]]);
-                    out.push('\n');
+                    lines.push(DiffLine::ctx(
+                        &self.input.interner[self.input.before[b as usize]],
+                        b + 1,
+                        a + 1,
+                    ));
                     b += 1;
+                    a += 1;
                 }
                 for k in before.start..before.end {
-                    out.push('-');
-                    out.push_str(&self.input.interner[self.input.before[k as usize]]);
-                    out.push('\n');
+                    lines.push(DiffLine::del(
+                        &self.input.interner[self.input.before[k as usize]],
+                        k + 1,
+                    ));
                 }
                 for k in after.start..after.end {
-                    out.push('+');
-                    out.push_str(&self.input.interner[self.input.after[k as usize]]);
-                    out.push('\n');
+                    lines.push(DiffLine::add(
+                        &self.input.interner[self.input.after[k as usize]],
+                        k + 1,
+                    ));
                 }
                 b = before.end;
+                a = after.end;
             }
             while b < before_end {
-                out.push(' ');
-                out.push_str(&self.input.interner[self.input.before[b as usize]]);
-                out.push('\n');
+                lines.push(DiffLine::ctx(
+                    &self.input.interner[self.input.before[b as usize]],
+                    b + 1,
+                    a + 1,
+                ));
                 b += 1;
+                a += 1;
             }
 
+            hunks.push(DiffHunk {
+                old_start: before_start + 1,
+                new_start: after_start + 1,
+                lines,
+            });
             i = j + 1;
         }
-        out
+        hunks
     }
 }
 
@@ -537,5 +657,80 @@ mod tests {
     #[test]
     fn unified_diff_no_changes_is_empty() {
         assert_eq!(unified_diff("a\nb\n", "a\nb\n"), "");
+    }
+
+    // -----------------------------------------------------------------
+    // structured_diff
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn structured_diff_line_numbers() {
+        let hunks = structured_diff("a\nb\nc\n", "a\nX\nc\n");
+        assert_eq!(hunks.len(), 1);
+        let hunk = &hunks[0];
+        assert_eq!((hunk.old_start, hunk.new_start), (1, 1));
+        assert_eq!(
+            hunk.lines,
+            vec![
+                DiffLine::ctx("a", 1, 1),
+                DiffLine::del("b", 2),
+                DiffLine::add("X", 2),
+                DiffLine::ctx("c", 3, 3),
+            ]
+        );
+    }
+
+    #[test]
+    fn structured_diff_tracks_new_side_after_insert() {
+        // Insertions before a context line shift its new-side number.
+        let hunks = structured_diff("a\n", "x\ny\na\n");
+        assert_eq!(hunks.len(), 1);
+        assert_eq!((hunks[0].old_start, hunks[0].new_start), (1, 1));
+        assert_eq!(
+            hunks[0].lines,
+            vec![
+                DiffLine::add("x", 1),
+                DiffLine::add("y", 2),
+                DiffLine::ctx("a", 1, 3),
+            ]
+        );
+    }
+
+    #[test]
+    fn structured_diff_distant_changes_split_hunks() {
+        let old: String = (1..=20).map(|i| format!("l{i}\n")).collect();
+        let new = old.replacen("l2\n", "X2\n", 1).replacen("l15\n", "X15\n", 1);
+        let hunks = structured_diff(&old, &new);
+        assert_eq!(hunks.len(), 2);
+        assert_eq!((hunks[0].old_start, hunks[0].new_start), (1, 1));
+        assert_eq!((hunks[1].old_start, hunks[1].new_start), (12, 12));
+        // The text form stays the formatting of the same hunks.
+        assert_eq!(unified_diff(&old, &new), format_hunks(&hunks));
+    }
+
+    #[test]
+    fn diff_preview_json_wire_shape() {
+        let preview = DiffPreview {
+            path: "/tmp/a".to_string(),
+            is_new_file: false,
+            hunks: structured_diff("a\nb\nc\n", "a\nX\nc\n"),
+        };
+        let v = serde_json::to_value(&preview).unwrap();
+        assert_eq!(v["path"], "/tmp/a");
+        assert_eq!(v["isNewFile"], false);
+        assert_eq!(v["hunks"][0]["oldStart"], 1);
+        assert_eq!(v["hunks"][0]["newStart"], 1);
+        assert_eq!(
+            v["hunks"][0]["lines"][1],
+            serde_json::json!({ "kind": "del", "text": "b", "oldNo": 2 })
+        );
+        assert_eq!(
+            v["hunks"][0]["lines"][2],
+            serde_json::json!({ "kind": "add", "text": "X", "newNo": 2 })
+        );
+        assert_eq!(
+            v["hunks"][0]["lines"][0],
+            serde_json::json!({ "kind": "ctx", "text": "a", "oldNo": 1, "newNo": 1 })
+        );
     }
 }

@@ -262,6 +262,7 @@
   "agent.tool_fetch": "获取 `{{url}}`",
   "agent.copy_command": "复制命令",
   "agent.stop_command": "停止命令",
+  "agent.hunk_collapsed": "{{count}} 行未更改",
   "agent.context": "上下文",
   "agent.pending_close_title": "智能体正在使用此会话",
   "agent.pending_close_body": "智能体完成后，此标签页将自动关闭。再次点击关闭将强制断开连接。",

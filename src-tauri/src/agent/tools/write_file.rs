@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::tools::edit_match::unified_diff;
+use crate::agent::tools::edit_match::{format_hunks, structured_diff, DiffHunk, DiffPreview};
 use crate::agent::remote_fs::{self, Fingerprint, LineEnding, PreparedWrite, ReadCacheEntry};
 use crate::agent::tools::{err_text, AgentTool, ToolContext};
 use crate::agent::providers::ToolSchema;
@@ -86,24 +86,38 @@ pub(crate) async fn prepare_write(
         Err(e) => return Err(remote_fs::map_stat_error(path, &e)),
     };
 
-    let diff = unified_diff(&old_text, new_content);
+    let is_new_file = matches!(fingerprint, Fingerprint::Absent);
+    let hunks = structured_diff(&old_text, new_content);
+    let diff_text = format_hunks(&hunks);
     ctx.pending_writes.lock().unwrap().insert(
         ctx.tool_call_id.clone(),
         PreparedWrite {
             path: path.to_string(),
             new_text: new_content.to_string(),
-            diff: diff.clone(),
+            diff: diff_text,
+            hunks: hunks.clone(),
             expected: fingerprint,
             encoding_label,
             line_ending,
         },
     );
 
+    let preview = DiffPreview {
+        path: path.to_string(),
+        is_new_file,
+        hunks,
+    };
     Ok(serde_json::json!({
-        "diff": diff,
+        "diff": preview,
         "path": path,
-        "isNewFile": matches!(fingerprint, Fingerprint::Absent),
+        "isNewFile": is_new_file,
     }))
+}
+
+/// Streaming-preview entry (agent::preview): structured hunks of the current
+/// content vs the (possibly still partial) new content. Pure computation.
+pub(crate) fn preview_write(old_text: &str, new_content: &str) -> Vec<DiffHunk> {
+    structured_diff(old_text, new_content)
 }
 
 /// Execute a stashed (or freshly prepared) write. Shared by write_file and
@@ -145,10 +159,20 @@ pub(crate) async fn execute_prepared_write(
     );
 
     let diff = plan.diff.clone();
+    let is_new_file = matches!(plan.expected, Fingerprint::Absent);
+    let preview = DiffPreview {
+        path: plan.path.clone(),
+        is_new_file,
+        hunks: plan.hunks.clone(),
+    };
     Ok(ToolResult {
         llm_text: success_text(&plan.path, &diff, bytes_written),
         is_error: false,
-        ui_payload: Some(serde_json::json!({ "diff": diff, "path": plan.path })),
+        ui_payload: Some(serde_json::json!({
+            "diff": preview,
+            "path": plan.path,
+            "isNewFile": is_new_file,
+        })),
     })
 }
 

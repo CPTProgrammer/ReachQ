@@ -12,6 +12,7 @@ use crate::agent::events::AgentEvent;
 use crate::agent::providers::{self, ModelMeta};
 use crate::agent::thread_store::ThreadStore;
 use crate::agent::tools;
+use crate::agent::tools::edit_match::DiffPreview;
 use crate::agent::types::{ThreadSnapshot, ThreadSummary};
 use crate::agent::AgentDeps;
 use crate::state::AppState;
@@ -269,6 +270,10 @@ pub struct ThreadState {
     #[serde(flatten)]
     pub snapshot: ThreadSnapshot,
     pub running: bool,
+    /// Live diff previews of tool calls still streaming, keyed by tool_call
+    /// id; only present while a run is active and previews exist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previews: Option<std::collections::HashMap<String, DiffPreview>>,
 }
 
 #[tauri::command]
@@ -278,8 +283,12 @@ pub async fn agent_get_thread_state(
 ) -> Result<ThreadState, String> {
     let mut snapshot = store(&state).await?.snapshot(&thread_id).await?;
     let running = state.agent.runs.lock().await.contains_key(&thread_id);
-    state.agent.enrich_snapshot(&mut snapshot, running).await;
-    Ok(ThreadState { snapshot, running })
+    let previews = state.agent.enrich_snapshot(&mut snapshot, running).await;
+    Ok(ThreadState {
+        snapshot,
+        running,
+        previews: if previews.is_empty() { None } else { Some(previews) },
+    })
 }
 
 /// Edit a user message and fork a new branch from it (design 01 §2.4).

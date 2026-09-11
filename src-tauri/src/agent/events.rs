@@ -65,6 +65,23 @@ pub enum AgentEvent {
         tool_call_id: String,
         args_json_delta: String,
     },
+    /// Tolerant re-parse of the in-flight arguments (trailing partial
+    /// strings included); always valid JSON, safe to parse directly.
+    /// Emitted throttled while the arguments stream.
+    #[serde(rename_all = "camelCase")]
+    ToolCallArgsPatched {
+        thread_id: String,
+        tool_call_id: String,
+        args_json: String,
+    },
+    /// Structured diff preview of a streaming write_file/edit_file call,
+    /// computed with the same fuzzy-match + diff code as execution.
+    #[serde(rename_all = "camelCase")]
+    ToolCallPreview {
+        thread_id: String,
+        tool_call_id: String,
+        preview: super::tools::edit_match::DiffPreview,
+    },
     #[serde(rename_all = "camelCase")]
     ApprovalNeeded {
         thread_id: String,

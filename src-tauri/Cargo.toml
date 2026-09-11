@@ -63,12 +63,13 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # AI agent
 eventsource-stream = "0.2"
 futures = "0.3"
-schemars = { version = "1.0", features = ["indexmap2"] }
+schemars = { version = "1.0", features = ["indexmap2", "preserve_order"] }
 globset = "0.4"
 content_inspector = "0.2"
 chardetng = "0.1"
 encoding_rs = "0.8"
 imara-diff = "0.1.8"
+jiter = "0.16"
 strsim = "0.11"
 shlex = "1.3"
 html_to_markdown = "0.1"

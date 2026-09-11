@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, oneshot, Notify};
@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::agent::events::{AgentEvent, ApprovalRequest, ToolCallView};
 use crate::agent::permissions::{self, ApprovalDecision};
+use crate::agent::preview::StreamPreviews;
 use crate::agent::providers::{
     preset_by_id, AssistantMessage, AssistantToolCall, ChatEvent, ChatMessage, ChatRequest,
     ModelMeta, ThinkingConfig, ToolSchema,
@@ -237,7 +238,7 @@ struct PendingToolCall {
     args_json: String,
 }
 
-fn emit(app: &AppHandle, identity: &str, event: AgentEvent) {
+pub(crate) fn emit(app: &AppHandle, identity: &str, event: AgentEvent) {
     if let Err(e) = app.emit(&AgentEvent::channel(identity), &event) {
         tracing::warn!("agent: emit failed: {}", e);
     }
@@ -378,6 +379,14 @@ pub async fn run_agent(
         &handle,
     )
     .await;
+
+    // A run that dies mid-stream (cancel/error) never reaches the
+    // execute-path cleanup; drop its leftover streaming previews here.
+    agent
+        .previews
+        .lock()
+        .await
+        .retain(|_, entry| entry.thread_id != thread_id);
 
     // Emit the terminal event before unregistering/waking agent_send_now
     // waiters, so the frontend settles running=false before the successor
@@ -564,8 +573,36 @@ async fn run_loop(
         let round_start = Instant::now();
         let mut acc = RoundAcc::default();
         let mut announced_tools: Vec<String> = Vec::new(); // tool_call ids announced as streaming
+        let mut preview_tracker = StreamPreviews::new();
+        let mut preview_tick = tokio::time::interval(Duration::from_millis(150));
+        // One catch-up tick is enough after a slow preview (fs read + diff).
+        preview_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-        while let Some(event) = event_rx.recv().await {
+        loop {
+            let event = tokio::select! {
+                event = event_rx.recv() => event,
+                _ = preview_tick.tick() => {
+                    let dirty = preview_tracker.take_dirty();
+                    if !dirty.is_empty() {
+                        // Snapshot the dirty calls' (id, name, args) out of
+                        // the accumulator so the tick owns no borrow of it.
+                        let calls: Vec<(String, String, String)> = dirty
+                            .iter()
+                            .filter_map(|id| {
+                                acc.tool_calls
+                                    .values()
+                                    .find(|p| p.id.as_deref() == Some(id.as_str()))
+                                    .and_then(|p| {
+                                        Some((id.clone(), p.name.clone()?, p.args_json.clone()))
+                                    })
+                            })
+                            .collect();
+                        preview_tracker.tick(app, deps, identity, thread_id, calls).await;
+                    }
+                    continue;
+                }
+            };
+            let Some(event) = event else { break };
             match event {
                 ChatEvent::TextDelta(delta) => {
                     acc.text.push_str(&delta);
@@ -624,6 +661,7 @@ async fn run_loop(
                                 tool_call_id: tc_id.clone(),
                                 args_json_delta,
                             });
+                            preview_tracker.mark_dirty(tc_id);
                         }
                     }
                 }
@@ -805,6 +843,14 @@ async fn execute_tool_calls(
     cancel: &CancellationToken,
 ) -> Result<Vec<ContentBlock>, LoopExit> {
     let agent = &deps.agent;
+    // Streaming is over for this round's calls: drop their live previews
+    // (the approval card / result payload carries the authoritative diff).
+    {
+        let mut previews = agent.previews.lock().await;
+        for (id, _, _) in &parsed_calls {
+            previews.remove(id);
+        }
+    }
     let read_file_options = {
         let vault = deps.vault_manager.lock().await;
         let tool = tools::tool_by_name("read_file");

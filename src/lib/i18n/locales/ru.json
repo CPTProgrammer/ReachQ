@@ -253,6 +253,7 @@
   "agent.tool_fetch": "Запросить `{{url}}`",
   "agent.copy_command": "Копировать команду",
   "agent.stop_command": "Остановить команду",
+  "agent.hunk_collapsed": "Без изменений: {{count}} строк",
   "agent.context": "Контекст",
   "agent.pending_close_title": "Агент использует эту сессию",
   "agent.pending_close_body": "Вкладка закроется автоматически, когда агент завершит работу. Повторное нажатие кнопки закрытия принудительно разорвёт соединение.",

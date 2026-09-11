@@ -15,6 +15,7 @@ import { applyThreadTitle } from './agent-threads.svelte';
 import type {
 	AgentEvent,
 	AgentSendOpts,
+	DiffPreview,
 	PathMessage,
 	StoredMessage,
 	ThreadSnapshot,
@@ -245,6 +246,13 @@ export interface ThreadRuntime {
 	queued: QueuedMessage | null;
 	/** Live tool call views, keyed by tool_call id. */
 	toolCalls: Record<string, ToolCallView>;
+	/** Structured diff previews for streaming write/edit calls, keyed by tool_call id. */
+	previews: Record<string, DiffPreview>;
+	/** Latest valid-JSON patch of a streaming call's arguments, keyed by tool_call id. */
+	argsPatched: Record<string, string>;
+	/** Payloads captured from approval_needed, keyed by tool_call id. Kept at
+	 *  terminal status so rejected write/edit cards keep their diff. */
+	approvalPayloads: Record<string, unknown>;
 	/** Last usage seen (drives the context ring). */
 	lastUsage: Usage | null;
 	/** Last error, cleared on next send. */
@@ -269,6 +277,9 @@ function ensureThreadRuntime(threadId: string): ThreadRuntime {
 			streamingMessageId: null,
 			queued: null,
 			toolCalls: {},
+			previews: {},
+			argsPatched: {},
+			approvalPayloads: {},
 			lastUsage: null,
 			error: null,
 			loaded: false
@@ -284,6 +295,36 @@ function ensureThreadRuntime(threadId: string): ThreadRuntime {
  */
 export function getThreadRuntime(threadId: string): ThreadRuntime | null {
 	return runtimes[threadId] ?? null;
+}
+
+// Tool-call ids are globally unique, so the per-call lookups below simply
+// scan the loaded runtimes for the owning thread.
+
+/** Live structured diff preview of a streaming write/edit call. */
+export function getToolPreview(toolCallId: string): DiffPreview | null {
+	for (const rt of Object.values(runtimes)) {
+		const preview = rt.previews[toolCallId];
+		if (preview) return preview;
+	}
+	return null;
+}
+
+/** Latest valid-JSON patch of a streaming call's args — preferred over the
+ *  raw, possibly unterminated `argsJson` accumulation. */
+export function getPatchedArgs(toolCallId: string): string | null {
+	for (const rt of Object.values(runtimes)) {
+		const patched = rt.argsPatched[toolCallId];
+		if (patched) return patched;
+	}
+	return null;
+}
+
+/** Payload captured from the call's approval_needed event, if any. */
+export function getApprovalPayload(toolCallId: string): unknown {
+	for (const rt of Object.values(runtimes)) {
+		if (toolCallId in rt.approvalPayloads) return rt.approvalPayloads[toolCallId];
+	}
+	return undefined;
 }
 
 /**
@@ -302,8 +343,16 @@ const STATUS_RANK: Record<ToolCallStatus, number> = {
 	cancelled: 3
 };
 
+function isTerminalCall(status: ToolCallStatus): boolean {
+	return STATUS_RANK[status] >= STATUS_RANK.success;
+}
+
 /** Seed from a backend snapshot (panel open / thread switch). */
-export function applySnapshot(threadId: string, snapshot: ThreadSnapshot, running: boolean) {
+export function applySnapshot(
+	threadId: string,
+	snapshot: ThreadSnapshot & { previews?: Record<string, DiffPreview> },
+	running: boolean
+) {
 	const rt = ensureThreadRuntime(threadId);
 	rt.messages = snapshot.messages;
 	rt.running = running;
@@ -332,6 +381,21 @@ export function applySnapshot(threadId: string, snapshot: ThreadSnapshot, runnin
 				};
 			}
 		}
+	}
+	// Merge live previews carried by the snapshot (streaming calls only), then
+	// drop streaming artifacts for calls that are terminal or no longer shown.
+	if (snapshot.previews) {
+		for (const [id, preview] of Object.entries(snapshot.previews)) {
+			rt.previews[id] = preview;
+		}
+	}
+	for (const id of Object.keys(rt.previews)) {
+		const view = rt.toolCalls[id];
+		if (!view || isTerminalCall(view.status)) delete rt.previews[id];
+	}
+	for (const id of Object.keys(rt.argsPatched)) {
+		const view = rt.toolCalls[id];
+		if (!view || isTerminalCall(view.status)) delete rt.argsPatched[id];
 	}
 	if (snapshot.thread.lastUsage) rt.lastUsage = snapshot.thread.lastUsage;
 }
@@ -413,6 +477,11 @@ function handleEvent(e: AgentEvent): void {
 			} else {
 				rt.toolCalls[e.toolCall.id] = e.toolCall;
 			}
+			// Streaming artifacts are obsolete once the call settles.
+			if (isTerminalCall(e.toolCall.status)) {
+				delete rt.previews[e.toolCall.id];
+				delete rt.argsPatched[e.toolCall.id];
+			}
 			rt.running = true;
 			// Attach to the assistant message if it exists yet.
 			const msg = rt.messages.find((m) => m.id === e.toolCall.messageId);
@@ -441,12 +510,25 @@ function handleEvent(e: AgentEvent): void {
 			if (view) view.argsJson += e.argsJsonDelta;
 			break;
 		}
+		case 'tool_call_args_patched': {
+			const rt = ensureThreadRuntime(e.threadId);
+			rt.argsPatched[e.toolCallId] = e.argsJson;
+			break;
+		}
+		case 'tool_call_preview': {
+			const rt = ensureThreadRuntime(e.threadId);
+			rt.previews[e.toolCallId] = e.preview;
+			break;
+		}
 		case 'approval_needed': {
 			const rt = ensureThreadRuntime(e.threadId);
 			const view = rt.toolCalls[e.approval.toolCallId];
 			if (view) {
 				view.status = 'pending_approval';
 				view.warnings = e.approval.warnings;
+			}
+			if (e.approval.payload !== undefined) {
+				rt.approvalPayloads[e.approval.toolCallId] = e.approval.payload;
 			}
 			break;
 		}

@@ -262,6 +262,7 @@
   "agent.tool_fetch": "Fetch `{{url}}`",
   "agent.copy_command": "Copy command",
   "agent.stop_command": "Stop command",
+  "agent.hunk_collapsed": "{{count}} unchanged lines",
   "agent.context": "Context",
   "agent.pending_close_title": "Agent is using this session",
   "agent.pending_close_body": "This tab will close automatically when the agent finishes. Clicking close again force-disconnects it.",

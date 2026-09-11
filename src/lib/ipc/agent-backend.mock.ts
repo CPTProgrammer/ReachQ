@@ -14,6 +14,8 @@ import type {
 	AgentSendOpts,
 	ApprovalRequest,
 	ContentBlock,
+	DiffPreview,
+	DiffPreviewLine,
 	InstanceModels,
 	MessageMetadata,
 	ModelMeta,
@@ -240,6 +242,155 @@ function safeParse(json: string): unknown {
 	}
 }
 
+/** Simple-escape lookup for parsePartialJson. */
+const JSON_ESCAPES: Record<string, string> = {
+	'"': '"',
+	'\\': '\\',
+	'/': '/',
+	b: '\b',
+	f: '\f',
+	n: '\n',
+	r: '\r',
+	t: '\t'
+};
+
+/**
+ * Best-effort parse of a *prefix* of a JSON document — the payload the real
+ * backend puts in `tool_call_args_patched`. Never throws: a string cut
+ * mid-way keeps its completed prefix (a dangling `\` or `\u12` escape tail
+ * is dropped); an unclosed object/array yields the entries completed so far;
+ * a number/true/false/null literal only counts once a delimiter proves it
+ * complete (half literals are dropped — this mock never needs one). Returns
+ * undefined until at least one value has arrived.
+ */
+function parsePartialJson(src: string): unknown {
+	let i = 0;
+	const ws = (): void => {
+		while (i < src.length && ' \t\n\r'.includes(src.charAt(i))) i++;
+	};
+	const str = (): string => {
+		let out = '';
+		i++; // opening quote
+		while (i < src.length) {
+			const c = src.charAt(i++);
+			if (c === '"') return out;
+			if (c !== '\\') {
+				out += c;
+				continue;
+			}
+			if (i >= src.length) break; // dangling backslash: drop it
+			const e = src.charAt(i);
+			if (e !== 'u') {
+				const rep: string | undefined = JSON_ESCAPES[e];
+				if (rep === undefined) break; // unknown escape tail: drop it
+				out += rep;
+				i++;
+				continue;
+			}
+			const hex = src.slice(i + 1, i + 5);
+			if (!/^[0-9a-fA-F]{4}$/.test(hex)) break; // dangling \u tail: drop it
+			out += String.fromCharCode(parseInt(hex, 16));
+			i += 5;
+		}
+		return out;
+	};
+	// A literal only counts when a delimiter follows — at end-of-prefix it
+	// may still be growing, so drop it.
+	const literal = (): unknown => {
+		const m = /^-?(?:\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/.exec(src.slice(i));
+		if (!m || i + m[0].length >= src.length) {
+			i = src.length;
+			return undefined;
+		}
+		i += m[0].length;
+		return JSON.parse(m[0]) as unknown;
+	};
+	const value = (): unknown => {
+		ws();
+		const c = src.charAt(i); // '' past the end
+		if (c === '"') return str();
+		if (c === '{') return obj();
+		if (c === '[') return arr();
+		if (c === '') return undefined;
+		return literal();
+	};
+	const arr = (): unknown[] => {
+		const out: unknown[] = [];
+		i++; // '['
+		while (i < src.length) {
+			ws();
+			if (src.charAt(i) === ']') {
+				i++;
+				break;
+			}
+			const v = value();
+			if (v !== undefined) out.push(v);
+			ws();
+			if (src.charAt(i) !== ',') break;
+			i++;
+		}
+		return out;
+	};
+	const obj = (): Record<string, unknown> => {
+		const out: Record<string, unknown> = {};
+		i++; // '{'
+		while (i < src.length) {
+			ws();
+			if (src.charAt(i) === '}') {
+				i++;
+				break;
+			}
+			if (src.charAt(i) !== '"') break;
+			const key = str();
+			ws();
+			if (src.charAt(i) !== ':') break; // key arrived, colon didn't
+			i++;
+			const v = value();
+			if (v === undefined) break; // value still streaming: drop the pair
+			out[key] = v;
+			ws();
+			if (src.charAt(i) !== ',') break;
+			i++;
+		}
+		return out;
+	};
+	return value();
+}
+
+/** The (possibly partial) new_text of an edit_file args value or prefix. */
+function partialEditNewText(args: unknown): string | undefined {
+	const t = (args as { edits?: { new_text?: unknown }[] } | null)?.edits?.[0]?.new_text;
+	return typeof t === 'string' ? t : undefined;
+}
+
+/**
+ * Truncated variant of a diff preview for the streaming simulation: ctx/del
+ * lines come from the old file and are always known, so only the add lines
+ * grow — keep the first half, with the last visible add cut mid-text.
+ */
+function halfDiffPreview(preview: DiffPreview): DiffPreview {
+	return {
+		...preview,
+		hunks: preview.hunks.map((hunk) => {
+			const keep = Math.ceil(hunk.lines.filter((l) => l.kind === 'add').length / 2);
+			let adds = 0;
+			const lines: DiffPreviewLine[] = [];
+			for (const line of hunk.lines) {
+				if (line.kind === 'add') {
+					adds++;
+					if (adds > keep) continue;
+					if (adds === keep) {
+						lines.push({ ...line, text: line.text.slice(0, Math.ceil(line.text.length * 0.6)) });
+						continue;
+					}
+				}
+				lines.push(line);
+			}
+			return { ...hunk, lines };
+		})
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Mock content fixtures
 // ---------------------------------------------------------------------------
@@ -273,19 +424,55 @@ const NGINX_EDIT_ARGS = {
 
 const NGINX_DIFF = `--- a/etc/nginx/sites-available/reach.conf
 +++ b/etc/nginx/sites-available/reach.conf
-@@ -7,8 +7,11 @@
+@@ -7,8 +7,10 @@
      root /var/www/reach;
      index index.html;
 
 -    listen 80;
--    server_name reach.example.com;
 +    listen 443 ssl;
-+    server_name reach.example.com;
+     server_name reach.example.com;
 +    ssl_certificate /etc/letsencrypt/live/reach.example.com/fullchain.pem;
 +    ssl_certificate_key /etc/letsencrypt/live/reach.example.com/privkey.pem;
 
      location / {
          try_files $uri $uri/ =404;`;
+
+/**
+ * Structured form of NGINX_DIFF — the shape approval payloads, result
+ * uiPayloads, and streamed `tool_call_preview` events now carry. Line
+ * numbers are 1-based: del/ctx lines carry oldNo, add/ctx lines newNo.
+ */
+const NGINX_DIFF_PREVIEW: DiffPreview = {
+	path: NGINX_EDIT_ARGS.path,
+	isNewFile: false,
+	hunks: [
+		{
+			oldStart: 7,
+			newStart: 7,
+			lines: [
+				{ kind: 'ctx', text: '    root /var/www/reach;', oldNo: 7, newNo: 7 },
+				{ kind: 'ctx', text: '    index index.html;', oldNo: 8, newNo: 8 },
+				{ kind: 'ctx', text: '', oldNo: 9, newNo: 9 },
+				{ kind: 'del', text: '    listen 80;', oldNo: 10 },
+				{ kind: 'add', text: '    listen 443 ssl;', newNo: 10 },
+				{ kind: 'ctx', text: '    server_name reach.example.com;', oldNo: 11, newNo: 11 },
+				{
+					kind: 'add',
+					text: '    ssl_certificate /etc/letsencrypt/live/reach.example.com/fullchain.pem;',
+					newNo: 12
+				},
+				{
+					kind: 'add',
+					text: '    ssl_certificate_key /etc/letsencrypt/live/reach.example.com/privkey.pem;',
+					newNo: 13
+				},
+				{ kind: 'ctx', text: '', oldNo: 12, newNo: 14 },
+				{ kind: 'ctx', text: '    location / {', oldNo: 13, newNo: 15 },
+				{ kind: 'ctx', text: '        try_files $uri $uri/ =404;', oldNo: 14, newNo: 16 }
+			]
+		}
+	]
+};
 
 /** The reach.conf site before the HTTPS edit, as read_file would return it. */
 const NGINX_SITE_CONFIG = `     1\tserver {
@@ -752,6 +939,13 @@ class MockAgentBackend implements AgentBackend {
 					status: 'streaming'
 				});
 				const full = JSON.stringify(args);
+				// edit_file preview simulation: while new_text drips in, the real
+				// backend publishes a growing structured diff — half the add lines
+				// first, the full preview once new_text has closed.
+				const finalNewText = name === 'edit_file' ? partialEditNewText(args) : undefined;
+				const newTextLen = finalNewText?.length ?? 0;
+				let previewStage = 0; // 0 = none sent, 1 = half sent, 2 = full sent
+				let lastPatched = '';
 				for (const chunk of jsonChunks(full)) {
 					if (run.cancelled) throw CANCELLED;
 					call.argsJson += chunk;
@@ -761,6 +955,40 @@ class MockAgentBackend implements AgentBackend {
 						toolCallId: call.id,
 						argsJsonDelta: chunk
 					});
+					const patched = parsePartialJson(call.argsJson);
+					if (patched !== undefined) {
+						const patchedJson = JSON.stringify(patched);
+						if (patchedJson !== lastPatched) {
+							lastPatched = patchedJson;
+							this.emit(identity, {
+								kind: 'tool_call_args_patched',
+								threadId,
+								toolCallId: call.id,
+								argsJson: patchedJson
+							});
+						}
+					}
+					if (newTextLen > 0 && previewStage < 2 && patched !== undefined) {
+						const partialLen = partialEditNewText(patched)?.length ?? 0;
+						if (previewStage === 0 && partialLen >= newTextLen / 2) {
+							previewStage = 1;
+							this.emit(identity, {
+								kind: 'tool_call_preview',
+								threadId,
+								toolCallId: call.id,
+								preview: halfDiffPreview(NGINX_DIFF_PREVIEW)
+							});
+						}
+						if (previewStage === 1 && partialLen >= newTextLen) {
+							previewStage = 2;
+							this.emit(identity, {
+								kind: 'tool_call_preview',
+								threadId,
+								toolCallId: call.id,
+								preview: NGINX_DIFF_PREVIEW
+							});
+						}
+					}
 					await sleep(40 + Math.random() * 40);
 				}
 				return call;
@@ -1144,7 +1372,7 @@ class MockAgentBackend implements AgentBackend {
 						call,
 						'/etc/nginx/sites-available/reach.conf',
 						[],
-						{ diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+						{ diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 					);
 					if (!ok) {
 						ctx.setToolStatus(call, 'rejected', {
@@ -1158,7 +1386,7 @@ class MockAgentBackend implements AgentBackend {
 						ctx.setToolStatus(call, 'success', {
 							llmText: `Edited ${NGINX_EDIT_ARGS.path}:\n\n\`\`\`diff\n${NGINX_DIFF}\n\`\`\``,
 							isError: false,
-							uiPayload: { diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+							uiPayload: { diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 						});
 						await ctx.streamText(msg, 'Done — the site now listens on 443 with the LE certs. Run `nginx -t` to verify.');
 					}
@@ -1179,19 +1407,19 @@ class MockAgentBackend implements AgentBackend {
 						call,
 						'/etc/nginx/sites-available/reach.conf',
 						[],
-						{ diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+						{ diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 					);
 					if (ok) {
 						ctx.setToolStatus(call, 'success', {
 							llmText: 'Edited.',
 							isError: false,
-							uiPayload: { diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+							uiPayload: { diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 						});
 					} else {
 						ctx.setToolStatus(call, 'rejected', {
 							llmText: 'Permission to run tool denied by user\nNo edits were made.',
 							isError: true,
-							uiPayload: { diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+							uiPayload: { diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 						});
 						await ctx.streamText(msg, 'Understood, leaving the site on port 80.');
 					}
@@ -1280,13 +1508,13 @@ class MockAgentBackend implements AgentBackend {
 						editCall,
 						'/etc/nginx/sites-available/reach.conf',
 						[],
-						{ diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+						{ diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 					);
 					if (!ok) {
 						ctx.setToolStatus(editCall, 'rejected', {
 							llmText: 'Permission to run tool denied by user\nNo edits were made.',
 							isError: true,
-							uiPayload: { diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+							uiPayload: { diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 						});
 						ctx.addUsage(60);
 						ctx.finishMessage(msg, 1, startedAt, `${msg}p`);
@@ -1307,7 +1535,7 @@ class MockAgentBackend implements AgentBackend {
 					ctx.setToolStatus(editCall, 'success', {
 						llmText: `Edited ${NGINX_EDIT_ARGS.path}:\n\n\`\`\`diff\n${NGINX_DIFF}\n\`\`\``,
 						isError: false,
-						uiPayload: { diff: NGINX_DIFF, path: NGINX_EDIT_ARGS.path }
+						uiPayload: { diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 					});
 					ctx.addUsage(120);
 					ctx.finishMessage(msg, 1, startedAt, `${msg}p`);

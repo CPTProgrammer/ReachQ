@@ -19,6 +19,7 @@ use crate::sftp::ops::RemoteFs;
 use crate::ssh::client::SshManager;
 use crate::sftp::backend::SftpBackendManager;
 
+use super::tools::edit_match::DiffHunk;
 use super::tools::{err_text, ok_text};
 use super::types::ToolResult;
 
@@ -53,7 +54,10 @@ pub struct PreparedWrite {
     pub path: String,
     /// New full content, LF-normalized.
     pub new_text: String,
+    /// Unified-diff text (LLM-facing), formatted from `hunks`.
     pub diff: String,
+    /// Structured hunks of the same diff (UI payload / previews).
+    pub hunks: Vec<DiffHunk>,
     /// Fingerprint at prepare time (design 03 §2 behavior 3: F1).
     pub expected: Fingerprint,
     pub encoding_label: String,

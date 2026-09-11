@@ -262,6 +262,7 @@
   "agent.tool_fetch": "Recupera `{{url}}`",
   "agent.copy_command": "Copia comando",
   "agent.stop_command": "Interrompi comando",
+  "agent.hunk_collapsed": "{{count}} righe invariate",
   "agent.context": "Contesto",
   "agent.pending_close_title": "L'agente sta usando questa sessione",
   "agent.pending_close_body": "Questa scheda si chiuderà automaticamente quando l'agente avrà finito. Cliccando di nuovo su Chiudi la connessione verrà interrotta forzatamente.",

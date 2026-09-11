@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import type { ToolCallView } from '$lib/ipc/agent';
+	import type { DiffPreview, DiffPreviewLine, ToolCallView } from '$lib/ipc/agent';
 
 	export interface Props {
 		call: ToolCallView;
@@ -9,11 +9,14 @@
 <script lang="ts">
 	import {
 		agentApproveCall,
-		agentStopTerminal
+		agentStopTerminal,
+		getApprovalPayload,
+		getPatchedArgs,
+		getToolPreview
 	} from '$lib/state/agent.svelte';
 	import { untrack } from 'svelte';
 	import { t } from '$lib/state/i18n.svelte';
-	import DiffView from './DiffView.svelte';
+	import PatchView from './PatchView.svelte';
 	import ToolTerminal from './ToolTerminal.svelte';
 	import { renderMarkdown } from './markdown';
 	import { argString, copyText, extractDiff, prettyJson, safeParse } from './utils';
@@ -30,7 +33,10 @@
 	let showRaw = $state(false);
 	let copied = $state(false);
 
-	let args = $derived(safeParse(call.argsJson));
+	// Patched args (valid JSON while streaming) win over the raw accumulation,
+	// which may be unterminated mid-stream.
+	let argsJson = $derived(getPatchedArgs(call.id) ?? call.argsJson);
+	let args = $derived(safeParse(argsJson));
 	let path = $derived(argString(args, ['path', 'file_path', 'filePath', 'target_file']));
 	let command = $derived(argString(args, ['command', 'cmd']));
 	let url = $derived(argString(args, ['url']));
@@ -64,17 +70,67 @@
 		}
 	});
 
-	let diff = $derived(
-		call.name === 'write_file' || call.name === 'edit_file' ? extractDiff(call) : null
+	let isFileTool = $derived(call.name === 'write_file' || call.name === 'edit_file');
+
+	// Detail priority: approval/result structured diff > live preview > prewarm.
+	let finalDiff = $derived(isFileTool ? extractDiff(call, getApprovalPayload(call.id)) : null);
+	let livePreview = $derived(isFileTool ? getToolPreview(call.id) : null);
+	let activeDiff = $derived(finalDiff ?? livePreview);
+
+	/** Streaming old-text (edit_file) or content (write_file) rendered as plain
+	 *  patch rows while no structured preview exists yet. Feeding the same
+	 *  PatchView as the real preview keeps the two views geometrically
+	 *  identical; the swap away from these rows is one-way. */
+	let warmPreview = $derived.by((): DiffPreview | null => {
+		if (!isFileTool || call.status !== 'streaming' || activeDiff) return null;
+		if (!args || typeof args !== 'object') return null;
+		let text = '';
+		let kind: 'add' | 'del' = 'del';
+		if (call.name === 'write_file') {
+			text = argString(args, ['content', 'text', 'new_text']);
+			kind = 'add';
+		} else {
+			text = argString(args, ['old_text', 'oldText', 'search']);
+			const edits = (args as Record<string, unknown>).edits;
+			if (!text && Array.isArray(edits)) {
+				for (const edit of edits) {
+					if (!edit || typeof edit !== 'object') continue;
+					const e = edit as Record<string, unknown>;
+					if (typeof e.old_text === 'string' && e.old_text) {
+						text = e.old_text;
+						break;
+					}
+				}
+			}
+		}
+		if (!text) return null;
+		const lines = text
+			.replace(/\r\n?/g, '\n')
+			.split('\n')
+			.map((line, i): DiffPreviewLine =>
+				kind === 'add' ? { kind, text: line, newNo: i + 1 } : { kind, text: line, oldNo: i + 1 }
+			);
+		return { path, isNewFile: false, hunks: [{ oldStart: 1, newStart: 1, lines }] };
+	});
+
+	/** One PatchView instance serves the warm rows and the real preview, so the
+	 *  swap only replaces content. */
+	let shownDiff = $derived(activeDiff ?? warmPreview);
+
+	/** While the diff is still arriving (streaming) or awaiting the user's
+	 *  approval, it stays visible even when the card is collapsed. Once the
+	 *  call settles, the collapse toggle wins. */
+	let pinnedDiff = $derived(
+		(call.status === 'streaming' || call.status === 'pending_approval') && shownDiff != null
 	);
 
 	/** Whether the detail area renders any content (drives the 0px collapsed look). */
 	let hasDetail = $derived.by(() => {
 		if (showRaw) return true;
 		if (call.name === 'terminal') return true; // command block always visible
-		if (!expanded) return false;
-		if (call.name === 'write_file' || call.name === 'edit_file') return true;
-		return call.result != null;
+		// Pinned write/edit diffs stay visible while streaming / awaiting approval.
+		if (isFileTool) return expanded || pinnedDiff;
+		return expanded && call.result != null;
 	});
 
 	function copyCommand(): void {
@@ -181,20 +237,20 @@
 			{/if}
 		{:else if call.name === 'terminal'}
 			<!-- Command block is visible in both collapsed and expanded states. -->
-			<div class="command-block">{command || prettyJson(call.argsJson)}</div>
+			<div class="command-block">{command || prettyJson(call.argsJson)}{#if call.status === 'streaming'}<span class="cursor"></span>{/if}</div>
 			{#if terminalLive}
 				<ToolTerminal toolCallId={call.id} {expanded} />
 			{/if}
+		{:else if isFileTool && (expanded || pinnedDiff)}
+			{#if shownDiff}
+				<PatchView diff={shownDiff} streaming={call.status === 'streaming'} />
+			{:else if call.result}
+				<pre class="text-block">{call.result.llmText}</pre>
+			{:else}
+				<pre class="raw-block">{prettyJson(call.argsJson)}</pre>
+			{/if}
 		{:else if expanded}
-			{#if call.name === 'write_file' || call.name === 'edit_file'}
-				{#if diff}
-					<DiffView {diff} />
-				{:else if call.result}
-					<pre class="text-block">{call.result.llmText}</pre>
-				{:else}
-					<pre class="raw-block">{prettyJson(call.argsJson)}</pre>
-				{/if}
-			{:else if call.name === 'read_file'}
+			{#if call.name === 'read_file'}
 				{#if call.result}
 					<pre class="text-block">{call.result.llmText}</pre>
 				{/if}
@@ -386,6 +442,26 @@
 		white-space: pre-wrap;
 		word-break: break-all;
 		user-select: text;
+	}
+
+	.cursor {
+		display: inline-block;
+		width: 6px;
+		height: 0.85em;
+		margin-left: 1px;
+		vertical-align: text-bottom;
+		background: var(--color-text-primary);
+		animation: blink 1s step-end infinite;
+	}
+
+	@keyframes blink {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0;
+		}
 	}
 
 	.raw-block,

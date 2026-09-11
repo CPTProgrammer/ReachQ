@@ -6,6 +6,7 @@ pub mod config;
 pub mod events;
 pub mod identity;
 pub mod permissions;
+pub mod preview;
 pub mod providers;
 pub mod remote_fs;
 pub mod thread_store;
@@ -22,6 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 use remote_fs::{PendingWrites, ReadCache, ReadPaths};
 use thread_store::ThreadStore;
+use tools::edit_match::DiffPreview;
 pub use tools::terminal::SharedTerminals;
 
 /// The AppState pieces the agent loop needs, cloneable and 'static so the
@@ -72,6 +74,9 @@ pub struct AgentState {
     pub queued: Mutex<HashMap<String, String>>,
     /// tool_call_id -> pending approval (request + decision channel).
     pub approvals: Mutex<HashMap<String, PendingApproval>>,
+    /// tool_call_id -> latest live diff preview while its arguments stream
+    /// (emitted as tool_call_preview; read back for snapshot recovery).
+    pub previews: Mutex<HashMap<String, preview::PreviewEntry>>,
     pub read_cache: ReadCache,
     /// thread_id -> set of paths read (read-before-write gate).
     pub read_paths: Mutex<HashMap<String, ReadPaths>>,
@@ -93,6 +98,7 @@ impl AgentState {
             runs: Mutex::new(HashMap::new()),
             queued: Mutex::new(HashMap::new()),
             approvals: Mutex::new(HashMap::new()),
+            previews: Mutex::new(HashMap::new()),
             read_cache: remote_fs::new_read_cache(),
             read_paths: Mutex::new(HashMap::new()),
             pending_writes: remote_fs::new_pending_writes(),
@@ -148,11 +154,14 @@ impl AgentState {
     ///    `pending_approval` + warnings on the returned copy (never
     ///    persisted; the DB keeps its round-end write as the only write
     ///    path).
+    /// 3. Collect: live diff previews of blocks still in `streaming` state
+    ///    are returned to the caller (forwarded by `agent_get_thread_state`
+    ///    only); never persisted either.
     pub async fn enrich_snapshot(
         &self,
         snapshot: &mut types::ThreadSnapshot,
         running: bool,
-    ) {
+    ) -> HashMap<String, DiffPreview> {
         use types::{ContentBlock, ToolCallStatus};
 
         // Pass 1: reconcile stale blocks of dead runs, then persist.
@@ -192,28 +201,54 @@ impl AgentState {
         }
 
         // Pass 2: overlay live pending approvals onto the returned copy.
-        let approvals = self.approvals.lock().await;
-        if approvals.is_empty() {
-            return;
-        }
-        for msg in &mut snapshot.messages {
-            for block in &mut msg.message.content {
-                if let ContentBlock::ToolCall {
-                    id,
-                    status,
-                    warnings,
-                    ..
-                } = block
-                {
-                    if let Some(pending) = approvals.get(id.as_str()) {
-                        *status = ToolCallStatus::PendingApproval;
-                        if !pending.request.warnings.is_empty() {
-                            *warnings = Some(pending.request.warnings.clone());
+        {
+            let approvals = self.approvals.lock().await;
+            if !approvals.is_empty() {
+                for msg in &mut snapshot.messages {
+                    for block in &mut msg.message.content {
+                        if let ContentBlock::ToolCall {
+                            id,
+                            status,
+                            warnings,
+                            ..
+                        } = block
+                        {
+                            if let Some(pending) = approvals.get(id.as_str()) {
+                                *status = ToolCallStatus::PendingApproval;
+                                if !pending.request.warnings.is_empty() {
+                                    *warnings = Some(pending.request.warnings.clone());
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+
+        // Pass 3: collect live diff previews of blocks still streaming
+        // (never persisted). Empty when no run is active — previews are
+        // dropped at run exit.
+        let mut previews = HashMap::new();
+        if running {
+            let live = self.previews.lock().await;
+            if !live.is_empty() {
+                for msg in &snapshot.messages {
+                    for block in &msg.message.content {
+                        if let ContentBlock::ToolCall {
+                            id,
+                            status: ToolCallStatus::Streaming,
+                            ..
+                        } = block
+                        {
+                            if let Some(entry) = live.get(id.as_str()) {
+                                previews.insert(id.clone(), entry.preview.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        previews
     }
 
     /// Tool configs: vault-backed with an in-memory cache (design 04 §4.3:

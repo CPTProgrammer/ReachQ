@@ -6,7 +6,7 @@ import {
 	resolveSelection
 } from '$lib/state/agent-settings.svelte';
 import { getThreads } from '$lib/state/agent-threads.svelte';
-import type { AgentSendOpts, PathMessage, ToolCallView } from '$lib/ipc/agent';
+import type { AgentSendOpts, DiffPreview, PathMessage, ToolCallView } from '$lib/ipc/agent';
 
 export function safeParse(json: string): unknown {
 	try {
@@ -69,20 +69,23 @@ export function formatSpeed(completionTokens: number, durationMs: number): strin
 }
 
 /**
- * Extract the unified diff for write_file / edit_file cards. The backend
- * delivers it via `result.uiPayload` (string or object with a diff field);
- * the exact envelope is a backend contract — we accept the common shapes.
+ * Extract the structured diff for write_file / edit_file cards. The backend
+ * delivers a DiffPreview via `result.uiPayload` once the call finishes and
+ * via the approval payload while approval is pending; both use the envelope
+ * `{ diff: DiffPreview, path, isNewFile? }`. Only that structured shape is
+ * accepted — anything else leaves the card to its raw/llmText fallback.
  */
-export function extractDiff(call: ToolCallView): string | null {
-	const p = call.result?.uiPayload;
-	if (typeof p === 'string' && p.includes('@@')) return p;
-	if (p && typeof p === 'object') {
-		const o = p as Record<string, unknown>;
-		for (const k of ['diff', 'unifiedDiff', 'unified_diff']) {
-			if (typeof o[k] === 'string') return o[k] as string;
-		}
-	}
-	return null;
+export function extractDiff(call: ToolCallView, approvalPayload?: unknown): DiffPreview | null {
+	return asDiffPreview(call.result?.uiPayload) ?? asDiffPreview(approvalPayload);
+}
+
+function asDiffPreview(payload: unknown): DiffPreview | null {
+	if (!payload || typeof payload !== 'object') return null;
+	const diff = (payload as Record<string, unknown>).diff;
+	if (!diff || typeof diff !== 'object') return null;
+	const d = diff as Record<string, unknown>;
+	if (typeof d.path !== 'string' || !Array.isArray(d.hunks)) return null;
+	return diff as unknown as DiffPreview;
 }
 
 /**

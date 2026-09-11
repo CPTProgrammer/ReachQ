@@ -7,7 +7,10 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use super::edit_match::{describe_indent, first_line_indent_mismatch, fuzzy_find, unified_diff};
+use super::edit_match::{
+    describe_indent, first_line_indent_mismatch, format_hunks, fuzzy_find, structured_diff,
+    DiffHunk, DiffPreview,
+};
 use crate::agent::remote_fs::{self, PreparedWrite};
 use crate::agent::tools::{
     deserialize_maybe_stringified, err_text, ok_text, AgentTool, ToolContext,
@@ -27,9 +30,9 @@ Applies edits to an existing file on the remote host.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct Edit {
     /// Exact text to find (copied from read_file output, line numbers stripped).
-    old_text: String,
+    pub(crate) old_text: String,
     /// Replacement text.
-    new_text: String,
+    pub(crate) new_text: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -45,7 +48,8 @@ pub struct EditFileInput {
 pub struct EditFileTool;
 
 /// Apply all edits in memory; shared by approval_payload and run.
-/// Returns the stash payload (diff etc) or the tool error to feed back.
+/// Returns the stash payload (structured diff etc) or the tool error to
+/// feed back.
 async fn prepare_edit(ctx: &ToolContext, path: &str, edits: &[Edit]) -> Result<Value, ToolResult> {
     if path.is_empty() || path.contains('\0') {
         return Err(err_text("Can't edit file: invalid path"));
@@ -83,7 +87,43 @@ async fn prepare_edit(ctx: &ToolContext, path: &str, edits: &[Edit]) -> Result<V
         Some(fp) if fp != decoded.fingerprint
     );
 
-    let mut buffer = decoded.text.clone();
+    let buffer = apply_edits(&decoded.text, edits, file_changed_since_read)?;
+
+    if buffer == decoded.text {
+        return Ok(Value::Null); // "No edits were made."
+    }
+
+    let hunks = structured_diff(&decoded.text, &buffer);
+    let diff_text = format_hunks(&hunks);
+    ctx.pending_writes.lock().unwrap().insert(
+        ctx.tool_call_id.clone(),
+        PreparedWrite {
+            path: path.to_string(),
+            new_text: buffer,
+            diff: diff_text,
+            hunks: hunks.clone(),
+            expected: decoded.fingerprint,
+            encoding_label: decoded.encoding.name().to_string(),
+            line_ending: decoded.line_ending,
+        },
+    );
+    let preview = DiffPreview {
+        path: path.to_string(),
+        is_new_file: false,
+        hunks,
+    };
+    Ok(serde_json::json!({ "diff": preview, "path": path }))
+}
+
+/// Apply all edits in memory (pure: no I/O, no caches); shared by
+/// prepare_edit and the streaming preview. Returns the new buffer or the
+/// tool error to feed back.
+pub(crate) fn apply_edits(
+    buffer: &str,
+    edits: &[Edit],
+    file_changed_since_read: bool,
+) -> Result<String, ToolResult> {
+    let mut buffer = buffer.to_string();
     for (i, edit) in edits.iter().enumerate() {
         let ranges = fuzzy_find(&buffer, &edit.old_text);
         match ranges.len() {
@@ -127,24 +167,18 @@ async fn prepare_edit(ctx: &ToolContext, path: &str, edits: &[Edit]) -> Result<V
             }
         }
     }
+    Ok(buffer)
+}
 
-    if buffer == decoded.text {
-        return Ok(Value::Null); // "No edits were made."
+/// Streaming-preview entry (agent::preview): the same fuzzy pipeline as the
+/// execution path against an in-memory buffer; the final edit's new_text may
+/// still be a partial string.
+pub(crate) fn preview_edit(buffer: &str, edits: &[Edit]) -> Result<Vec<DiffHunk>, ToolResult> {
+    let new_buffer = apply_edits(buffer, edits, false)?;
+    if new_buffer == buffer {
+        return Ok(Vec::new());
     }
-
-    let diff = unified_diff(&decoded.text, &buffer);
-    ctx.pending_writes.lock().unwrap().insert(
-        ctx.tool_call_id.clone(),
-        PreparedWrite {
-            path: path.to_string(),
-            new_text: buffer,
-            diff: diff.clone(),
-            expected: decoded.fingerprint,
-            encoding_label: decoded.encoding.name().to_string(),
-            line_ending: decoded.line_ending,
-        },
-    );
-    Ok(serde_json::json!({ "diff": diff, "path": path }))
+    Ok(structured_diff(buffer, &new_buffer))
 }
 
 #[async_trait]
