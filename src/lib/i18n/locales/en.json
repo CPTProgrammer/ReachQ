@@ -482,7 +482,7 @@
   "settings.security": "Security",
   "settings.sync": "Sync",
   "settings.backup": "Backup",
-  "settings.ai": "AI",
+  "settings.agent": "Agent",
   "settings.startup_behavior": "Startup Behavior",
   "settings.open_last_session": "Open with last session",
   "settings.terminal_font": "Terminal Font",

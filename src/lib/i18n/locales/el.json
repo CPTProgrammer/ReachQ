@@ -482,7 +482,7 @@
   "settings.security": "Ασφάλεια",
   "settings.sync": "Συγχρονισμός",
   "settings.backup": "Αντίγραφο Ασφαλείας",
-  "settings.ai": "AI",
+  "settings.agent": "Πράκτορας",
   "settings.startup_behavior": "Συμπεριφορά Εκκίνησης",
   "settings.open_last_session": "Άνοιγμα με τελευταία συνεδρία",
   "settings.terminal_font": "Γραμματοσειρά Τερματικού",

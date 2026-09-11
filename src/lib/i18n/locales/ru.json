@@ -465,7 +465,7 @@
   "settings.security": "Security",
   "settings.sync": "Sync",
   "settings.backup": "Backup",
-  "settings.ai": "AI",
+  "settings.agent": "Агент",
   "settings.startup_behavior": "Startup Behavior",
   "settings.open_last_session": "Открывать последнюю сессию",
   "settings.terminal_font": "Terminal Font",

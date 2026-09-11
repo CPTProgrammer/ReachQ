@@ -482,7 +482,7 @@
   "settings.security": "Sicurezza",
   "settings.sync": "Sincronizzazione",
   "settings.backup": "Backup",
-  "settings.ai": "AI",
+  "settings.agent": "Agente",
   "settings.startup_behavior": "Comportamento all'Avvio",
   "settings.open_last_session": "Apri con l'ultima sessione",
   "settings.terminal_font": "Font del Terminale",

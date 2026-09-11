@@ -482,7 +482,7 @@
   "settings.security": "Сигурност",
   "settings.sync": "Синхронизиране",
   "settings.backup": "Резервно копие",
-  "settings.ai": "AI",
+  "settings.agent": "Агент",
   "settings.startup_behavior": "Поведение при стартиране",
   "settings.open_last_session": "Отвори с последната сесия",
   "settings.terminal_font": "Шрифт на терминала",

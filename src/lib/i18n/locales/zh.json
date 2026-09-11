@@ -482,7 +482,7 @@
   "settings.security": "安全",
   "settings.sync": "同步",
   "settings.backup": "备份",
-  "settings.ai": "AI",
+  "settings.agent": "智能体",
   "settings.startup_behavior": "启动行为",
   "settings.open_last_session": "启动时打开上次会话",
   "settings.terminal_font": "终端字体",
