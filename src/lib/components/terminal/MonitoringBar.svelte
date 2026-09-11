@@ -164,8 +164,7 @@
 				aria-label={t('agent.toggle')}
 			>
 				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 2l2.09 6.26L20.18 10l-6.09 1.74L12 18l-2.09-6.26L3.82 10l6.09-1.74L12 2z" />
-					<path d="M20 16l.88 2.64L23.52 20l-2.64.76L20 23.4l-.88-2.64L16.48 20l2.64-.76L20 16z" />
+					<path d="M12.983 21.186a1 1 0 0 1-1.966 0 10 10 0 0 0-8.203-8.203 1 1 0 0 1 0-1.966 10 10 0 0 0 8.203-8.203 1 1 0 0 1 1.966 0 10 10 0 0 0 8.203 8.203 1 1 0 0 1 0 1.966 10 10 0 0 0-8.203 8.203" />
 				</svg>
 			</button>
 		</div>
@@ -362,8 +361,6 @@
 	}
 
 	.agent-btn.active {
-		background-color: rgba(10, 132, 255, 0.15);
 		color: var(--color-accent);
-		box-shadow: 0 0 8px rgba(10, 132, 255, 0.25);
 	}
 </style>

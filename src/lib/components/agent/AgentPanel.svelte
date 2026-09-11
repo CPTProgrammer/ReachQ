@@ -146,12 +146,18 @@
 
 	.panel-resizer {
 		position: absolute;
-		left: -3px;
+		left: 0px;
 		top: 0;
 		bottom: 0;
-		width: 6px;
+		width: 4px;
 		cursor: col-resize;
 		z-index: 10;
+		background: transparent;
+		transition: background-color 150ms ease;
+	}
+
+	.panel-resizer:hover {
+		background: var(--color-accent);
 	}
 
 	.panel-body {
