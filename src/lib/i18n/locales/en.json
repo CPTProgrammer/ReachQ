@@ -636,6 +636,7 @@
   "common.error": "Error",
   "common.loading": "Loading...",
   "common.save": "Save",
+  "common.edit": "Edit",
   "common.delete": "Delete",
   "common.copy": "Copy",
   "common.clear": "Clear",

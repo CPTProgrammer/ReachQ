@@ -361,12 +361,12 @@ pub async fn agent_providers_list(
     Ok(config::read_providers(&vault).await)
 }
 
-/// Preset catalog for the "Add provider" flow: (id, display name).
+/// Preset catalog for the "Add provider" flow: (id, display name, default base URL).
 #[tauri::command]
-pub async fn agent_provider_presets() -> Result<Vec<(String, String)>, String> {
+pub async fn agent_provider_presets() -> Result<Vec<(String, String, String)>, String> {
     Ok(providers::known_presets()
         .into_iter()
-        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string()))
         .collect())
 }
 
@@ -467,6 +467,17 @@ pub async fn agent_provider_set_api_key(
         .await
         .remove(&instance_id);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn agent_provider_get_api_key(
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<String, String> {
+    let vault = state.vault_manager.lock().await;
+    Ok(config::read_api_key(&vault, &instance_id)
+        .await
+        .unwrap_or_default())
 }
 
 /// Validate an instance by fetching its model list.

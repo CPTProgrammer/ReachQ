@@ -74,7 +74,7 @@ export interface AgentBackend {
 
 	// providers & models
 	providersList(): Promise<ProviderInstance[]>;
-	providerPresets(): Promise<[string, string][]>;
+	providerPresets(): Promise<[string, string, string][]>;
 	providerAdd(
 		preset: string,
 		apiKey: string,
@@ -84,6 +84,7 @@ export interface AgentBackend {
 	providerUpdate(instanceId: string, name?: string, baseUrl?: string): Promise<void>;
 	providerDelete(instanceId: string): Promise<void>;
 	providerSetApiKey(instanceId: string, apiKey: string): Promise<void>;
+	providerGetApiKey(instanceId: string): Promise<string>;
 	providerValidate(instanceId: string): Promise<ModelMeta[]>;
 	modelsList(forceRefresh?: boolean): Promise<InstanceModels[]>;
 	titleModelGet(): Promise<string | null>;
@@ -126,6 +127,7 @@ export const tauriBackend: AgentBackend = {
 	providerUpdate: agentProviders.update,
 	providerDelete: agentProviders.delete,
 	providerSetApiKey: agentProviders.setApiKey,
+	providerGetApiKey: agentProviders.getApiKey,
 	providerValidate: agentProviders.validate,
 	modelsList: agentModelsList,
 	titleModelGet: agentTitleModel.get,

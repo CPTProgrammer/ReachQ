@@ -206,10 +206,10 @@ pub fn preset_display_name(id: &str) -> Option<&'static str> {
     preset_by_id(id).map(|p| p.display_name())
 }
 
-pub fn known_presets() -> Vec<(&'static str, &'static str)> {
+pub fn known_presets() -> Vec<(&'static str, &'static str, &'static str)> {
     presets()
         .into_iter()
-        .map(|p| (p.preset_id(), p.display_name()))
+        .map(|p| (p.preset_id(), p.display_name(), p.default_base_url()))
         .collect()
 }
 

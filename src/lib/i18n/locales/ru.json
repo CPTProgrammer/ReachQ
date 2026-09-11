@@ -613,6 +613,7 @@
   "common.error": "Error",
   "common.loading": "Загрузка...",
   "common.save": "Сохранить",
+  "common.edit": "Изменить",
   "common.delete": "Удалить",
   "common.copy": "Копировать",
   "common.clear": "Clear",

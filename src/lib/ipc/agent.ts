@@ -300,7 +300,7 @@ export const agentThreads = {
 
 export const agentProviders = {
 	list: () => invoke<ProviderInstance[]>('agent_providers_list'),
-	presets: () => invoke<[string, string][]>('agent_provider_presets'),
+	presets: () => invoke<[string, string, string][]>('agent_provider_presets'),
 	add: (preset: string, apiKey: string, name?: string, baseUrl?: string) =>
 		invoke<ProviderInstance>('agent_provider_add', { preset, name, baseUrl, apiKey }),
 	update: (instanceId: string, name?: string, baseUrl?: string) =>
@@ -308,6 +308,7 @@ export const agentProviders = {
 	delete: (instanceId: string) => invoke<void>('agent_provider_delete', { instanceId }),
 	setApiKey: (instanceId: string, apiKey: string) =>
 		invoke<void>('agent_provider_set_api_key', { instanceId, apiKey }),
+	getApiKey: (instanceId: string) => invoke<string>('agent_provider_get_api_key', { instanceId }),
 	validate: (instanceId: string) => invoke<ModelMeta[]>('agent_provider_validate', { instanceId })
 };
 

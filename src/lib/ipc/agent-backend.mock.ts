@@ -547,6 +547,7 @@ class MockAgentBackend implements AgentBackend {
 		{ request: ApprovalRequest; resolve: (ok: boolean) => void }
 	>();
 	private stoppedTerminals = new Set<string>();
+	private apiKeys = new Map<string, string>();
 	private instances: ProviderInstance[] = [
 		{ id: 'mock-or', preset: 'openrouter', name: 'OpenRouter' },
 		{ id: 'mock-ds', preset: 'deepseek', name: 'DeepSeek' }
@@ -1191,15 +1192,15 @@ class MockAgentBackend implements AgentBackend {
 			return this.instances.map((i) => ({ ...i }));
 		}
 
-		async providerPresets(): Promise<[string, string][]> {
+		async providerPresets(): Promise<[string, string, string][]> {
 			return [
-				['openrouter', 'OpenRouter'],
-				['deepseek', 'DeepSeek'],
-				['kimi', 'Kimi Code']
+				['openrouter', 'OpenRouter', 'https://openrouter.ai/api/v1'],
+				['deepseek', 'DeepSeek', 'https://api.deepseek.com/v1'],
+				['kimi', 'Kimi Code', 'https://api.kimi.com/coding/v1']
 			];
 		}
 
-		async providerAdd(preset: string, _apiKey: string, name?: string): Promise<ProviderInstance> {
+		async providerAdd(preset: string, apiKey: string, name?: string): Promise<ProviderInstance> {
 			const count = this.instances.filter((i) => i.preset === preset).length;
 			const display = (await this.providerPresets()).find(([id]) => id === preset)?.[1] ?? preset;
 			const inst: ProviderInstance = {
@@ -1208,6 +1209,7 @@ class MockAgentBackend implements AgentBackend {
 				name: name ?? (count === 0 ? display : `${display} ${count + 1}`)
 			};
 			this.instances.push(inst);
+			this.apiKeys.set(inst.id, apiKey);
 			return { ...inst };
 		}
 
@@ -1220,9 +1222,16 @@ class MockAgentBackend implements AgentBackend {
 
 		async providerDelete(instanceId: string): Promise<void> {
 			this.instances = this.instances.filter((i) => i.id !== instanceId);
+			this.apiKeys.delete(instanceId);
 		}
 
-		async providerSetApiKey(): Promise<void> {}
+		async providerSetApiKey(instanceId: string, apiKey: string): Promise<void> {
+			this.apiKeys.set(instanceId, apiKey);
+		}
+
+		async providerGetApiKey(instanceId: string): Promise<string> {
+			return this.apiKeys.get(instanceId) ?? '';
+		}
 
 		async providerValidate(instanceId: string): Promise<ModelMeta[]> {
 			const inst = this.instances.find((i) => i.id === instanceId);

@@ -43,7 +43,7 @@
 	// Data loading (provider config is vault-backed; reload on unlock)
 	// ---------------------------------------------------------------------------
 
-	let presets = $state<[string, string][]>([]);
+	let presets = $state<[string, string, string][]>([]);
 
 	$effect(() => {
 		if (!isLocked()) {
@@ -72,26 +72,20 @@
 	// Provider instances (design 04 §4.1)
 	// ---------------------------------------------------------------------------
 
-	let nameDrafts = $state<Record<string, string>>({});
-	let keyDrafts = $state<Record<string, string>>({});
-	let urlDrafts = $state<Record<string, string>>({});
+	let editingId = $state<string | null>(null);
+	let editName = $state('');
+	let editKey = $state('');
+	let editUrl = $state('');
+	let editBusy = $state(false);
 	let validating = $state<Record<string, boolean>>({});
 	let validateMsg = $state<Record<string, { ok: boolean; text: string } | undefined>>({});
 	let confirmDeleteId = $state<string | null>(null);
 
 	async function refreshProviders(): Promise<void> {
 		await loadProviders();
-		const list = getProviderInstances();
-		const ids = new Set(list.map((i) => i.id));
-		for (const inst of list) {
-			if (!(inst.id in nameDrafts)) nameDrafts[inst.id] = inst.name;
-			if (!(inst.id in urlDrafts)) urlDrafts[inst.id] = inst.baseUrl ?? '';
-		}
-		for (const id of Object.keys(nameDrafts)) {
+		const ids = new Set(getProviderInstances().map((i) => i.id));
+		for (const id of Object.keys(validating)) {
 			if (!ids.has(id)) {
-				delete nameDrafts[id];
-				delete urlDrafts[id];
-				delete keyDrafts[id];
 				delete validating[id];
 				delete validateMsg[id];
 			}
@@ -102,29 +96,41 @@
 		return presets.find(([id]) => id === presetId)?.[1] ?? presetId;
 	}
 
-	function onNameInput(inst: ProviderInstance, e: Event & { currentTarget: HTMLInputElement }) {
-		const value = e.currentTarget.value;
-		nameDrafts[inst.id] = value;
-		void getAgentBackend()
-			.providerUpdate(inst.id, value)
-			.catch(() => {});
+	function presetDefaultUrl(presetId: string): string {
+		return presets.find(([id]) => id === presetId)?.[2] ?? '';
 	}
 
-	function onKeyInput(inst: ProviderInstance, e: Event & { currentTarget: HTMLInputElement }) {
-		const value = e.currentTarget.value;
-		keyDrafts[inst.id] = value;
-		validateMsg[inst.id] = undefined;
-		void getAgentBackend()
-			.providerSetApiKey(inst.id, value)
-			.catch(() => {});
+	async function startEdit(inst: ProviderInstance) {
+		confirmDeleteId = null;
+		editingId = inst.id;
+		editName = inst.name;
+		editUrl = inst.baseUrl ?? '';
+		editKey = '';
+		const key = await getAgentBackend()
+			.providerGetApiKey(inst.id)
+			.catch(() => '');
+		if (editingId === inst.id) editKey = key;
 	}
 
-	function onUrlInput(inst: ProviderInstance, e: Event & { currentTarget: HTMLInputElement }) {
-		const value = e.currentTarget.value;
-		urlDrafts[inst.id] = value;
-		void getAgentBackend()
-			.providerUpdate(inst.id, undefined, value)
-			.catch(() => {});
+	function discardEdit() {
+		editingId = null;
+	}
+
+	async function saveEdit(inst: ProviderInstance) {
+		if (editBusy) return;
+		editBusy = true;
+		try {
+			await getAgentBackend().providerUpdate(inst.id, editName.trim(), editUrl.trim());
+			await getAgentBackend().providerSetApiKey(inst.id, editKey.trim());
+			validateMsg[inst.id] = undefined;
+			editingId = null;
+			await refreshProviders().catch(() => {});
+		} catch (e) {
+			// Stay in edit mode so the user can retry or discard.
+			validateMsg[inst.id] = { ok: false, text: errText(e) };
+		} finally {
+			editBusy = false;
+		}
 	}
 
 	async function onValidate(inst: ProviderInstance) {
@@ -165,13 +171,34 @@
 	let addBusy = $state(false);
 	let addError = $state<string | null>(null);
 
+	// Mirrors the backend's default naming in agent_provider_add: preset
+	// display name, then "Name 2", "Name 3"... for repeat instances.
+	function defaultInstanceName(presetId: string): string {
+		const label = presetLabel(presetId);
+		const count = getProviderInstances().filter((i) => i.preset === presetId).length;
+		return count === 0 ? label : `${label} ${count + 1}`;
+	}
+
 	function openAddForm() {
 		addOpen = true;
 		addError = null;
-		addName = '';
 		addKey = '';
-		addBaseUrl = '';
 		addPreset = presets[0]?.[0] ?? '';
+		addName = defaultInstanceName(addPreset);
+		addBaseUrl = presetDefaultUrl(addPreset);
+	}
+
+	function selectAddPreset(id: string) {
+		if (id === addPreset) return;
+		// Refresh auto-filled defaults for the new preset, but keep fields the
+		// user has customized (non-empty and no longer matching the old default).
+		if (!addName.trim() || addName === defaultInstanceName(addPreset)) {
+			addName = defaultInstanceName(id);
+		}
+		if (!addBaseUrl.trim() || addBaseUrl === presetDefaultUrl(addPreset)) {
+			addBaseUrl = presetDefaultUrl(id);
+		}
+		addPreset = id;
 	}
 
 	async function submitAdd() {
@@ -280,6 +307,19 @@
 
 	let titleOpen = $state(false);
 	let titleDdEl = $state<HTMLDivElement | undefined>(undefined);
+	let titleDropUp = $state(false);
+
+	// NOTE: this grouped dropdown re-implements the shared Dropdown.svelte
+	// behavior (including the drop-up flip) because Dropdown only supports flat
+	// option lists. Prefer extending the shared component with option groups and
+	// migrating to it rather than growing this parallel implementation.
+	function toggleTitleDropdown() {
+		if (!titleOpen && titleDdEl) {
+			const spaceBelow = window.innerHeight - titleDdEl.getBoundingClientRect().bottom;
+			titleDropUp = spaceBelow < 264; // list max-height (240px) + gap + margin
+		}
+		titleOpen = !titleOpen;
+	}
 
 	$effect(() => {
 		if (!titleOpen) return;
@@ -478,23 +518,47 @@
 				{@const models = group?.models ?? []}
 				<div class="provider-card">
 					<div class="provider-head">
-						<input
-							class="name-input"
-							type="text"
-							value={nameDrafts[inst.id] ?? inst.name}
-							oninput={(e) => onNameInput(inst, e)}
-							aria-label={t('agent.settings_provider_name')}
-						/>
-						<span class="preset-badge">{presetLabel(inst.preset)}</span>
-						<button
-							class="icon-btn danger"
-							title={t('agent.settings_delete_provider')}
-							onclick={() => (confirmDeleteId = confirmDeleteId === inst.id ? null : inst.id)}
-						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-							</svg>
-						</button>
+						{#if editingId === inst.id}
+							<input
+								class="name-input"
+								type="text"
+								bind:value={editName}
+								aria-label={t('agent.settings_provider_name')}
+							/>
+							<span class="preset-badge">{presetLabel(inst.preset)}</span>
+							<button class="icon-btn" title={t('common.cancel')} onclick={discardEdit}>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M18 6L6 18M6 6l12 12" />
+								</svg>
+							</button>
+							<button
+								class="icon-btn save"
+								title={t('common.save')}
+								disabled={editBusy}
+								onclick={() => void saveEdit(inst)}
+							>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M20 6L9 17l-5-5" />
+								</svg>
+							</button>
+						{:else}
+							<span class="name-text">{inst.name}</span>
+							<span class="preset-badge">{presetLabel(inst.preset)}</span>
+							<button class="icon-btn" title={t('common.edit')} onclick={() => void startEdit(inst)}>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+								</svg>
+							</button>
+							<button
+								class="icon-btn danger"
+								title={t('agent.settings_delete_provider')}
+								onclick={() => (confirmDeleteId = confirmDeleteId === inst.id ? null : inst.id)}
+							>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+								</svg>
+							</button>
+						{/if}
 					</div>
 
 					{#if confirmDeleteId === inst.id}
@@ -509,57 +573,57 @@
 						</div>
 					{/if}
 
-					<div class="field-row">
-						<span class="field-label">{t('agent.settings_api_key')}</span>
-						<Input
-							type="password"
-							value={keyDrafts[inst.id] ?? ''}
-							placeholder={t('agent.settings_api_key')}
-							oninput={(e) => onKeyInput(inst, e)}
-						/>
-					</div>
-
-					<div class="field-row">
-						<span class="field-label">{t('agent.settings_base_url')}</span>
-						<Input
-							type="text"
-							value={urlDrafts[inst.id] ?? inst.baseUrl ?? ''}
-							placeholder="https://"
-							oninput={(e) => onUrlInput(inst, e)}
-						/>
-						<span class="field-desc">{t('agent.settings_base_url_desc')}</span>
-					</div>
-
-					<div class="validate-row">
-						<Button
-							variant="secondary"
-							size="sm"
-							disabled={!!validating[inst.id]}
-							onclick={() => void onValidate(inst)}
-						>
-							{validating[inst.id]
-								? t('agent.settings_validating')
-								: t('agent.settings_validate')}
-						</Button>
-						{#if validateMsg[inst.id]}
-							{@const msg = validateMsg[inst.id]!}
-							<span class="validate-msg" class:ok={msg.ok} class:err={!msg.ok}>{msg.text}</span>
-						{/if}
-					</div>
-
-					{#if models.length > 0}
-						<div class="models-preview">
-							{#each models as model (model.id)}
-								<div class="model-line">
-									<span class="model-name">{model.displayName || model.id}</span>
-									{#if formatContext(model.contextLength)}
-										<span class="model-ctx">{formatContext(model.contextLength)}</span>
-									{/if}
-								</div>
-							{/each}
+					{#if editingId === inst.id}
+						<div class="field-row">
+							<span class="field-label">{t('agent.settings_api_key')}</span>
+							<Input
+								type="password"
+								bind:value={editKey}
+								placeholder={t('agent.settings_api_key')}
+							/>
 						</div>
-					{:else if group?.error}
-						<div class="validate-msg err models-error">{group.error}</div>
+
+						<div class="field-row">
+							<span class="field-label">{t('agent.settings_base_url')}</span>
+							<Input
+								type="text"
+								bind:value={editUrl}
+								placeholder={presetDefaultUrl(inst.preset)}
+							/>
+							<span class="field-desc">{t('agent.settings_base_url_desc')}</span>
+						</div>
+
+						<div class="validate-row">
+							<Button
+								variant="secondary"
+								size="sm"
+								disabled={!!validating[inst.id]}
+								onclick={() => void onValidate(inst)}
+							>
+								{validating[inst.id]
+									? t('agent.settings_validating')
+									: t('agent.settings_validate')}
+							</Button>
+							{#if validateMsg[inst.id]}
+								{@const msg = validateMsg[inst.id]!}
+								<span class="validate-msg" class:ok={msg.ok} class:err={!msg.ok}>{msg.text}</span>
+							{/if}
+						</div>
+
+						{#if models.length > 0}
+							<div class="models-preview">
+								{#each models as model (model.id)}
+									<div class="model-line">
+										<span class="model-name">{model.displayName || model.id}</span>
+										{#if formatContext(model.contextLength)}
+											<span class="model-ctx">{formatContext(model.contextLength)}</span>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						{:else if group?.error}
+							<div class="validate-msg err models-error">{group.error}</div>
+						{/if}
 					{/if}
 				</div>
 			{/each}
@@ -571,7 +635,7 @@
 							<button
 								class="preset-chip"
 								class:selected={addPreset === id}
-								onclick={() => (addPreset = id)}
+								onclick={() => selectAddPreset(id)}
 							>
 								{label}
 							</button>
@@ -579,7 +643,7 @@
 					</div>
 					<div class="field-row">
 						<span class="field-label">{t('agent.settings_provider_name')}</span>
-						<Input type="text" bind:value={addName} placeholder={presetLabel(addPreset)} />
+						<Input type="text" bind:value={addName} placeholder={defaultInstanceName(addPreset)} />
 					</div>
 					<div class="field-row">
 						<span class="field-label">{t('agent.settings_api_key')}</span>
@@ -587,7 +651,7 @@
 					</div>
 					<div class="field-row">
 						<span class="field-label">{t('agent.settings_base_url')}</span>
-						<Input type="text" bind:value={addBaseUrl} placeholder="https://" />
+						<Input type="text" bind:value={addBaseUrl} placeholder={presetDefaultUrl(addPreset)} />
 					</div>
 					{#if addError}
 						<span class="validate-msg err">{addError}</span>
@@ -750,7 +814,7 @@
 						class="dropdown-trigger"
 						class:open={titleOpen}
 						class:has-value={!!getTitleModel()}
-						onclick={() => (titleOpen = !titleOpen)}
+						onclick={toggleTitleDropdown}
 						aria-haspopup="listbox"
 						aria-expanded={titleOpen}
 					>
@@ -761,7 +825,7 @@
 					</button>
 
 					{#if titleOpen}
-						<ul class="dropdown-list" role="listbox">
+						<ul class="dropdown-list" class:drop-up={titleDropUp} role="listbox">
 							<li role="option" aria-selected={!getTitleModel()}>
 								<button
 									class="dropdown-item-btn"
@@ -907,7 +971,6 @@
 		flex: 1;
 		min-width: 0;
 		padding: 4px 8px;
-		margin-left: -8px;
 		font-family: var(--font-sans);
 		font-size: 0.875rem;
 		font-weight: 500;
@@ -928,6 +991,20 @@
 	.name-input:focus {
 		border-color: var(--color-accent);
 		background-color: var(--color-bg-elevated);
+	}
+
+	/* Mirrors .name-input metrics so the header doesn't shift entering edit mode. */
+	.name-text {
+		flex: 1;
+		min-width: 0;
+		padding: 4px 8px;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--color-text-primary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		border: 1px solid transparent;
 	}
 
 	.preset-badge {
@@ -1096,6 +1173,15 @@
 
 	.icon-btn.add:hover {
 		color: var(--color-accent);
+	}
+
+	.icon-btn.save:hover {
+		color: var(--color-accent);
+	}
+
+	.icon-btn:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 
 	/* --- Inline confirm bar --- */
@@ -1350,11 +1436,30 @@
 		overflow-y: auto;
 	}
 
+	.dropdown-list.drop-up {
+		top: auto;
+		bottom: calc(100% + 4px);
+		animation: dropdownInUp var(--duration-default) var(--ease-default);
+	}
+
+	@keyframes dropdownInUp {
+		from {
+			opacity: 0;
+			transform: translateY(4px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
 	.group-header {
-		padding: 8px 10px 2px;
+		padding: 4px 10px 2px;
 		font-size: 0.6875rem;
 		font-weight: 600;
 		color: var(--color-text-secondary);
+		margin-top: 4px;
+		border-top: 1px solid var(--color-border);
 	}
 
 	.dropdown-item-btn {
