@@ -18,7 +18,7 @@ pub struct DeepSeekPreset;
 /// Hardcoded flagship models (Zed approach, design 05 §2.2): thinking
 /// capable, 1M context, efforts limited to high/max.
 fn hardcoded_models() -> Vec<ModelMeta> {
-    ["deepseek-v4-flash", "deepseek-v4-pro"]
+    ["deepseek-flash", "deepseek-v4-pro"]
         .into_iter()
         .map(|id| ModelMeta {
             id: id.to_string(),
