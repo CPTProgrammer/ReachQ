@@ -84,7 +84,7 @@ pub enum AgentEvent {
     },
     /// Tolerant re-parse of the in-flight arguments (trailing partial
     /// strings included); always valid JSON, safe to parse directly.
-    /// Emitted throttled while the arguments stream.
+    /// Emitted per args delta while the arguments stream (deduped).
     #[serde(rename_all = "camelCase")]
     ToolCallArgsPatched {
         thread_id: String,

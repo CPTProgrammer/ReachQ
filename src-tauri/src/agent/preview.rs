@@ -1,10 +1,11 @@
 //! Live preview while tool-call arguments stream (design: the
-//! `tool_call_args_patched` / `tool_call_preview` events). A throttle tick in
-//! the agent loop re-parses the accumulated args JSON prefix with a tolerant
-//! parser (jiter, trailing partial strings included), emits the repaired
-//! JSON for every tool, and for write_file/edit_file computes a structured
-//! diff preview with the exact same fuzzy-match + diff code as the execution
-//! path.
+//! `tool_call_args_patched` / `tool_call_preview` events). Args repair is
+//! cheap, so it runs unthrottled: every args delta is re-parsed with a
+//! tolerant parser (jiter, trailing partial strings included) and the
+//! repaired JSON emitted when it changed (`patched_args`). The structured
+//! diff preview for write_file/edit_file is expensive (fs read + fuzzy
+//! match + diff) and stays on a throttle tick in the agent loop, using the
+//! exact same fuzzy-match + diff code as the execution path.
 //!
 //! Previews are advisory: every failure is silent, and the final arguments
 //! parse at execution time stays authoritative.
@@ -73,6 +74,25 @@ impl StreamPreviews {
         std::mem::take(&mut self.dirty).into_iter().collect()
     }
 
+    /// Per-delta args repair, cheap enough to run unthrottled. Returns the
+    /// patched JSON when it changed since the last emission for this call.
+    pub fn patched_args(&mut self, tool_call_id: &str, args_json: &str) -> Option<String> {
+        let patched = serde_json::to_string(&parse_partial_args(args_json)?).ok()?;
+        let state = self
+            .calls
+            .entry(tool_call_id.to_string())
+            .or_insert_with(|| CallState {
+                last_patched: None,
+                source: None,
+                last_preview: None,
+            });
+        if state.last_patched.as_deref() == Some(patched.as_str()) {
+            return None;
+        }
+        state.last_patched = Some(patched.clone());
+        Some(patched)
+    }
+
     /// One throttle tick. `calls` snapshots the dirty calls as
     /// (tool_call_id, tool name, accumulated args JSON).
     pub async fn tick(
@@ -99,10 +119,17 @@ impl StreamPreviews {
         name: &str,
         args_json: &str,
     ) {
+        // `tool_call_args_patched` already went out per-delta via
+        // `patched_args`; the tick only computes the expensive diff preview.
+        let is_write = match name {
+            "write_file" => true,
+            "edit_file" => false,
+            _ => return,
+        };
         let Some(args) = parse_partial_args(args_json) else {
             return;
         };
-        let Ok(patched) = serde_json::to_string(&args) else {
+        let Some(obj) = args.as_object() else {
             return;
         };
 
@@ -115,23 +142,6 @@ impl StreamPreviews {
                 last_preview: None,
             });
 
-        if state.last_patched.as_deref() != Some(patched.as_str()) {
-            state.last_patched = Some(patched.clone());
-            emit(app, identity, AgentEvent::ToolCallArgsPatched {
-                thread_id: thread_id.to_string(),
-                tool_call_id: tool_call_id.to_string(),
-                args_json: patched,
-            });
-        }
-
-        let is_write = match name {
-            "write_file" => true,
-            "edit_file" => false,
-            _ => return,
-        };
-        let Some(obj) = args.as_object() else {
-            return;
-        };
         // A value is only known complete once a LATER key has started: the
         // last value in a partial parse may still be a growing string.
         let follows_path = if is_write { "content" } else { "edits" };
@@ -359,5 +369,40 @@ mod tests {
     #[test]
     fn partial_args_empty_is_none() {
         assert!(parse_partial_args("").is_none());
+    }
+
+    #[test]
+    fn patched_args_emits_and_dedups() {
+        let mut tracker = StreamPreviews::new();
+        // The incomplete "cont" member is dropped; only "path" survives.
+        let p1 = tracker.patched_args("tc1", r#"{"path": "/a", "cont"#);
+        assert_eq!(p1.as_deref(), Some(r#"{"path":"/a"}"#));
+        // The dropped member still incomplete -> same serialization, deduped.
+        assert_eq!(tracker.patched_args("tc1", r#"{"path": "/a", "conte"#), None);
+        // A new value arrives -> emits again (trailing partial string kept).
+        let p2 = tracker.patched_args("tc1", r#"{"path": "/a", "content": "he"#);
+        assert_eq!(p2.as_deref(), Some(r#"{"path":"/a","content":"he"}"#));
+    }
+
+    #[test]
+    fn patched_args_none_until_parseable() {
+        let mut tracker = StreamPreviews::new();
+        assert_eq!(tracker.patched_args("tc1", ""), None);
+    }
+
+    #[test]
+    fn patched_args_state_is_per_call() {
+        let mut tracker = StreamPreviews::new();
+        assert_eq!(
+            tracker.patched_args("tc1", r#"{"path": "/a"}"#).as_deref(),
+            Some(r#"{"path":"/a"}"#)
+        );
+        // Same args for another call id are not deduped against tc1.
+        assert_eq!(
+            tracker.patched_args("tc2", r#"{"path": "/a"}"#).as_deref(),
+            Some(r#"{"path":"/a"}"#)
+        );
+        // tc1 unchanged since its own last emission.
+        assert_eq!(tracker.patched_args("tc1", r#"{"path": "/a"}"#), None);
     }
 }

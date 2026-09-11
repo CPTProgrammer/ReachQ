@@ -661,6 +661,18 @@ async fn run_loop(
                                 tool_call_id: tc_id.clone(),
                                 args_json_delta,
                             });
+                            // Args repair is cheap: emit per delta (deduped),
+                            // so the final delta always yields the complete
+                            // args. Only the diff preview stays throttled.
+                            if let Some(patched) =
+                                preview_tracker.patched_args(tc_id, &entry.args_json)
+                            {
+                                emit(app, identity, AgentEvent::ToolCallArgsPatched {
+                                    thread_id: thread_id.to_string(),
+                                    tool_call_id: tc_id.clone(),
+                                    args_json: patched,
+                                });
+                            }
                             preview_tracker.mark_dirty(tc_id);
                         }
                     }
