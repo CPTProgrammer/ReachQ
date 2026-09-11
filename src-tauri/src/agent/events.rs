@@ -1,6 +1,11 @@
 //! Streaming events emitted to the frontend over Tauri events.
-//! Channel name: `agent-event-{identity}` (design 01 §5).
+//! Channel name: `agent-event-{base64url(identity)}` (design 01 §5).
+//! Tauri event names only allow alphanumeric, '-', '/', ':', '_', so the
+//! identity ("user@host:port[#via=hash]") is encoded as base64url without
+//! padding (alphabet A-Za-z0-9-_). The frontend mirrors this encoding in
+//! `onAgentEvent` (src/lib/ipc/agent.ts).
 
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 
 use super::types::{ContentBlock, MessageMetadata, ToolCallStatus, Usage};
@@ -143,7 +148,56 @@ pub enum AgentEvent {
 impl AgentEvent {
     /// The event channel name for one identity.
     pub fn channel(identity: &str) -> String {
-        format!("agent-event-{}", identity)
+        format!("agent-event-{}", URL_SAFE_NO_PAD.encode(identity))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_tauri_event_name(name: &str) {
+        assert!(
+            name.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '/' | ':' | '_')),
+            "invalid Tauri event name: {name}"
+        );
+    }
+
+    #[test]
+    fn channel_is_valid_for_nasty_identities() {
+        for identity in [
+            "root@131.143.215.36:35589",
+            "user@example.com:22",
+            "admin@host:2222#via=a1b2c3d4",
+            "user@[::1]:22",
+            "user_name@a_b.domain:22",
+            "用户@主机:22",
+        ] {
+            let channel = AgentEvent::channel(identity);
+            assert!(channel.starts_with("agent-event-"));
+            assert_tauri_event_name(&channel);
+            // Base64 padding must never leak into the name.
+            assert!(!channel.contains('='));
+        }
+    }
+
+    #[test]
+    fn channel_does_not_collide() {
+        assert_ne!(
+            AgentEvent::channel("user@a.b:22"),
+            AgentEvent::channel("user@a_b:22")
+        );
+    }
+
+    #[test]
+    fn channel_matches_frontend_encoding() {
+        // Locked against the base64url helper in src/lib/ipc/agent.ts; if this
+        // breaks, the two sides stopped agreeing on the channel name.
+        assert_eq!(
+            AgentEvent::channel("root@131.143.215.36:35589"),
+            "agent-event-cm9vdEAxMzEuMTQzLjIxNS4zNjozNTU4OQ"
+        );
     }
 }
 

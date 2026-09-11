@@ -719,7 +719,7 @@ pub async fn agent_migrate_legacy_settings(state: State<'_, AppState>) -> Result
 // ---------------------------------------------------------------------------
 
 /// Emit helper for the frontend's initial subscription sanity check.
-/// (Unused in production; the loop emits on agent-event-{identity}.)
+/// (Unused in production; the loop emits on agent-event-{base64url(identity)}.)
 #[tauri::command]
 pub async fn agent_ping() -> Result<String, String> {
     let _ = AgentEvent::channel("ping");

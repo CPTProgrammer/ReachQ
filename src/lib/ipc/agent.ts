@@ -335,12 +335,27 @@ export function agentMigrateLegacySettings(): Promise<boolean> {
 // Events
 // ---------------------------------------------------------------------------
 
+/**
+ * Channel name for one identity's event stream. Tauri event names only allow
+ * alphanumeric, '-', '/', ':', '_', so the identity
+ * ("user@host:port[#via=hash]") is base64url-encoded without padding
+ * (alphabet A-Za-z0-9-_). Mirrors `AgentEvent::channel` in
+ * src-tauri/src/agent/events.rs.
+ */
+export function agentEventChannel(identity: string): string {
+	const bytes = new TextEncoder().encode(identity);
+	let bin = '';
+	for (const b of bytes) bin += String.fromCharCode(b);
+	const b64url = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+	return `agent-event-${b64url}`;
+}
+
 /** Subscribe to the event stream of one identity (design 01 §5). */
 export function onAgentEvent(
 	identity: string,
 	cb: (e: AgentEvent) => void
 ): Promise<UnlistenFn> {
-	return listen<AgentEvent>(`agent-event-${identity}`, (e) => cb(e.payload));
+	return listen<AgentEvent>(agentEventChannel(identity), (e) => cb(e.payload));
 }
 
 /** Fired when a pending-close connection's last lease released (01 §1.4). */
