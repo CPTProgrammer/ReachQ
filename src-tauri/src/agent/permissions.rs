@@ -5,6 +5,7 @@
 use regex::Regex;
 
 use super::config::ToolConfig;
+use super::events::ApprovalWarning;
 use super::tools::read_file;
 
 /// Outcome of the permission check for one tool call.
@@ -12,7 +13,7 @@ pub enum ApprovalDecision {
     /// Run without asking.
     Allow,
     /// Ask the user; `warnings` render as the yellow strip on the card.
-    RequireApproval { warnings: Vec<String> },
+    RequireApproval { warnings: Vec<ApprovalWarning> },
     /// Hard deny (terminal security rules); the reason goes back to the model.
     Deny { reason: String },
 }
@@ -181,7 +182,7 @@ pub fn check_terminal_security(command: &str) -> Option<String> {
 
 /// Dangerous keywords that render a yellow warning strip on the terminal
 /// approval card (design 04 §3).
-pub fn terminal_warnings(command: &str) -> Vec<String> {
+pub fn terminal_warnings(command: &str) -> Vec<ApprovalWarning> {
     const KEYWORDS: &[&str] = &[
         "sudo", "rm", "kill", "killall", "pkill", "mkfs", "dd", "shutdown", "reboot",
         "poweroff", "halt", "umount", "fdisk", "parted",
@@ -196,11 +197,7 @@ pub fn terminal_warnings(command: &str) -> Vec<String> {
     if hits.is_empty() {
         return vec![];
     }
-    vec![format!(
-        "Command contains potentially dangerous keyword{}: {}",
-        if hits.len() > 1 { "s" } else { "" },
-        hits.join(", ")
-    )]
+    vec![ApprovalWarning::DangerousKeywords { keywords: hits }]
 }
 
 // ---------------------------------------------------------------------------
@@ -229,9 +226,8 @@ pub fn decide(
         if matches!(tool_name, "read_file" | "write_file" | "edit_file") {
             let patterns = read_file::sensitive_patterns(read_file_options);
             if let Some(pattern) = sensitive_match(path, &patterns) {
-                let warning = format!("matches sensitive pattern `{}`", pattern);
                 return ApprovalDecision::RequireApproval {
-                    warnings: vec![warning],
+                    warnings: vec![ApprovalWarning::SensitivePattern { pattern }],
                 };
             }
         }

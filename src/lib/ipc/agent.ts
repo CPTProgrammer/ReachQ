@@ -69,7 +69,7 @@ export type ContentBlock =
 			status: ToolCallStatus;
 			result?: ToolResult;
 			/** Approval warnings; only present on snapshots enriched by the backend for live pending approvals. */
-			warnings?: string[];
+			warnings?: ApprovalWarning[];
 	  };
 
 export interface StoredMessage {
@@ -117,6 +117,12 @@ export interface ThreadState extends ThreadSnapshot {
 	previews?: Record<string, DiffPreview>;
 }
 
+/** Structured approval warning (mirrors Rust `ApprovalWarning`); the card
+ *  maps `kind` to an i18n string so translations control wording/order. */
+export type ApprovalWarning =
+	| { kind: 'sensitive_pattern'; pattern: string }
+	| { kind: 'dangerous_keywords'; keywords: string[] };
+
 export interface ToolCallView {
 	id: string;
 	messageId: string;
@@ -124,7 +130,7 @@ export interface ToolCallView {
 	argsJson: string;
 	status: ToolCallStatus;
 	result?: ToolResult;
-	warnings?: string[];
+	warnings?: ApprovalWarning[];
 }
 
 export interface ApprovalRequest {
@@ -132,7 +138,7 @@ export interface ApprovalRequest {
 	tool: string;
 	title: string;
 	payload?: unknown;
-	warnings: string[];
+	warnings: ApprovalWarning[];
 }
 
 export type AgentEvent =

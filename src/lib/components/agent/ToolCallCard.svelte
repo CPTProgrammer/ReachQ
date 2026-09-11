@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import type { DiffPreview, DiffPreviewLine, ToolCallView } from '$lib/ipc/agent';
+	import type { ApprovalWarning, DiffPreview, DiffPreviewLine, ToolCallView } from '$lib/ipc/agent';
 
 	export interface Props {
 		call: ToolCallView;
@@ -47,6 +47,16 @@
 			call.status === 'rejected' ||
 			call.status === 'cancelled'
 	);
+
+	/** Map a structured backend warning to its localized text. */
+	function warningText(warning: ApprovalWarning): string {
+		switch (warning.kind) {
+			case 'sensitive_pattern':
+				return t('agent.warn_sensitive_pattern', { pattern: warning.pattern });
+			case 'dangerous_keywords':
+				return t('agent.warn_dangerous_keywords', { keywords: warning.keywords.join(', ') });
+		}
+	}
 	/** Terminal view stays hidden until approved + connected (design 01 §2.3). */
 	let terminalLive = $derived(
 		call.status !== 'streaming' && call.status !== 'pending_approval' && call.status !== 'rejected'
@@ -273,7 +283,7 @@
 						{#each call.warnings as warning, i (i)}
 							<div class="warning-line">
 								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-								<span>{warning}</span>
+								<span>{warningText(warning)}</span>
 							</div>
 						{/each}
 					</div>

@@ -94,7 +94,7 @@ pub enum ContentBlock {
         /// Approval warnings, filled only by snapshot enrichment for live
         /// pending approvals (AgentState::enrich_snapshot); never persisted.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        warnings: Option<Vec<String>>,
+        warnings: Option<Vec<super::events::ApprovalWarning>>,
     },
 }
 

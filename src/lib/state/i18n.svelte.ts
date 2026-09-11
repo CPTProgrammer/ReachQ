@@ -32,6 +32,15 @@ export function t(key: string, params?: Record<string, string | number>): string
 }
 
 /**
+ * Translate a key, falling back to the given text when the key is missing.
+ * Used for backend-provided strings (e.g. agent tool descriptions) where the
+ * backend text remains the fallback for values without a translation.
+ */
+export function tOr(key: string, fallback: string): string {
+	return translations.has(key) ? t(key) : fallback;
+}
+
+/**
  * Change the active locale. Uses static import for English,
  * dynamic import for other locales. Replaces the translations Map,
  * triggering reactive updates across all components that call t().

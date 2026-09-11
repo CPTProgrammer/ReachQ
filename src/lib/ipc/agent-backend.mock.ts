@@ -13,6 +13,7 @@ import type {
 	AgentEvent,
 	AgentSendOpts,
 	ApprovalRequest,
+	ApprovalWarning,
 	ContentBlock,
 	DiffPreview,
 	DiffPreviewLine,
@@ -169,13 +170,13 @@ interface Ctx {
 		call: ToolCallView,
 		status: ToolCallStatus,
 		result?: ToolResult,
-		warnings?: string[]
+		warnings?: ApprovalWarning[]
 	): void;
 	/** pending_approval + approval_needed, then resolves with the decision. */
 	requestApproval(
 		call: ToolCallView,
 		title: string,
-		warnings: string[],
+		warnings: ApprovalWarning[],
 		payload?: unknown
 	): Promise<boolean>;
 	/** Emits one terminal_output chunk (base64-encoded). */
@@ -1332,7 +1333,7 @@ class MockAgentBackend implements AgentBackend {
 					await ctx.streamText(msg, 'Let me check the SSH daemon config.\n');
 					const call = await ctx.streamToolCall(msg, 'read_file', { path: '/etc/ssh/sshd_config' });
 					const ok = await ctx.requestApproval(call, '/etc/ssh/sshd_config', [
-						'matches sensitive pattern `**/.ssh/*`'
+						{ kind: 'sensitive_pattern', pattern: '**/.ssh/*' }
 					]);
 					if (!ok) {
 						ctx.setToolStatus(call, 'rejected', {
@@ -1437,7 +1438,7 @@ class MockAgentBackend implements AgentBackend {
 					await ctx.sleep(300);
 					const call = await ctx.streamToolCall(msg, 'terminal', { command: TERMINAL_COMMAND });
 					const ok = await ctx.requestApproval(call, TERMINAL_COMMAND, [
-						'Command contains potentially dangerous keyword: systemctl'
+						{ kind: 'dangerous_keywords', keywords: ['systemctl'] }
 					]);
 					if (!ok) {
 						ctx.setToolStatus(call, 'rejected', {
@@ -1610,7 +1611,7 @@ class MockAgentBackend implements AgentBackend {
 
 					const sshdFlow = (async () => {
 						const ok = await ctx.requestApproval(sshdCall, '/etc/ssh/sshd_config', [
-							'matches sensitive pattern `**/.ssh/*`'
+							{ kind: 'sensitive_pattern', pattern: '**/.ssh/*' }
 						]);
 						sshdApproved = ok;
 						if (!ok) {
@@ -1645,7 +1646,7 @@ class MockAgentBackend implements AgentBackend {
 
 					const reloadFlow = (async () => {
 						const ok = await ctx.requestApproval(reloadCall, NGINX_RELOAD_COMMAND, [
-							'Command contains potentially dangerous keyword: systemctl'
+							{ kind: 'dangerous_keywords', keywords: ['systemctl'] }
 						]);
 						reloadApproved = ok;
 						if (!ok) {

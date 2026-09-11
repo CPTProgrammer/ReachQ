@@ -5,6 +5,18 @@ use serde::{Deserialize, Serialize};
 
 use super::types::{ContentBlock, MessageMetadata, ToolCallStatus, Usage};
 
+/// Structured approval warning, rendered as the yellow strip on the
+/// ToolCallCard. The frontend maps `kind` to an i18n string; parameters
+/// stay structured so translations control wording and order.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ApprovalWarning {
+    /// The target path hit the user's sensitive glob list.
+    SensitivePattern { pattern: String },
+    /// The terminal command contains dangerous keywords.
+    DangerousKeywords { keywords: Vec<String> },
+}
+
 /// A tool call as rendered by the frontend ToolCallCard.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,7 +32,7 @@ pub struct ToolCallView {
     /// Approval warning info (e.g. dangerous keyword hits for terminal,
     /// matched sensitive pattern for read_file). Only set when relevant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub warnings: Option<Vec<String>>,
+    pub warnings: Option<Vec<ApprovalWarning>>,
 }
 
 /// Approval request payload (design 04 §2). Rendered as the bottom bar of
@@ -37,7 +49,7 @@ pub struct ApprovalRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<String>,
+    pub warnings: Vec<ApprovalWarning>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

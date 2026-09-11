@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, oneshot, Notify};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::agent::events::{AgentEvent, ApprovalRequest, ToolCallView};
+use crate::agent::events::{AgentEvent, ApprovalRequest, ApprovalWarning, ToolCallView};
 use crate::agent::permissions::{self, ApprovalDecision};
 use crate::agent::preview::StreamPreviews;
 use crate::agent::providers::{
@@ -935,7 +935,7 @@ async fn execute_one_tool(
     cancel: CancellationToken,
 ) -> (String, ContentBlock) {
     let agent = &deps.agent;
-    let emit_view = |status: ToolCallStatus, result: Option<ToolResult>, warnings: Option<Vec<String>>| {
+    let emit_view = |status: ToolCallStatus, result: Option<ToolResult>, warnings: Option<Vec<ApprovalWarning>>| {
         emit(&app, &identity, AgentEvent::ToolCall {
             thread_id: thread_id.clone(),
             tool_call: ToolCallView {
@@ -950,7 +950,7 @@ async fn execute_one_tool(
         });
     };
 
-    let finish = |status: ToolCallStatus, result: ToolResult, warnings: Option<Vec<String>>| {
+    let finish = |status: ToolCallStatus, result: ToolResult, warnings: Option<Vec<ApprovalWarning>>| {
         emit_view(status, Some(result.clone()), warnings);
         (
             tool_call_id.clone(),

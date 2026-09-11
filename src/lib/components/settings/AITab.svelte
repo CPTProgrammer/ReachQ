@@ -28,7 +28,7 @@
 		unarchiveThread
 	} from '$lib/state/agent-threads.svelte';
 	import { isLocked } from '$lib/state/vault.svelte';
-	import { t } from '$lib/state/i18n.svelte';
+	import { t, tOr } from '$lib/state/i18n.svelte';
 	import type { ProviderInstance, ThreadSummary, ToolSettingsEntry } from '$lib/ipc/agent';
 
 	type ToolOption = ToolSettingsEntry['options'][number];
@@ -626,7 +626,7 @@
 				<div class="tool-row">
 					<div class="setting-info">
 						<span class="setting-label mono">{tool.name}</span>
-						<span class="setting-description">{tool.description}</span>
+						<span class="setting-description">{tOr(`agent.tool_desc_${tool.name}`, tool.description)}</span>
 					</div>
 					<div class="tool-toggles">
 						<div class="toggle-cell">
@@ -650,7 +650,7 @@
 							<div class="option-row">
 								<div class="setting-info">
 									<span class="option-name mono">{opt.key}</span>
-									<span class="setting-description">{opt.description}</span>
+									<span class="setting-description">{tOr(`agent.tool_opt_${tool.name}_${opt.key}`, opt.description)}</span>
 								</div>
 								<div class="option-control">
 									{#if opt.type === 'boolean'}

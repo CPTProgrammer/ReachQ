@@ -128,7 +128,11 @@ pub trait AgentTool: Send + Sync {
 
     /// Approval warning lines (dangerous command keywords, sensitive
     /// pattern hits). Default: none.
-    fn approval_warnings(&self, _args: &Value, _ctx: &ToolContext) -> Vec<String> {
+    fn approval_warnings(
+        &self,
+        _args: &Value,
+        _ctx: &ToolContext,
+    ) -> Vec<super::events::ApprovalWarning> {
         vec![]
     }
 
