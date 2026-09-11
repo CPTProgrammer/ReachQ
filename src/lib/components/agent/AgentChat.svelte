@@ -751,6 +751,10 @@
 		z-index: 6;
 	}
 
+	.meta-anchor:hover {
+		z-index: 7;
+	}
+
 	.meta-icon {
 		display: flex;
 		align-items: center;
