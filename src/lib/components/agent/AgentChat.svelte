@@ -617,7 +617,7 @@
 	.md :global(.md-inline) {
 		padding: 1px 4px;
 		border-radius: 4px;
-		background: var(--color-bg-secondary);
+		background: var(--color-border);
 		font-family: var(--font-mono);
 		font-size: 0.72rem;
 	}
