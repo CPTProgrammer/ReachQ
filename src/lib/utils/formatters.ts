@@ -87,11 +87,13 @@ export function truncate(str: string, maxLength: number): string {
 }
 
 const EFFORT_DISPLAY_NAMES: Record<string, string> = {
+	minimal: "Minimal",
 	low: 'Low',
 	medium: 'Medium',
 	high: 'High',
+	xhigh: 'xHigh',
 	max: 'Max',
-	xhigh: 'xHigh'
+	ultra: "Ultra"
 };
 
 /**
