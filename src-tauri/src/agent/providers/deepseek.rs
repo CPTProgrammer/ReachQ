@@ -37,7 +37,7 @@ fn hardcoded_models() -> Vec<ModelMeta> {
             max_output_tokens: Some(384_000),
             supports_thinking: true,
             thinking_mandatory: false,
-            thinking_efforts: vec!["high".to_string(), "max".to_string()],
+            thinking_efforts: vec!["low".to_string(), "high".to_string(), "max".to_string()],
             default_effort: Some("high".to_string()),
             supports_tools: true,
             pricing: None,
