@@ -4,6 +4,12 @@
 
 import { t } from '$lib/state/i18n.svelte';
 
+// CJK closing punctuation after which a line break is normally allowed. The
+// break is suppressed by UAX #14 LB13 when the next char is an infix
+// separator (e.g. the leading '.' of dotfiles: '、.cache' glues into one
+// unbreakable run), so we restore it with explicit <wbr> opportunities.
+const CJK_CLOSING_PUNCT = /([、。，．；：？！）］｝〉》」』〕〗〙〛”…・])/g;
+
 function escapeHtml(s: string): string {
 	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -20,6 +26,11 @@ function inline(src: string): string {
 		'<a href="$2" target="_blank" rel="noreferrer">$1</a>'
 	);
 	s = s.replace(/\u0000([^\u0000]+)\u0000/g, '<code class="md-inline">$1</code>');
+	// Text nodes only — never splice <wbr> into a tag (e.g. link hrefs).
+	s = s
+		.split(/(<[^>]+>)/g)
+		.map((part) => (part.startsWith('<') ? part : part.replace(CJK_CLOSING_PUNCT, '$1<wbr>')))
+		.join('');
 	return s;
 }
 
