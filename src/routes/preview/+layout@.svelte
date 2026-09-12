@@ -16,7 +16,8 @@
 		<span class="brand">Reach · Component Preview</span>
 		<nav class="preview-nav">
 			<a href="/preview">Index</a>
-			<a href="/preview/icons">Distro Icons</a>
+			<a href="/preview/distro-icons">Distro Icons</a>
+			<a href="/preview/provider-icons">Provider Icons</a>
 			<a href="/preview/agent">AI Agent</a>
 		</nav>
 	</header>

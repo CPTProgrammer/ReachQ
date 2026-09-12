@@ -1,10 +1,16 @@
 <script lang="ts">
 	const previews = [
 		{
-			href: '/preview/icons',
+			href: '/preview/distro-icons',
 			title: 'Distro Icons',
 			description:
 				'All OS/distro SVG icons from $lib/data/distro-icons and the os-release ID → icon mapping resolution.'
+		},
+		{
+			href: '/preview/provider-icons',
+			title: 'Provider Icons',
+			description:
+				'AI provider preset icons from $lib/data/provider-icons — monochrome, currentColor-tinted, with the composer color contexts.'
 		},
 		{
 			href: '/preview/agent',

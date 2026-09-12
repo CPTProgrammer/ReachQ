@@ -4,6 +4,7 @@
 	import Dropdown from '$lib/components/shared/Dropdown.svelte';
 	import Input from '$lib/components/shared/Input.svelte';
 	import Toggle from '$lib/components/shared/Toggle.svelte';
+	import ProviderIcon from '$lib/components/agent/ProviderIcon.svelte';
 	import { getAgentBackend } from '$lib/state/agent.svelte';
 	import {
 		findModel,
@@ -525,7 +526,7 @@
 								bind:value={editName}
 								aria-label={t('agent.settings_provider_name')}
 							/>
-							<span class="preset-badge">{presetLabel(inst.preset)}</span>
+							<span class="preset-badge"><ProviderIcon preset={inst.preset} size={11} />{presetLabel(inst.preset)}</span>
 							<button class="icon-btn" title={t('common.cancel')} onclick={discardEdit}>
 								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 									<path d="M18 6L6 18M6 6l12 12" />
@@ -543,7 +544,7 @@
 							</button>
 						{:else}
 							<span class="name-text">{inst.name}</span>
-							<span class="preset-badge">{presetLabel(inst.preset)}</span>
+							<span class="preset-badge"><ProviderIcon preset={inst.preset} size={11} />{presetLabel(inst.preset)}</span>
 							<button class="icon-btn" title={t('common.edit')} onclick={() => void startEdit(inst)}>
 								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 									<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
@@ -637,6 +638,7 @@
 								class:selected={addPreset === id}
 								onclick={() => selectAddPreset(id)}
 							>
+								<ProviderIcon preset={id} size={12} />
 								{label}
 							</button>
 						{/each}
@@ -1009,6 +1011,9 @@
 
 	.preset-badge {
 		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
 		padding: 2px 8px;
 		font-size: 0.6875rem;
 		font-weight: 500;
@@ -1105,6 +1110,9 @@
 	}
 
 	.preset-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		padding: 4px 12px;
 		font-family: var(--font-sans);
 		font-size: 0.75rem;

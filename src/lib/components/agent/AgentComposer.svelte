@@ -21,6 +21,7 @@
 	import { formatContextLength } from './utils';
 	import { formatEffort } from '$lib/utils/formatters';
 	import { autogrowTextarea } from '$lib/utils/autogrow';
+	import ProviderIcon from './ProviderIcon.svelte';
 
 	let { identity, threadId }: Props = $props();
 
@@ -41,7 +42,9 @@
 		sel = resolveSelection(identity, summary?.model ?? null);
 	});
 
-	let modelMeta = $derived(sel ? (findModel(sel.model)?.model ?? null) : null);
+	let selectedModel = $derived(sel ? findModel(sel.model) : null);
+	let modelMeta = $derived(selectedModel?.model ?? null);
+	let providerPreset = $derived(selectedModel?.instance.preset ?? null);
 
 	let thinkingOn = $derived(
 		modelMeta
@@ -294,6 +297,9 @@
 					title={t('agent.model')}
 					onclick={() => (modelOpen = !modelOpen)}
 				>
+					{#if providerPreset}
+						<ProviderIcon preset={providerPreset} size={14} />
+					{/if}
 					<span class="model-name">{modelMeta?.displayName ?? t('agent.model')}</span>
 					<svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
 				</button>
@@ -308,12 +314,13 @@
 									class:selected={sel?.model === `${group.instance.id}/${m.id}`}
 									onclick={() => pickModel(group, m)}
 								>
+									<span class="menu-icon"><ProviderIcon preset={group.instance.preset} size={14} /></span>
+									<span class="menu-label">{m.displayName}</span>
 									<span class="menu-check">
 										{#if sel?.model === `${group.instance.id}/${m.id}`}
 											<svg width="11" height="11" viewBox="0 0 14 14" fill="none"><path d="M2 7l3.5 3.5L12 3.5" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
 										{/if}
 									</span>
-									<span class="menu-label">{m.displayName}</span>
 									<span class="menu-badge">{formatContextLength(m.contextLength)}</span>
 								</button>
 							{/each}
@@ -474,6 +481,11 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		/* Optical alignment: Inter glyphs sit high in the line box (the
+		   descender space below the baseline is unused by most model names),
+		   so nudge the text down to optically center it against the icon. */
+		position: relative;
+		top: 0.5px;
 	}
 
 	.usage-ring {
@@ -606,6 +618,17 @@
 		display: flex;
 		align-items: center;
 		flex-shrink: 0;
+	}
+
+	.menu-icon {
+		width: 14px;
+		display: flex;
+		align-items: center;
+		flex-shrink: 0;
+	}
+
+	.menu-item.selected .menu-icon {
+		color: var(--color-accent);
 	}
 
 	.menu-label {
