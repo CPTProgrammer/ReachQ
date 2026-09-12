@@ -298,7 +298,7 @@ export const agentThreads = {
 		newContent: string,
 		opts: AgentSendOpts
 	) =>
-		invoke<string>('agent_edit_message', { identity, threadId, messageId, newContent, opts }),
+		invoke<ThreadSnapshot>('agent_edit_message', { identity, threadId, messageId, newContent, opts }),
 	setActiveBranch: (threadId: string, atMessageId: string, direction: 'prev' | 'next') =>
 		invoke<ThreadSnapshot>('agent_set_active_branch', { threadId, atMessageId, direction })
 };

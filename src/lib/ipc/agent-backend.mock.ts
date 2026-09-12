@@ -1159,7 +1159,7 @@ class MockAgentBackend implements AgentBackend {
 			messageId: string,
 			newContent: string,
 			opts: AgentSendOpts
-		): Promise<string> {
+		): Promise<ThreadSnapshot> {
 			const thread = this.requireThread(threadId);
 			const original = thread.messages.get(messageId);
 			if (!original || original.role !== 'user') throw new Error('Only user messages can be edited');
@@ -1175,11 +1175,14 @@ class MockAgentBackend implements AgentBackend {
 				createdAt: Date.now()
 			};
 			this.link(thread, msg);
-			this.emit(identity, { kind: 'user_message', threadId, message: msg });
 			thread.running = true;
 			thread.run = { cancelled: false, rejectApprovals: new Set() };
+			// Mirror the real backend: forks emit no user_message event; the
+			// caller applies the returned snapshot to switch the visible path.
+			// Take it before the run starts, as the real command does.
+			const snapshot = this.snapshot(thread);
 			void this.executeRun(identity, thread, thread.run, opts);
-			return msg.id;
+			return snapshot;
 		}
 
 		async threadSetActiveBranch(

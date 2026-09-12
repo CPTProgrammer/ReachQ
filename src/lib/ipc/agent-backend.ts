@@ -65,7 +65,7 @@ export interface AgentBackend {
 		messageId: string,
 		newContent: string,
 		opts: AgentSendOpts
-	): Promise<string>;
+	): Promise<ThreadSnapshot>;
 	threadSetActiveBranch(
 		threadId: string,
 		atMessageId: string,

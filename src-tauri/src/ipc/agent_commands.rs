@@ -292,6 +292,8 @@ pub async fn agent_get_thread_state(
 }
 
 /// Edit a user message and fork a new branch from it (design 01 §2.4).
+/// Returns the thread snapshot with the fork as the active path, so the
+/// frontend can switch the visible branch immediately.
 #[tauri::command]
 pub async fn agent_edit_message(
     app: AppHandle,
@@ -301,7 +303,7 @@ pub async fn agent_edit_message(
     message_id: String,
     new_content: String,
     opts: SendOpts,
-) -> Result<String, String> {
+) -> Result<ThreadSnapshot, String> {
     let store = store(&state).await?;
     let msg = store
         .get_message(&message_id)
@@ -314,7 +316,7 @@ pub async fn agent_edit_message(
         return Err("A run is active; cancel it before editing history".to_string());
     }
 
-    let fork = store
+    store
         .append_message(
             &thread_id,
             msg.parent_id.as_deref(),
@@ -326,11 +328,16 @@ pub async fn agent_edit_message(
         )
         .await?;
 
+    // Snapshot before spawning the run: the response is then at least as
+    // fresh as the fork, and any run events that overtake it can only add
+    // to it (the frontend lazily re-creates its streaming placeholder).
+    let snapshot = store.snapshot(&thread_id).await?;
+
     let deps = AgentDeps::from_state(state.inner());
     tauri::async_runtime::spawn(async move {
         agent_loop::run_agent(app, deps, identity, thread_id, None, opts).await;
     });
-    Ok(fork.id)
+    Ok(snapshot)
 }
 
 #[tauri::command]

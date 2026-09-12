@@ -774,8 +774,11 @@ export async function agentEditAndFork(
 ): Promise<void> {
 	const rt = ensureThreadRuntime(threadId);
 	rt.error = null;
-	await backend.threadEditMessage(identity, threadId, messageId, newContent, opts);
-	rt.running = true;
+	const snapshot = await backend.threadEditMessage(identity, threadId, messageId, newContent, opts);
+	// The fork switched the active branch backend-side; the snapshot carries
+	// the new path with correct branch info. Run events that already arrived
+	// only added placeholders, which the next delta lazily re-creates.
+	applySnapshot(threadId, snapshot, true);
 }
 
 /** Switch the displayed branch and replace the visible path. */
