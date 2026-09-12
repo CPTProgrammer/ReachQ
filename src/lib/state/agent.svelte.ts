@@ -431,26 +431,52 @@ export function unsubscribeIdentity(identity: string): void {
 	delete subscriptions[identity];
 }
 
+/// Create (or find) the streaming placeholder for one assistant round. The
+/// backend announces every round with `message_start`; content events keep
+/// calling this lazily as a safety net so no block can strand without a
+/// host message.
+function ensureStreamingMessage(rt: ThreadRuntime, threadId: string, messageId: string): PathMessage {
+	let msg = rt.messages.find((m) => m.id === messageId);
+	if (!msg) {
+		msg = {
+			id: messageId,
+			threadId,
+			branchIndex: 0,
+			seq: Number.MAX_SAFE_INTEGER,
+			role: 'assistant',
+			content: [],
+			createdAt: Date.now(),
+			branch: { index: 1, count: 1 }
+		} as PathMessage;
+		rt.messages.push(msg);
+	}
+	return msg;
+}
+
+/// Remove the round's streaming placeholder if it never gained content
+/// (empty round, provider error, or cancel before the first delta) —
+/// otherwise it would linger as a permanent typing indicator.
+function dropEmptyStreamingMessage(rt: ThreadRuntime, messageId: string | null): void {
+	if (!messageId) return;
+	const msg = rt.messages.find((m) => m.id === messageId);
+	if (msg && msg.content.length === 0) {
+		rt.messages = rt.messages.filter((m) => m.id !== messageId);
+	}
+}
+
 function handleEvent(e: AgentEvent): void {
 	switch (e.kind) {
+		case 'message_start': {
+			const rt = ensureThreadRuntime(e.threadId);
+			ensureStreamingMessage(rt, e.threadId, e.messageId);
+			rt.streamingMessageId = e.messageId;
+			rt.running = true;
+			break;
+		}
 		case 'text_delta':
 		case 'thinking_delta': {
 			const rt = ensureThreadRuntime(e.threadId);
-			// Ensure a streaming placeholder message exists.
-			let msg = rt.messages.find((m) => m.id === e.messageId);
-			if (!msg) {
-				msg = {
-					id: e.messageId,
-					threadId: e.threadId,
-					branchIndex: 0,
-					seq: Number.MAX_SAFE_INTEGER,
-					role: 'assistant',
-					content: [],
-					createdAt: Date.now(),
-					branch: { index: 1, count: 1 }
-				} as PathMessage;
-				rt.messages.push(msg);
-			}
+			const msg = ensureStreamingMessage(rt, e.threadId, e.messageId);
 			rt.streamingMessageId = e.messageId;
 			rt.running = true;
 			const blockType = e.kind === 'text_delta' ? 'text' : 'thinking';
@@ -483,9 +509,11 @@ function handleEvent(e: AgentEvent): void {
 				delete rt.argsPatched[e.toolCall.id];
 			}
 			rt.running = true;
-			// Attach to the assistant message if it exists yet.
-			const msg = rt.messages.find((m) => m.id === e.toolCall.messageId);
-			if (msg && !msg.content.some((b) => b.type === 'tool_call' && b.id === e.toolCall.id)) {
+			// Attach to the round's assistant message. message_start created it
+			// up front; ensureStreamingMessage is the safety net so the card
+			// (and its approval UI) always has a host message.
+			const msg = ensureStreamingMessage(rt, e.threadId, e.toolCall.messageId);
+			if (!msg.content.some((b) => b.type === 'tool_call' && b.id === e.toolCall.id)) {
 				msg.content.push({
 					type: 'tool_call',
 					id: e.toolCall.id,
@@ -494,7 +522,7 @@ function handleEvent(e: AgentEvent): void {
 					status: e.toolCall.status,
 					result: e.toolCall.result
 				});
-			} else if (msg) {
+			} else {
 				for (const b of msg.content) {
 					if (b.type === 'tool_call' && b.id === e.toolCall.id) {
 						b.status = e.toolCall.status;
@@ -551,15 +579,9 @@ function handleEvent(e: AgentEvent): void {
 		}
 		case 'message_done': {
 			const rt = ensureThreadRuntime(e.threadId);
+			dropEmptyStreamingMessage(rt, e.messageId);
 			if (e.metadata) {
-				// Tool-call rounds emit the persisted message id, which differs
-				// from the streaming placeholder id the runtime knows; fall back
-				// to the currently streaming message in that case.
-				const msg =
-					rt.messages.find((m) => m.id === e.messageId) ??
-					(rt.streamingMessageId
-						? rt.messages.find((m) => m.id === rt.streamingMessageId)
-						: undefined);
+				const msg = rt.messages.find((m) => m.id === e.messageId);
 				if (msg) msg.metadata = e.metadata;
 			}
 			if (rt.streamingMessageId === e.messageId) rt.streamingMessageId = null;
@@ -578,6 +600,7 @@ function handleEvent(e: AgentEvent): void {
 			const rt = ensureThreadRuntime(e.threadId);
 			rt.running = false;
 			rt.error = e.message;
+			dropEmptyStreamingMessage(rt, rt.streamingMessageId);
 			rt.streamingMessageId = null;
 			// The backend drops the queue on abnormal exit; return the text to
 			// the composer so the user doesn't lose it.
@@ -590,6 +613,7 @@ function handleEvent(e: AgentEvent): void {
 		case 'cancelled': {
 			const rt = ensureThreadRuntime(e.threadId);
 			rt.running = false;
+			dropEmptyStreamingMessage(rt, rt.streamingMessageId);
 			rt.streamingMessageId = null;
 			break;
 		}

@@ -144,6 +144,9 @@ export interface ApprovalRequest {
 }
 
 export type AgentEvent =
+	// A new assistant round started; messageId is stable across the whole
+	// round (streaming, tool execution, persistence).
+	| { kind: 'message_start'; threadId: string; messageId: string }
 	| { kind: 'text_delta'; threadId: string; messageId: string; delta: string }
 	| { kind: 'thinking_delta'; threadId: string; messageId: string; delta: string }
 	| { kind: 'tool_call'; threadId: string; toolCall: ToolCallView }

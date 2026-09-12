@@ -322,6 +322,7 @@ pub async fn agent_edit_message(
             vec![crate::agent::types::ContentBlock::Text { text: new_content }],
             None,
             None,
+            None,
         )
         .await?;
 

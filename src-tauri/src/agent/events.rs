@@ -60,6 +60,12 @@ pub struct ApprovalRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AgentEvent {
+    /// A new assistant round started; carries the round's message id, which
+    /// the loop also uses when persisting the message. The frontend creates
+    /// the streaming placeholder from this event regardless of the round's
+    /// content shape (text / thinking / tool calls / empty).
+    #[serde(rename_all = "camelCase")]
+    MessageStart { thread_id: String, message_id: String },
     #[serde(rename_all = "camelCase")]
     TextDelta {
         thread_id: String,

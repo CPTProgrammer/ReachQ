@@ -244,6 +244,11 @@ impl ThreadStore {
 
     /// Append a message as the latest child of `parent_id` (None = root)
     /// and make it the thread's active leaf.
+    ///
+    /// `id` pins the message id: the agent loop persists each round's
+    /// assistant message under the id its streaming events already used, so
+    /// the frontend sees one stable id across the whole round. None
+    /// generates a fresh one.
     pub async fn append_message(
         &self,
         thread_id: &str,
@@ -252,8 +257,11 @@ impl ThreadStore {
         content: Vec<super::types::ContentBlock>,
         usage: Option<&Usage>,
         metadata: Option<&super::types::MessageMetadata>,
+        id: Option<&str>,
     ) -> Result<StoredMessage, String> {
-        let id = Uuid::new_v4().to_string();
+        let id = id
+            .map(str::to_string)
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         let seq = self.next_seq.fetch_add(1, Ordering::SeqCst);
 
         let mut rows = match parent_id {

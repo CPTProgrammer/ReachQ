@@ -313,6 +313,7 @@ pub async fn run_agent(
                 vec![ContentBlock::Text { text }],
                 None,
                 None,
+                None,
             )
             .await
         {
@@ -504,6 +505,7 @@ async fn run_loop(
                     vec![ContentBlock::Text { text: q }],
                     None,
                     None,
+                    None,
                 )
                 .await
             {
@@ -570,6 +572,15 @@ async fn run_loop(
         });
 
         let message_id = Uuid::new_v4().to_string();
+        // Announce the round up front: the frontend builds its streaming
+        // placeholder from this event, so tool-call-only rounds (no text
+        // deltas) render too. The same id is passed to append_message below,
+        // so every event of this round — streaming, tool execution,
+        // message_done — carries one stable message id.
+        emit(app, identity, AgentEvent::MessageStart {
+            thread_id: thread_id.to_string(),
+            message_id: message_id.clone(),
+        });
         let round_start = Instant::now();
         // First content delta (text / thinking / tool-call args) => TTFT.
         let mut first_delta_at: Option<Duration> = None;
@@ -797,6 +808,7 @@ async fn run_loop(
                 content,
                 acc.last_usage.as_ref(),
                 Some(&metadata),
+                Some(&message_id),
             )
             .await
             .map_err(LoopExit::Error)?;
