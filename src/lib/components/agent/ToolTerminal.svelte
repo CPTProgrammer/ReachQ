@@ -3,6 +3,10 @@
 		toolCallId: string;
 		/** Whether the card's detail section is expanded. */
 		expanded: boolean;
+		/** Settled-call output restored from the persisted tool result when no
+		 *  live output buffer exists (app restart, eviction). Plain text, no
+		 *  ANSI; PTY-width line wrapping is baked in. */
+		fallbackText?: string | null;
 	}
 </script>
 
@@ -16,7 +20,7 @@
 	import { getTerminalTheme } from '$lib/data/terminal-themes';
 	import { decodeBase64 } from './utils';
 
-	let { toolCallId, expanded }: Props = $props();
+	let { toolCallId, expanded, fallbackText }: Props = $props();
 
 	let containerEl: HTMLDivElement | undefined = $state();
 	let term: Terminal | undefined;
@@ -45,6 +49,7 @@
 		// dispose the xterm and lose its content. `toolCallId` never changes
 		// for a mounted card; settings changes are applied live below.
 		const id = untrack(() => toolCallId);
+		const fb = untrack(() => fallbackText);
 		const s = untrack(getSettings);
 		const t = new Terminal({
 			fontFamily: s.fontFamily || 'monospace',
@@ -61,9 +66,19 @@
 		term = t;
 		fit = f;
 
+		let replayed = 0;
 		unsubscribe = onTerminalOutput(id, (dataB64) => {
+			replayed++;
 			t.write(decodeBase64(dataB64));
 		});
+
+		// Settled call with no buffered output to replay (app restart, buffer
+		// eviction): restore the persisted text projection so the card is not
+		// blank. The grid text is LF-joined; xterm needs CRLF to return the
+		// carriage.
+		if (replayed === 0 && fb) {
+			t.write(fb.replace(/\r?\n/g, '\r\n'));
+		}
 
 		let resizeTimer: ReturnType<typeof setTimeout> | undefined;
 		resizeObserver = new ResizeObserver(() => {

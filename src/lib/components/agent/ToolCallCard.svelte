@@ -62,6 +62,15 @@
 		call.status !== 'streaming' && call.status !== 'pending_approval' && call.status !== 'rejected'
 	);
 
+	/** Terminal calls replay from the live buffer while this session has one;
+	 *  after an app restart or buffer eviction the persisted text projection
+	 *  (result ui_payload) restores the view instead. */
+	let terminalFallback = $derived.by((): string | null => {
+		if (call.name !== 'terminal' || !ended) return null;
+		const payload = call.result?.uiPayload as { output?: unknown } | undefined;
+		return typeof payload?.output === 'string' && payload.output ? payload.output : null;
+	});
+
 	let title = $derived.by(() => {
 		switch (call.name) {
 			case 'read_file':
@@ -249,7 +258,7 @@
 			<!-- Command block is visible in both collapsed and expanded states. -->
 			<div class="command-block">{command || prettyJson(call.argsJson)}{#if call.status === 'streaming'}<span class="cursor"></span>{/if}</div>
 			{#if terminalLive}
-				<ToolTerminal toolCallId={call.id} {expanded} />
+				<ToolTerminal toolCallId={call.id} {expanded} fallbackText={terminalFallback} />
 			{/if}
 		{:else if isFileTool && (expanded || pinnedDiff)}
 			{#if shownDiff}

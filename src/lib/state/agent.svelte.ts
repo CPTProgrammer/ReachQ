@@ -652,14 +652,42 @@ interface TerminalBuffer {
 	bytes: number;
 }
 
-const terminalBuffers: Record<string, TerminalBuffer> = {};
+/**
+ * Cap on the number of live buffers (hard ceiling ≈ 1000 × 341 KB of base64).
+ * Past it the oldest buffers are evicted; a settled call then falls back to
+ * its persisted ui_payload projection on remount.
+ */
+const TERMINAL_BUFFER_MAX_COUNT = 1000;
+
+// Map (not Object) so iteration order is guaranteed for every key shape;
+// eviction relies on it. Buffers are the replay source for (re)mounted xterm
+// views; a running evicted call silently re-creates its buffer on the next
+// chunk. Live streaming goes through `terminalListeners`, which eviction
+// must not touch.
+const terminalBuffers = new Map<string, TerminalBuffer>();
 const terminalListeners: Record<string, (dataB64: string) => void> = {};
 
+/** Drop oldest-inserted buffers past the count cap, skipping calls that
+ * currently have a mounted viewer (their replay source is in active use). */
+function evictTerminalBuffersIfNeeded(): void {
+	while (terminalBuffers.size > TERMINAL_BUFFER_MAX_COUNT) {
+		let deleted = false;
+		for (const key of terminalBuffers.keys()) {
+			if (terminalListeners[key] !== undefined) continue;
+			terminalBuffers.delete(key);
+			deleted = true;
+			break;
+		}
+		if (!deleted) return; // everything left is being watched
+	}
+}
+
 function appendTerminalOutput(toolCallId: string, dataB64: string): void {
-	let buf = terminalBuffers[toolCallId];
+	let buf = terminalBuffers.get(toolCallId);
 	if (!buf) {
 		buf = { chunks: [], bytes: 0 };
-		terminalBuffers[toolCallId] = buf;
+		terminalBuffers.set(toolCallId, buf);
+		evictTerminalBuffersIfNeeded();
 	}
 	buf.chunks.push(dataB64);
 	buf.bytes += (dataB64.length * 3) / 4; // base64 -> decoded bytes (approx.)
@@ -677,7 +705,7 @@ export function onTerminalOutput(
 	// Replay buffered output so a (re)mounted view catches up with everything
 	// emitted while it was gone (thread switch, remount, pre-mount race), then
 	// go live. Synchronous, so no chunk can interleave between the two phases.
-	const buf = terminalBuffers[toolCallId];
+	const buf = terminalBuffers.get(toolCallId);
 	if (buf) {
 		for (const chunk of buf.chunks) cb(chunk);
 	}
