@@ -276,6 +276,7 @@
   "agent.meta_tokens": "Token",
   "agent.meta_cached": "In cache",
   "agent.meta_duration": "Durata",
+  "agent.meta_ttft": "Primo token",
   "agent.meta_tool_calls": "Chiamate agli strumenti",
   "agent.meta_tokens_value": "input {{input}} / output {{output}}",
   "agent.meta_speed": "Velocità",

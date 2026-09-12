@@ -276,6 +276,7 @@
   "agent.meta_tokens": "Токени",
   "agent.meta_cached": "Кеширано",
   "agent.meta_duration": "Продължителност",
+  "agent.meta_ttft": "Първи токен",
   "agent.meta_tool_calls": "Извиквания на инструменти",
   "agent.meta_tokens_value": "вход {{input}} / изход {{output}}",
   "agent.meta_speed": "Скорост",

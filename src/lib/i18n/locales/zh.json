@@ -276,6 +276,7 @@
   "agent.meta_tokens": "Token",
   "agent.meta_cached": "已缓存",
   "agent.meta_duration": "耗时",
+  "agent.meta_ttft": "首字符时间",
   "agent.meta_tool_calls": "工具调用",
   "agent.meta_tokens_value": "输入 {{input}} / 输出 {{output}}",
   "agent.meta_speed": "速度",

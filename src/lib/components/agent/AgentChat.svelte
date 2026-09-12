@@ -358,11 +358,14 @@
 													<div class="meta-row"><span>{t('agent.meta_cached')}</span><span>{formatTokens(meta.usage.cachedTokens)}</span></div>
 												{/if}
 											{/if}
+											{#if meta.ttftMs != null}
+												<div class="meta-row"><span>{t('agent.meta_ttft')}</span><span>{formatDuration(meta.ttftMs)}</span></div>
+											{/if}
 											{#if meta.durationMs != null}
 												<div class="meta-row"><span>{t('agent.meta_duration')}</span><span>{formatDuration(meta.durationMs)}</span></div>
 											{/if}
 											{#if meta.usage && meta.durationMs != null && meta.durationMs > 0}
-												<div class="meta-row"><span>{t('agent.meta_speed')}</span><span>{formatSpeed(meta.usage.completionTokens, meta.durationMs)} tok/s</span></div>
+												<div class="meta-row"><span>{t('agent.meta_speed')}</span><span>{formatSpeed(meta.usage.completionTokens, meta.durationMs, meta.ttftMs)} tok/s</span></div>
 											{/if}
 											{#if meta.toolCallCount != null}
 												<div class="meta-row"><span>{t('agent.meta_tool_calls')}</span><span>{meta.toolCallCount}</span></div>

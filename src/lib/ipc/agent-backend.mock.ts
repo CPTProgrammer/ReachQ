@@ -185,12 +185,15 @@ interface Ctx {
 	/** Emits a usage event with a growing prompt size. */
 	addUsage(completionTokens: number, cachedTokens?: number): void;
 	/**
-	 * Persists final metadata and emits message_done. Tool-call rounds should
-	 * pass `emitId`: the real backend emits the persisted message id there,
-	 * which never matches the streaming placeholder id the panel knows (the
+	 * Persists final metadata and emits message_done. Duration and TTFT are
+	 * measured automatically from the message's stream activity and freeze at
+	 * the last streamed chunk, so approval waits and tool execution are never
+	 * counted — mirroring the real backend. Tool-call rounds should pass
+	 * `emitId`: the real backend emits the persisted message id there, which
+	 * never matches the streaming placeholder id the panel knows (the
 	 * frontend falls back to the streaming message).
 	 */
-	finishMessage(messageId: string, toolCallCount: number, startedAt: number, emitId?: string): void;
+	finishMessage(messageId: string, toolCallCount: number, emitId?: string): void;
 	emitError(message: string): void;
 }
 
@@ -820,7 +823,6 @@ class MockAgentBackend implements AgentBackend {
 				thread.queued = null;
 				const msg = this.appendUserMessage(thread, text);
 				this.emit(identity, { kind: 'user_message', threadId, message: msg });
-				const startedAt = Date.now();
 				const follow = ctx.beginAssistant();
 				await ctx.sleep(350);
 				const reply = scenario.queuedFollowUp
@@ -828,7 +830,7 @@ class MockAgentBackend implements AgentBackend {
 					: `Following up on "${text}" — a queued message gets its own round, streamed just like the first.`;
 				await ctx.streamText(follow, reply);
 				ctx.addUsage(180);
-				ctx.finishMessage(follow, 0, startedAt);
+				ctx.finishMessage(follow, 0);
 			}
 			this.maybeTitle(identity, thread);
 			// Normal exit: unregister first, then emit the terminal event
@@ -882,6 +884,20 @@ class MockAgentBackend implements AgentBackend {
 			new Promise<void>((resolve, reject) => {
 				setTimeout(() => (run.cancelled ? reject(CANCELLED) : resolve()), ms);
 			});
+		// Per-message stream timing (mirrors the real backend's round_start →
+		// first-delta → last-delta window): durationMs freezes at the last
+		// streamed chunk, so approval waits and tool execution are not counted.
+		const timings = new Map<
+			string,
+			{ startedAt: number; firstDeltaAt?: number; lastDeltaAt?: number }
+		>();
+		const touch = (messageId: string) => {
+			const timing = timings.get(messageId);
+			if (!timing) return;
+			const now = Date.now();
+			timing.firstDeltaAt ??= now;
+			timing.lastDeltaAt = now;
+		};
 		const streamInto = async (
 			messageId: string,
 			kind: 'text_delta' | 'thinking_delta',
@@ -898,6 +914,7 @@ class MockAgentBackend implements AgentBackend {
 			}
 			for (const chunk of wordChunks(text)) {
 				if (run.cancelled) throw CANCELLED;
+				touch(messageId);
 				this.emit(identity, { kind, threadId, messageId, delta: chunk });
 				if (block) block.text += chunk;
 				await sleep(34 + Math.random() * 46);
@@ -919,6 +936,7 @@ class MockAgentBackend implements AgentBackend {
 					createdAt: Date.now()
 				};
 				this.link(thread, msg);
+				timings.set(msg.id, { startedAt: Date.now() });
 				return msg.id;
 			},
 			streamThinking: (messageId, text) => streamInto(messageId, 'thinking_delta', text),
@@ -950,6 +968,7 @@ class MockAgentBackend implements AgentBackend {
 				let lastPatched = '';
 				for (const chunk of jsonChunks(full)) {
 					if (run.cancelled) throw CANCELLED;
+					touch(messageId);
 					call.argsJson += chunk;
 					this.emit(identity, {
 						kind: 'tool_call_args_delta',
@@ -1053,7 +1072,7 @@ class MockAgentBackend implements AgentBackend {
 				thread.summary.lastUsage = usage;
 				this.emit(identity, { kind: 'usage', threadId, usage });
 			},
-			finishMessage: (messageId, toolCallCount, startedAt, emitId) => {
+			finishMessage: (messageId, toolCallCount, emitId) => {
 				const msg = thread.messages.get(messageId);
 				let metadata: MessageMetadata | undefined;
 				if (msg) {
@@ -1062,12 +1081,15 @@ class MockAgentBackend implements AgentBackend {
 						''
 					).split('/');
 					const instance = this.instances.find((i) => i.id === instanceId);
+					const timing = timings.get(messageId);
+					const startedAt = timing?.startedAt ?? Date.now();
 					msg.usage = thread.summary.lastUsage;
 					msg.metadata = {
 						providerInstance: instance?.name ?? instanceId ?? undefined,
 						model: rest.join('/') || undefined,
 						usage: thread.summary.lastUsage,
-						durationMs: Date.now() - startedAt,
+						durationMs: (timing?.lastDeltaAt ?? Date.now()) - startedAt,
+						ttftMs: timing?.firstDeltaAt != null ? timing.firstDeltaAt - startedAt : undefined,
 						toolCallCount
 					};
 					metadata = msg.metadata;
@@ -1315,7 +1337,6 @@ class MockAgentBackend implements AgentBackend {
 				description: 'Streaming reasoning, then an answer; usage grows.',
 				prompt: 'Explain how the agent loop works.',
 				run: async (ctx) => {
-					const startedAt = Date.now();
 					const msg = ctx.beginAssistant();
 					await ctx.sleep(400);
 					await ctx.streamThinking(
@@ -1328,7 +1349,7 @@ class MockAgentBackend implements AgentBackend {
 						'## Agent loop\n\nEach turn is a **round**: one streamed assistant message.\n\n- Text and thinking stream token by token\n- Tool calls drip their arguments live\n- Results feed back as new messages\n\nThe run ends when a round produces no tool calls.'
 					);
 					ctx.addUsage(220);
-					ctx.finishMessage(msg, 0, startedAt);
+					ctx.finishMessage(msg, 0);
 				}
 			},
 			'tool-read-approval': {
@@ -1336,7 +1357,7 @@ class MockAgentBackend implements AgentBackend {
 				description: 'A sensitive read waits for Accept before content arrives.',
 				prompt: 'Read /etc/ssh/sshd_config and tell me whether root login is allowed.',
 				run: async (ctx) => {
-					const startedAt = Date.now();
+					// Round 1: the read call, then its approval.
 					const msg = ctx.beginAssistant();
 					await ctx.sleep(300);
 					await ctx.streamText(msg, 'Let me check the SSH daemon config.\n');
@@ -1349,8 +1370,6 @@ class MockAgentBackend implements AgentBackend {
 							llmText: 'Permission to run tool denied by user',
 							isError: true
 						});
-						await ctx.sleep(300);
-						await ctx.streamText(msg, 'Understood — I will not read that file.');
 					} else {
 						ctx.setToolStatus(call, 'running');
 						await ctx.sleep(500);
@@ -1359,14 +1378,22 @@ class MockAgentBackend implements AgentBackend {
 							isError: false,
 							uiPayload: { path: '/etc/ssh/sshd_config', content: SSHD_CONFIG }
 						});
-						await ctx.sleep(250);
-						await ctx.streamText(
-							msg,
-							'Root login is set to `prohibit-password` (key only), and password auth is disabled entirely. That is the recommended posture.'
-						);
 					}
 					ctx.addUsage(140);
-					ctx.finishMessage(msg, 1, startedAt);
+					ctx.finishMessage(msg, 1);
+
+					// Round 2: the follow-up answer is its own message, like the real
+					// backend emits after tool results go back to the model.
+					const follow = ctx.beginAssistant();
+					await ctx.sleep(300);
+					await ctx.streamText(
+						follow,
+						ok
+							? 'Root login is set to `prohibit-password` (key only), and password auth is disabled entirely. That is the recommended posture.'
+							: 'Understood — I will not read that file.'
+					);
+					ctx.addUsage(60);
+					ctx.finishMessage(follow, 0);
 				}
 			},
 			'tool-edit-diff': {
@@ -1374,7 +1401,7 @@ class MockAgentBackend implements AgentBackend {
 				description: 'An nginx edit shows a unified diff in the approval card.',
 				prompt: 'Switch the nginx site to HTTPS on port 443.',
 				run: async (ctx) => {
-					const startedAt = Date.now();
+					// Round 1: the edit call and its diff approval.
 					const msg = ctx.beginAssistant();
 					await ctx.sleep(300);
 					const call = await ctx.streamToolCall(msg, 'edit_file', NGINX_EDIT_ARGS);
@@ -1389,7 +1416,6 @@ class MockAgentBackend implements AgentBackend {
 							llmText: 'Permission to run tool denied by user\nNo edits were made.',
 							isError: true
 						});
-						await ctx.streamText(msg, 'No problem — nothing was changed.');
 					} else {
 						ctx.setToolStatus(call, 'running');
 						await ctx.sleep(600);
@@ -1398,10 +1424,22 @@ class MockAgentBackend implements AgentBackend {
 							isError: false,
 							uiPayload: { diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 						});
-						await ctx.streamText(msg, 'Done — the site now listens on 443 with the LE certs. Run `nginx -t` to verify.');
 					}
 					ctx.addUsage(180);
-					ctx.finishMessage(msg, 1, startedAt);
+					ctx.finishMessage(msg, 1);
+
+					// Round 2: the follow-up answer is its own message, like the real
+					// backend emits after tool results go back to the model.
+					const follow = ctx.beginAssistant();
+					await ctx.sleep(300);
+					await ctx.streamText(
+						follow,
+						ok
+							? 'Done — the site now listens on 443 with the LE certs. Run `nginx -t` to verify.'
+							: 'No problem — nothing was changed.'
+					);
+					ctx.addUsage(60);
+					ctx.finishMessage(follow, 0);
 				}
 			},
 			'tool-edit-reject': {
@@ -1409,7 +1447,7 @@ class MockAgentBackend implements AgentBackend {
 				description: 'Same diff card; click Reject to see the rejected state.',
 				prompt: 'Apply the HTTPS change to the nginx site.',
 				run: async (ctx) => {
-					const startedAt = Date.now();
+					// Round 1: the edit call and its diff approval.
 					const msg = ctx.beginAssistant();
 					await ctx.sleep(300);
 					const call = await ctx.streamToolCall(msg, 'edit_file', NGINX_EDIT_ARGS);
@@ -1431,10 +1469,18 @@ class MockAgentBackend implements AgentBackend {
 							isError: true,
 							uiPayload: { diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 						});
-						await ctx.streamText(msg, 'Understood, leaving the site on port 80.');
 					}
 					ctx.addUsage(120);
-					ctx.finishMessage(msg, 1, startedAt);
+					ctx.finishMessage(msg, 1);
+
+					if (!ok) {
+						// Round 2: acknowledge the rejection in a new message.
+						const follow = ctx.beginAssistant();
+						await ctx.sleep(300);
+						await ctx.streamText(follow, 'Understood, leaving the site on port 80.');
+						ctx.addUsage(40);
+						ctx.finishMessage(follow, 0);
+					}
 				}
 			},
 			'terminal-live': {
@@ -1442,7 +1488,7 @@ class MockAgentBackend implements AgentBackend {
 				description: 'A PTY-backed command streams ANSI-colored output.',
 				prompt: 'Pull the latest site and reload nginx.',
 				run: async (ctx) => {
-					const startedAt = Date.now();
+					// Round 1: the command, its approval, and the live output.
 					const msg = ctx.beginAssistant();
 					await ctx.sleep(300);
 					const call = await ctx.streamToolCall(msg, 'terminal', { command: TERMINAL_COMMAND });
@@ -1454,27 +1500,36 @@ class MockAgentBackend implements AgentBackend {
 							llmText: 'Permission to run tool denied by user',
 							isError: true
 						});
-					} else {
-						ctx.setToolStatus(call, 'running');
-						for (const chunk of TERMINAL_CHUNKS) {
-							if (ctx.terminalStopped(call.id)) break;
-							ctx.emitTerminal(call.id, chunk);
-							await ctx.sleep(280);
-						}
-						const out = TERMINAL_CHUNKS.map(stripAnsi).join('');
-						ctx.setToolStatus(call, 'success', {
-							llmText: `Command executed successfully.\n\n\`\`\`\n${out.trim()}\n\`\`\``,
-							isError: false,
-							uiPayload: {
-								command: TERMINAL_COMMAND,
-								output: out.trim(),
-								exitCode: 0
-							}
-						});
-						await ctx.streamText(msg, 'Deployed and reloaded cleanly — no errors.');
+						ctx.addUsage(160);
+						ctx.finishMessage(msg, 1);
+						return;
 					}
+					ctx.setToolStatus(call, 'running');
+					for (const chunk of TERMINAL_CHUNKS) {
+						if (ctx.terminalStopped(call.id)) break;
+						ctx.emitTerminal(call.id, chunk);
+						await ctx.sleep(280);
+					}
+					const out = TERMINAL_CHUNKS.map(stripAnsi).join('');
+					ctx.setToolStatus(call, 'success', {
+						llmText: `Command executed successfully.\n\n\`\`\`\n${out.trim()}\n\`\`\``,
+						isError: false,
+						uiPayload: {
+							command: TERMINAL_COMMAND,
+							output: out.trim(),
+							exitCode: 0
+						}
+					});
 					ctx.addUsage(160);
-					ctx.finishMessage(msg, 1, startedAt);
+					ctx.finishMessage(msg, 1);
+
+					// Round 2: the follow-up answer is its own message, like the real
+					// backend emits after tool results go back to the model.
+					const follow = ctx.beginAssistant();
+					await ctx.sleep(300);
+					await ctx.streamText(follow, 'Deployed and reloaded cleanly — no errors.');
+					ctx.addUsage(60);
+					ctx.finishMessage(follow, 0);
 				}
 			},
 			'multi-round-tools': {
@@ -1484,7 +1539,6 @@ class MockAgentBackend implements AgentBackend {
 				prompt: 'Check the nginx site config, switch it to HTTPS, and reload nginx.',
 				run: async (ctx) => {
 					// Round 1: read the current config (auto-approved read).
-					let startedAt = Date.now();
 					let msg = ctx.beginAssistant();
 					await ctx.sleep(300);
 					await ctx.streamText(msg, "I'll start by reading the current site config.\n");
@@ -1503,10 +1557,9 @@ class MockAgentBackend implements AgentBackend {
 					});
 					ctx.addUsage(80);
 					// Persisted id ≠ streaming id, like the real backend's tool-call rounds.
-					ctx.finishMessage(msg, 1, startedAt, `${msg}p`);
+					ctx.finishMessage(msg, 1, `${msg}p`);
 
 					// Round 2: apply the HTTPS edit (diff approval).
-					startedAt = Date.now();
 					msg = ctx.beginAssistant();
 					await ctx.sleep(350);
 					await ctx.streamText(
@@ -1527,9 +1580,8 @@ class MockAgentBackend implements AgentBackend {
 							uiPayload: { diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 						});
 						ctx.addUsage(60);
-						ctx.finishMessage(msg, 1, startedAt, `${msg}p`);
+						ctx.finishMessage(msg, 1, `${msg}p`);
 						// Final round: acknowledge the rejection; no reload.
-						startedAt = Date.now();
 						msg = ctx.beginAssistant();
 						await ctx.sleep(300);
 						await ctx.streamText(
@@ -1537,7 +1589,7 @@ class MockAgentBackend implements AgentBackend {
 							"Understood — the site stays on port 80 and I won't reload nginx. Nothing was changed."
 						);
 						ctx.addUsage(40);
-						ctx.finishMessage(msg, 0, startedAt);
+						ctx.finishMessage(msg, 0);
 						return;
 					}
 					ctx.setToolStatus(editCall, 'running');
@@ -1548,10 +1600,9 @@ class MockAgentBackend implements AgentBackend {
 						uiPayload: { diff: NGINX_DIFF_PREVIEW, path: NGINX_EDIT_ARGS.path }
 					});
 					ctx.addUsage(120);
-					ctx.finishMessage(msg, 1, startedAt, `${msg}p`);
+					ctx.finishMessage(msg, 1, `${msg}p`);
 
 					// Round 3: test the config and reload nginx, with live output.
-					startedAt = Date.now();
 					msg = ctx.beginAssistant();
 					await ctx.sleep(350);
 					await ctx.streamText(msg, "Config updated. Now I'll test it and reload nginx.\n");
@@ -1575,10 +1626,9 @@ class MockAgentBackend implements AgentBackend {
 						}
 					});
 					ctx.addUsage(100);
-					ctx.finishMessage(msg, 1, startedAt, `${msg}p`);
+					ctx.finishMessage(msg, 1, `${msg}p`);
 
 					// Round 4: final summary, no tool calls.
-					startedAt = Date.now();
 					msg = ctx.beginAssistant();
 					await ctx.sleep(300);
 					await ctx.streamText(
@@ -1586,7 +1636,7 @@ class MockAgentBackend implements AgentBackend {
 						'All done — the site now listens on 443 with the LE certs, `nginx -t` passed, and the reload came back clean.'
 					);
 					ctx.addUsage(50);
-					ctx.finishMessage(msg, 0, startedAt);
+					ctx.finishMessage(msg, 0);
 				}
 			},
 			'parallel-tools': {
@@ -1595,7 +1645,6 @@ class MockAgentBackend implements AgentBackend {
 					'One round with three tool calls: two approvals pending at once, one auto-run.',
 				prompt: 'Check the sshd and nginx configs, then test and reload nginx.',
 				run: async (ctx) => {
-					const startedAt = Date.now();
 					const msg = ctx.beginAssistant();
 					await ctx.sleep(300);
 					await ctx.streamText(
@@ -1686,10 +1735,9 @@ class MockAgentBackend implements AgentBackend {
 					await Promise.all([sshdFlow, nginxFlow, reloadFlow]);
 					ctx.addUsage(160);
 					// Persisted id ≠ streaming id, like the real backend's tool-call rounds.
-					ctx.finishMessage(msg, 3, startedAt, `${msg}p`);
+					ctx.finishMessage(msg, 3, `${msg}p`);
 
 					// Round 2: summarize what actually happened.
-					const round2At = Date.now();
 					const follow = ctx.beginAssistant();
 					await ctx.sleep(350);
 					const notes = [
@@ -1703,7 +1751,7 @@ class MockAgentBackend implements AgentBackend {
 					];
 					await ctx.streamText(follow, notes.join(' '));
 					ctx.addUsage(60);
-					ctx.finishMessage(follow, 0, round2At);
+					ctx.finishMessage(follow, 0);
 				}
 			},
 			queued: {
@@ -1713,12 +1761,11 @@ class MockAgentBackend implements AgentBackend {
 				queuedFollowUp: (text) =>
 					`You asked mid-run: "${text}" — and here it is, injected at the round boundary. The first answer stayed intact.`,
 				run: async (ctx) => {
-					const startedAt = Date.now();
 					const msg = ctx.beginAssistant();
 					await ctx.sleep(300);
 					await ctx.streamText(msg, QUEUED_ESSAY);
 					ctx.addUsage(640);
-					ctx.finishMessage(msg, 0, startedAt);
+					ctx.finishMessage(msg, 0);
 				}
 			},
 			branch: {
@@ -1757,11 +1804,10 @@ class MockAgentBackend implements AgentBackend {
 					thread.summary.title = 'Server capacity check';
 				},
 				run: async (ctx) => {
-					const startedAt = Date.now();
 					const msg = ctx.beginAssistant();
 					await ctx.streamText(msg, 'This branch continues from here — note the fork point stays intact.');
 					ctx.addUsage(90);
-					ctx.finishMessage(msg, 0, startedAt);
+					ctx.finishMessage(msg, 0);
 				}
 			},
 			error: {

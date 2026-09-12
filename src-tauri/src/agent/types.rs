@@ -30,6 +30,10 @@ pub struct MessageMetadata {
     pub usage: Option<Usage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    /// Time to the first content delta of the round (text, thinking, or
+    /// tool-call args), measured from `round_start` like `duration_ms`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttft_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_count: Option<u32>,
 }

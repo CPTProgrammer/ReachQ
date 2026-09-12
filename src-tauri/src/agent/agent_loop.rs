@@ -571,6 +571,8 @@ async fn run_loop(
 
         let message_id = Uuid::new_v4().to_string();
         let round_start = Instant::now();
+        // First content delta (text / thinking / tool-call args) => TTFT.
+        let mut first_delta_at: Option<Duration> = None;
         let mut acc = RoundAcc::default();
         let mut announced_tools: Vec<String> = Vec::new(); // tool_call ids announced as streaming
         let mut preview_tracker = StreamPreviews::new();
@@ -603,6 +605,14 @@ async fn run_loop(
                 }
             };
             let Some(event) = event else { break };
+            if first_delta_at.is_none()
+                && matches!(
+                    event,
+                    ChatEvent::TextDelta(_) | ChatEvent::ThinkingDelta(_) | ChatEvent::ToolCallDelta { .. }
+                )
+            {
+                first_delta_at = Some(round_start.elapsed());
+            }
             match event {
                 ChatEvent::TextDelta(delta) => {
                     acc.text.push_str(&delta);
@@ -750,6 +760,7 @@ async fn run_loop(
             model: Some(resolved.model_id.clone()),
             usage: acc.last_usage.clone(),
             duration_ms: Some(round_start.elapsed().as_millis() as u64),
+            ttft_ms: first_delta_at.map(|d| d.as_millis() as u64),
             tool_call_count: Some(parsed_calls.len() as u32),
         };
 

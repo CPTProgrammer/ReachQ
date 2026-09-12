@@ -267,6 +267,7 @@
   "agent.meta_tokens": "Токены",
   "agent.meta_cached": "Из кэша",
   "agent.meta_duration": "Длительность",
+  "agent.meta_ttft": "Первый токен",
   "agent.meta_tool_calls": "Вызовы инструментов",
   "agent.meta_tokens_value": "вход {{input}} / выход {{output}}",
   "agent.meta_speed": "Скорость",

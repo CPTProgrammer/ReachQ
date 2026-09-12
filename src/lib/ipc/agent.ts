@@ -19,6 +19,8 @@ export interface MessageMetadata {
 	model?: string;
 	usage?: Usage;
 	durationMs?: number;
+	/** Time to the first content delta of the round, same origin as durationMs. */
+	ttftMs?: number;
 	toolCallCount?: number;
 }
 

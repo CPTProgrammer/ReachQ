@@ -276,6 +276,7 @@
   "agent.meta_tokens": "Tokens",
   "agent.meta_cached": "Σε προσωρινή μνήμη",
   "agent.meta_duration": "Διάρκεια",
+  "agent.meta_ttft": "Πρώτο token",
   "agent.meta_tool_calls": "Κλήσεις εργαλείων",
   "agent.meta_tokens_value": "είσοδος {{input}} / έξοδος {{output}}",
   "agent.meta_speed": "Ταχύτητα",
