@@ -244,6 +244,7 @@
   "agent.edit_queued": "返回编辑",
   "agent.delete_queued": "丢弃排队的消息",
   "agent.send_now": "立即发送",
+  "agent.scroll_to_bottom": "滚动到底部",
   "agent.thinking": "深度思考",
   "agent.thinking_unavailable": "此模型不支持深度思考",
   "agent.thinking_locked": "此模型始终开启深度思考",

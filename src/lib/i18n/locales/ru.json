@@ -235,6 +235,7 @@
   "agent.edit_queued": "Вернуться к редактированию",
   "agent.delete_queued": "Удалить сообщение из очереди",
   "agent.send_now": "Отправить сейчас",
+  "agent.scroll_to_bottom": "Прокрутить вниз",
   "agent.thinking": "Размышление",
   "agent.thinking_unavailable": "Эта модель не поддерживает размышления",
   "agent.thinking_locked": "Размышления всегда включены для этой модели",

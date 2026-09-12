@@ -244,6 +244,7 @@
   "agent.edit_queued": "Revenir à l'édition",
   "agent.delete_queued": "Supprimer le message en file",
   "agent.send_now": "Envoyer maintenant",
+  "agent.scroll_to_bottom": "Défiler vers le bas",
   "agent.thinking": "Réflexion",
   "agent.thinking_unavailable": "Ce modèle ne prend pas en charge la réflexion",
   "agent.thinking_locked": "La réflexion est toujours activée pour ce modèle",

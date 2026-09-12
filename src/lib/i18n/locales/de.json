@@ -244,6 +244,7 @@
   "agent.edit_queued": "Zurück zum Bearbeiten",
   "agent.delete_queued": "Nachricht in Warteschlange verwerfen",
   "agent.send_now": "Jetzt senden",
+  "agent.scroll_to_bottom": "Nach unten scrollen",
   "agent.thinking": "Nachdenken",
   "agent.thinking_unavailable": "Dieses Modell unterstützt kein Nachdenken",
   "agent.thinking_locked": "Nachdenken ist bei diesem Modell immer aktiviert",

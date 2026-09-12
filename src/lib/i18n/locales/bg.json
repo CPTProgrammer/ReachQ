@@ -244,6 +244,7 @@
   "agent.edit_queued": "Обратно към редактиране",
   "agent.delete_queued": "Отхвърли съобщението от опашката",
   "agent.send_now": "Изпрати сега",
+  "agent.scroll_to_bottom": "Превъртане надолу",
   "agent.thinking": "Мислене",
   "agent.thinking_unavailable": "Този модел не поддържа мислене",
   "agent.thinking_locked": "Мисленето е винаги включено за този модел",

@@ -244,6 +244,7 @@
   "agent.edit_queued": "Torna alla modifica",
   "agent.delete_queued": "Scarta messaggio in coda",
   "agent.send_now": "Invia ora",
+  "agent.scroll_to_bottom": "Scorri fino in fondo",
   "agent.thinking": "Pensiero",
   "agent.thinking_unavailable": "Questo modello non supporta il pensiero",
   "agent.thinking_locked": "Il pensiero è sempre attivo per questo modello",

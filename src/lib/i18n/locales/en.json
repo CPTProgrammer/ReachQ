@@ -244,6 +244,7 @@
   "agent.edit_queued": "Back to editing",
   "agent.delete_queued": "Discard queued message",
   "agent.send_now": "Send now",
+  "agent.scroll_to_bottom": "Scroll to bottom",
   "agent.thinking": "Thinking",
   "agent.thinking_unavailable": "This model does not support thinking",
   "agent.thinking_locked": "Thinking is always on for this model",

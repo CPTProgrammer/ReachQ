@@ -12,9 +12,9 @@
 		agentEditAndFork,
 		agentSendNow,
 		agentSwitchBranch,
-		getThreadRuntime,
-		type ThreadRuntime
+		getThreadRuntime
 	} from '$lib/state/agent.svelte';
+	import { getFollowing, setFollowing } from './chat-follow.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import ToolCallCard from './ToolCallCard.svelte';
 	import { renderMarkdown } from './markdown';
@@ -26,39 +26,85 @@
 
 	let runtime = $derived(threadId ? getThreadRuntime(threadId) : null);
 
-	// ── Scroll ────────────────────────────────────────────────────────────────
+	// ── Scroll (stick-to-bottom) ─────────────────────────────────────────────
 
 	let scrollEl: HTMLDivElement | undefined = $state();
-	let nearBottom = $state(true);
+	let following = $derived(getFollowing());
+
+	/** Re-entry hysteresis: scrolling *down* into this zone re-engages follow. */
+	const REENTER_PX = 4;
+
+	// Snap-to-bottom marks the scrollTop it landed on; the coalesced scroll
+	// event triggered by a programmatic write is recognized by value match
+	// (consumed once) instead of being classified as a user gesture.
+	let lastProgrammaticTop: number | null = null;
+	let lastObservedTop = 0;
+
+	function distanceToBottom(el: HTMLDivElement): number {
+		return el.scrollHeight - el.scrollTop - el.clientHeight;
+	}
+
+	function snapToBottom(): void {
+		const el = scrollEl;
+		if (!el) return;
+		el.scrollTop = el.scrollHeight;
+		lastProgrammaticTop = el.scrollTop;
+		lastObservedTop = el.scrollTop;
+	}
+
+	function jumpToBottom(): void {
+		setFollowing(true);
+		snapToBottom();
+	}
 
 	function onScroll(): void {
 		const el = scrollEl;
 		if (!el) return;
-		nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 1;
-	}
-
-	/** Reactive signature of everything that can grow the message list. */
-	function contentSig(rt: ThreadRuntime): string {
-		let s = `${rt.messages.length}:`;
-		for (const m of rt.messages) {
-			s += m.id;
-			for (const b of m.content) {
-				if (b.type === 'text' || b.type === 'thinking') s += `.${b.text.length}`;
-				else {
-					const v = rt.toolCalls[b.id];
-					s += `.${b.status}${v ? `${v.argsJson.length}${v.status}` : ''}`;
-				}
-			}
+		const top = el.scrollTop;
+		if (lastProgrammaticTop !== null && top === lastProgrammaticTop) {
+			lastProgrammaticTop = null;
+		} else if (top < lastObservedTop) {
+			setFollowing(false); // any upward movement leaves follow instantly
+		} else if (top > lastObservedTop && distanceToBottom(el) < REENTER_PX) {
+			setFollowing(true); // scrolling back down into the zone re-enters
 		}
-		return s;
+		lastObservedTop = top;
 	}
 
+	function onWheel(e: WheelEvent): void {
+		if (e.deltaY < 0) setFollowing(false);
+	}
+
+	let lastTouchY = 0;
+
+	function onTouchStart(e: TouchEvent): void {
+		lastTouchY = e.touches[0]?.clientY ?? 0;
+	}
+
+	function onTouchMove(e: TouchEvent): void {
+		const y = e.touches[0]?.clientY ?? lastTouchY;
+		if (y > lastTouchY + 2) setFollowing(false); // finger swipes down: content up
+		lastTouchY = y;
+	}
+
+	// While following, pin the scroller to the bottom every frame. A frame
+	// loop (instead of reacting to state changes) absorbs growth from any
+	// source — Svelte renders as well as non-reactive DOM such as streaming
+	// xterm output — and batches bursty deltas into at most one scroll per
+	// frame.
 	$effect(() => {
-		const rt = runtime;
+		if (!following || !scrollEl) return;
 		const el = scrollEl;
-		if (!rt || !el) return;
-		contentSig(rt); // subscribe
-		if (nearBottom) el.scrollTop = el.scrollHeight;
+		let raf = 0;
+		const pin = () => {
+			const max = el.scrollHeight - el.clientHeight;
+			if (el.scrollTop !== max) el.scrollTop = max;
+			lastProgrammaticTop = el.scrollTop;
+			lastObservedTop = el.scrollTop;
+			raf = requestAnimationFrame(pin);
+		};
+		raf = requestAnimationFrame(pin);
+		return () => cancelAnimationFrame(raf);
 	});
 
 	// ── User message inline editing / fork (design 01 §2.4) ──────────────────
@@ -72,10 +118,10 @@
 	$effect(() => {
 		if (threadId === lastThreadId) return;
 		lastThreadId = threadId;
-		nearBottom = true;
+		setFollowing(true);
 		editing = null;
 		requestAnimationFrame(() => {
-			if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+			snapToBottom();
 		});
 	});
 
@@ -104,6 +150,7 @@
 		if (!opts) return;
 		const messageId = editing.id;
 		editing = null;
+		setFollowing(true); // resending jumps the chat to the bottom
 		await agentEditAndFork(identity, threadId, messageId, text, opts);
 	}
 
@@ -230,7 +277,10 @@
 		const text = rt.queued.text;
 		const opts = resolveSendOpts(identity, threadId);
 		// Atomic backend-side: supersede queue + cancel + wait + fresh run.
-		if (opts) await agentSendNow(identity, threadId, text, opts);
+		if (opts) {
+			setFollowing(true);
+			await agentSendNow(identity, threadId, text, opts);
+		}
 	}
 
 	// ── Markdown code-block copy (event delegation) ───────────────────────────
@@ -250,7 +300,15 @@
 <div class="chat-area">
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<div class="messages" bind:this={scrollEl} onscroll={onScroll} onclick={onChatClick}>
+	<div
+		class="messages"
+		bind:this={scrollEl}
+		onscroll={onScroll}
+		onwheel={onWheel}
+		ontouchstart={onTouchStart}
+		ontouchmove={onTouchMove}
+		onclick={onChatClick}
+	>
 		{#if !runtime || runtime.messages.length === 0}
 			<div class="empty-state">
 				<p>{t('agent.empty_thread')}</p>
@@ -409,6 +467,18 @@
 			<button type="button" class="send-now" onclick={() => void queuedSendNow()}>{t('agent.send_now')}</button>
 		</div>
 	{/if}
+
+	{#if runtime && runtime.messages.length > 0 && !following}
+		<button
+			type="button"
+			class="to-bottom"
+			title={t('agent.scroll_to_bottom')}
+			aria-label={t('agent.scroll_to_bottom')}
+			onclick={jumpToBottom}
+		>
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+		</button>
+	{/if}
 </div>
 
 <style>
@@ -418,6 +488,7 @@
 		flex-direction: column;
 		align-items: center;
 		min-height: 0;
+		position: relative;
 	}
 
 	.messages {
@@ -429,6 +500,38 @@
 		max-width: var(--chat-max-width);
 		width: 100%;
 		overflow-y: auto;
+		/* Stick-to-bottom is driven by the pin loop; scroll anchoring would
+		   fight it and emit stray scroll events (see chat-follow). */
+		overflow-anchor: none;
+	}
+
+	.to-bottom {
+		position: absolute;
+		right: 14px;
+		bottom: 14px;
+		z-index: 5;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		border-radius: 6px;
+		border: 1px solid var(--color-border);
+		background: var(--color-bg-elevated);
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		box-shadow: var(--shadow-subtle);
+	}
+
+	.to-bottom:hover {
+		color: var(--color-text-primary);
+		border-color: var(--color-accent);
+	}
+
+	/* Keep the pill clear of the error / queued bars sitting below the list. */
+	.chat-area:has(.error-bar) .to-bottom,
+	.chat-area:has(.queued-bar) .to-bottom {
+		bottom: 52px;
 	}
 
 	.empty-state {

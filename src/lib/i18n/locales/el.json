@@ -244,6 +244,7 @@
   "agent.edit_queued": "Επιστροφή στην επεξεργασία",
   "agent.delete_queued": "Απόρριψη μηνύματος σε ουρά",
   "agent.send_now": "Αποστολή τώρα",
+  "agent.scroll_to_bottom": "Κύλιση στο κάτω μέρος",
   "agent.thinking": "Σκέψη",
   "agent.thinking_unavailable": "Αυτό το μοντέλο δεν υποστηρίζει σκέψη",
   "agent.thinking_locked": "Η σκέψη είναι πάντα ενεργή για αυτό το μοντέλο",
