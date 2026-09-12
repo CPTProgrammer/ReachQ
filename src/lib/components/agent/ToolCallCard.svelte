@@ -207,17 +207,6 @@
 			</button>
 			<!-- Tool-specific extra buttons -->
 			{#if call.name === 'terminal'}
-				{#if call.status === 'running'}
-					<button
-						type="button"
-						class="icon-btn danger"
-						title={t('agent.stop_command')}
-						aria-label={t('agent.stop_command')}
-						onclick={() => agentStopTerminal(call.id)}
-					>
-						<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
-					</button>
-				{/if}
 				<button
 					type="button"
 					class="icon-btn"
@@ -232,6 +221,17 @@
 						<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
 					{/if}
 				</button>
+				{#if call.status === 'running'}
+					<button
+						type="button"
+						class="icon-btn danger"
+						title={t('agent.stop_command')}
+						aria-label={t('agent.stop_command')}
+						onclick={() => agentStopTerminal(call.id)}
+					>
+						<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="1.5"/></svg>
+					</button>
+				{/if}
 			{/if}
 		</span>
 	</div>

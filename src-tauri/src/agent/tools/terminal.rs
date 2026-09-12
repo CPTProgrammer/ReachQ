@@ -28,8 +28,7 @@ use crate::agent::providers::ToolSchema;
 /// Default PTY size (Zed's headless terminal defaults: 100 cols x 6 rows).
 const DEFAULT_COLS: u32 = 100;
 const DEFAULT_ROWS: u32 = 6;
-const DEFAULT_TIMEOUT_MS: u64 = 30_000;
-const MAX_TIMEOUT_MS: u64 = 300_000;
+const DEFAULT_TIMEOUT_MS: u64 = 300_000;
 const OUTPUT_LIMIT: usize = 16 * 1024;
 /// Scrollback lines kept in the headless grid (Zed task terminal).
 const SCROLL_HISTORY: usize = 100_000;
@@ -47,8 +46,8 @@ Executes a shell one-liner on the REMOTE host and returns its output with the ex
 pub struct TerminalInput {
     /// The one-liner command to execute on the remote host.
     command: String,
-    /// Optional maximum runtime in milliseconds (default 30000, max 300000).
-    /// The command is killed on timeout.
+    /// Optional maximum runtime in milliseconds (default 300000, no upper
+    /// limit). The command is killed on timeout.
     #[serde(default)]
     timeout_ms: Option<u64>,
     /// Optional. Return only the first N lines of the output.
@@ -249,10 +248,7 @@ impl AgentTool for TerminalTool {
         if command.is_empty() {
             return Err(err_text("Invalid arguments: command is empty"));
         }
-        let timeout_ms = input
-            .timeout_ms
-            .unwrap_or(DEFAULT_TIMEOUT_MS)
-            .min(MAX_TIMEOUT_MS);
+        let timeout_ms = input.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS);
 
         // Leased connection (design 02 §3.1: covers the whole tool call).
         let lease = ConnectionLease::acquire(
