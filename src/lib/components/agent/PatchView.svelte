@@ -28,8 +28,9 @@
 	/**
 	 * Flatten the preview into renderable rows. Each run of deleted lines plus
 	 * the added lines right after it forms a change block; paired lines (in
-	 * order, min(n,m) pairs) get word-level highlights — unless the pair shares
-	 * less than 40% of the shorter line, which is too noisy to highlight.
+	 * order, min(n,m) pairs) get word-level highlights — unless the pair's
+	 * non-whitespace similarity (2*common/(len1+len2)) is below 0.25, which
+	 * is too noisy to highlight.
 	 */
 	function buildItems(d: DiffPreview): Item[] {
 		const items: Item[] = [];
@@ -57,15 +58,22 @@
 					const oldText = lines[i + p].text;
 					const newText = lines[j + p].text;
 					const changes = diffWordsWithSpace(oldText, newText);
+					// Gate on non-whitespace similarity only — indentation and
+					// inter-word spaces would otherwise inflate the score and let
+					// unrelated line pairs through.
 					let common = 0;
-					for (const c of changes) if (!c.added && !c.removed) common += c.value.length;
-					if (common < Math.min(oldText.length, newText.length) * 0.4) continue;
-					inline[i + p] = changes
-						.filter((c) => !c.added)
-						.map((c) => ({ text: c.value, hot: !!c.removed }));
-					inline[j + p] = changes
-						.filter((c) => !c.removed)
-						.map((c) => ({ text: c.value, hot: !!c.added }));
+					for (const c of changes)
+						if (!c.added && !c.removed) common += c.value.replace(/\s/g, '').length;
+					const oldLen = oldText.replace(/\s/g, '').length;
+					const newLen = newText.replace(/\s/g, '').length;
+					const ratio = oldLen + newLen === 0 ? 0 : (2 * common) / (oldLen + newLen);
+					if (ratio < 0.25) continue;
+					inline[i + p] = coalesceFragments(
+						changes.filter((c) => !c.added).map((c) => ({ text: c.value, hot: !!c.removed }))
+					);
+					inline[j + p] = coalesceFragments(
+						changes.filter((c) => !c.removed).map((c) => ({ text: c.value, hot: !!c.added }))
+					);
 				}
 				i = k;
 			}
@@ -83,6 +91,28 @@
 			});
 		});
 		return items;
+	}
+
+	/**
+	 * Merge fragmentary highlights: a whitespace-only cold segment sandwiched
+	 * between two hot segments belongs to the same logical edit, so flip it hot
+	 * and coalesce adjacent same-hot runs into one block. Whitespace at the
+	 * edges stays cold, which keeps shared indentation and trailing punctuation
+	 * unhighlighted.
+	 */
+	function coalesceFragments(segments: Segment[]): Segment[] {
+		const flipped = segments.map((s, i) =>
+			!s.hot && /^\s+$/.test(s.text) && segments[i - 1]?.hot && segments[i + 1]?.hot
+				? { text: s.text, hot: true }
+				: s
+		);
+		const merged: Segment[] = [];
+		for (const s of flipped) {
+			const last = merged[merged.length - 1];
+			if (last && last.hot === s.hot) last.text += s.text;
+			else merged.push({ ...s });
+		}
+		return merged;
 	}
 
 	let items = $derived(buildItems(diff));
