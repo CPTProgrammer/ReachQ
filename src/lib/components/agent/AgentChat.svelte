@@ -63,7 +63,7 @@
 		const top = el.scrollTop;
 		if (lastProgrammaticTop !== null && top === lastProgrammaticTop) {
 			lastProgrammaticTop = null;
-		} else if (top < lastObservedTop) {
+		} else if (top < lastObservedTop && !(distanceToBottom(el) <= 2)) {
 			setFollowing(false); // any upward movement leaves follow instantly
 		} else if (top > lastObservedTop && distanceToBottom(el) < REENTER_PX) {
 			setFollowing(true); // scrolling back down into the zone re-enters
