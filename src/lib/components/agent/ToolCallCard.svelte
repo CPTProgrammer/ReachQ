@@ -20,6 +20,7 @@
 	import ToolTerminal from './ToolTerminal.svelte';
 	import { renderMarkdown } from './markdown';
 	import { argString, copyText, extractDiff, prettyJson, safeParse } from './utils';
+	import { parseInlineCode } from '$lib/utils/formatters';
 
 	let { call }: Props = $props();
 
@@ -54,7 +55,9 @@
 			case 'sensitive_pattern':
 				return t('agent.warn_sensitive_pattern', { pattern: warning.pattern });
 			case 'dangerous_keywords':
-				return t('agent.warn_dangerous_keywords', { keywords: warning.keywords.join(', ') });
+				return t('agent.warn_dangerous_keywords', {
+					keywords: warning.keywords.map((k) => `\`${k}\``).join(', ')
+				});
 		}
 	}
 	/** Terminal view stays hidden until approved + connected (design 01 §2.3). */
@@ -83,11 +86,15 @@
 				return t('agent.tool_fetch', { url: url || '…' });
 			case 'write_file':
 			case 'edit_file':
-				return path || call.name;
+				return `\`${path || call.name}\``;
 			default:
-				return call.name;
+				return `\`${call.name}\``;
 		}
 	});
+
+	let titleSegments = $derived(parseInlineCode(title));
+	/** Plain-text title (backticks resolved) for the tooltip. */
+	let titleTooltip = $derived(titleSegments.map((s) => s.text).join(''));
 
 	let isFileTool = $derived(call.name === 'write_file' || call.name === 'edit_file');
 
@@ -187,7 +194,7 @@
 				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3 3.7-3.7z"/></svg>
 			{/if}
 		</span>
-		<span class="tool-title" {title}>{title}</span>
+		<span class="tool-title" title={titleTooltip}>{#each titleSegments as segment}{#if segment.code}<code>{segment.text}</code>{:else}{segment.text}{/if}{/each}</span>
 
 		<span class="tool-actions">
 			<!-- Raw view toggle -->
@@ -292,7 +299,7 @@
 						{#each call.warnings as warning, i (i)}
 							<div class="warning-line">
 								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-								<span>{warningText(warning)}</span>
+								<span>{#each parseInlineCode(warningText(warning)) as segment}{#if segment.code}<code>{segment.text}</code>{:else}{segment.text}{/if}{/each}</span>
 							</div>
 						{/each}
 					</div>
@@ -398,9 +405,13 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-family: var(--font-content-mono);
 		font-size: 0.72rem;
 		color: var(--color-text-primary);
+	}
+
+	.tool-title code {
+		font-family: var(--font-content-mono);
+		font-size: 0.7rem;
 	}
 
 	.tool-actions {
@@ -583,6 +594,11 @@
 	.warning-line svg {
 		flex-shrink: 0;
 		margin-top: 2px;
+	}
+
+	.warning-line code {
+		font-family: var(--font-content-mono);
+		font-size: 0.68rem;
 	}
 
 	.approval-buttons {

@@ -86,6 +86,32 @@ export function truncate(str: string, maxLength: number): string {
 	return str.slice(0, maxLength - 1) + '\u2026';
 }
 
+export interface InlineCodeSegment {
+	text: string;
+	code: boolean;
+}
+
+/**
+ * Split text on backticks into plain/code segments, markdown inline-code style.
+ * e.g., "Read `foo.txt`" → [{ "Read ", plain }, { "foo.txt", code }]
+ * An unmatched trailing backtick is kept as literal text.
+ */
+export function parseInlineCode(text: string): InlineCodeSegment[] {
+	const parts = text.split('`');
+	const segments: InlineCodeSegment[] = [];
+	for (let i = 0; i < parts.length; i++) {
+		if (parts[i] === '') continue;
+		if (i % 2 === 1 && i < parts.length - 1) {
+			segments.push({ text: parts[i], code: true });
+		} else if (i % 2 === 1) {
+			segments.push({ text: '`' + parts[i], code: false });
+		} else {
+			segments.push({ text: parts[i], code: false });
+		}
+	}
+	return segments;
+}
+
 const EFFORT_DISPLAY_NAMES: Record<string, string> = {
 	minimal: "Minimal",
 	low: 'Low',
