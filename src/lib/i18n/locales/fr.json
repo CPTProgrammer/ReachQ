@@ -270,6 +270,7 @@
   "agent.branch_nav_tooltip": "Changer de branche ne modifie que ce qui est affiché ; cela n'annule pas les actions déjà effectuées sur l'hôte distant.",
   "agent.edit_message_hint": "Modifiez et renvoyez depuis ici (crée une nouvelle branche)",
   "agent.pop_out": "Ouvrir dans une fenêtre séparée",
+  "agent.dock_back": "Réintégrer dans la fenêtre principale",
   "agent.no_threads": "Aucune conversation pour le moment.",
   "agent.error": "Erreur",
   "agent.meta_provider": "Fournisseur",

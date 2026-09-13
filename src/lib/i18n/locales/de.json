@@ -270,6 +270,7 @@
   "agent.branch_nav_tooltip": "Der Wechsel zwischen Zweigen ändert nur die Anzeige; bereits auf dem Remote-Host ausgeführte Aktionen werden nicht rückgängig gemacht.",
   "agent.edit_message_hint": "Hier bearbeiten und erneut senden (erzeugt einen neuen Zweig)",
   "agent.pop_out": "In separatem Fenster öffnen",
+  "agent.dock_back": "Ins Hauptfenster andocken",
   "agent.no_threads": "Noch keine Unterhaltungen.",
   "agent.error": "Fehler",
   "agent.meta_provider": "Anbieter",

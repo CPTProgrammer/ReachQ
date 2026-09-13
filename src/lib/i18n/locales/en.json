@@ -270,6 +270,7 @@
   "agent.branch_nav_tooltip": "Switching branches only changes what is shown; it does not undo actions already performed on the remote host.",
   "agent.edit_message_hint": "Edit and resend from here (forks a new branch)",
   "agent.pop_out": "Open in separate window",
+  "agent.dock_back": "Dock back into main window",
   "agent.no_threads": "No conversations yet.",
   "agent.error": "Error",
   "agent.meta_provider": "Provider",

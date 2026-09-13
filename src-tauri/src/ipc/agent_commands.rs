@@ -9,6 +9,7 @@ use tauri::{AppHandle, State};
 use crate::agent::agent_loop::{self, SendOpts};
 use crate::agent::config::{self, ProviderInstance, ToolConfig};
 use crate::agent::events::AgentEvent;
+use crate::agent::identity::{compute_identity, ChainHop};
 use crate::agent::providers::{self, ModelMeta};
 use crate::agent::thread_store::ThreadStore;
 use crate::agent::tools;
@@ -732,4 +733,31 @@ pub async fn agent_migrate_legacy_settings(state: State<'_, AppState>) -> Result
 pub async fn agent_ping() -> Result<String, String> {
     let _ = AgentEvent::channel("ping");
     Ok("pong".to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+/// Compute the agent identity a saved-session link would connect with — the
+/// exact normalization `ssh_connect` applies (design 01 §1.1): a non-empty
+/// jump chain fingerprints the hops only (mirrors `connect_via_jump`), a
+/// direct link fingerprints the proxy (mirrors `connect`). Lets the
+/// frontend match sessions to identities without reimplementing the chain
+/// hash.
+#[tauri::command]
+pub fn agent_compute_identity(
+    username: String,
+    host: String,
+    port: u16,
+    jump_chain: Option<Vec<crate::state::JumpHostConfig>>,
+    proxy: Option<crate::state::ProxyConfig>,
+) -> String {
+    match jump_chain.as_ref().filter(|c| !c.is_empty()) {
+        Some(chain) => {
+            let hops: Vec<ChainHop> = chain.iter().map(ChainHop::from).collect();
+            compute_identity(&username, &host, port, Some(&hops), None)
+        }
+        None => compute_identity(&username, &host, port, None, proxy.as_ref()),
+    }
 }

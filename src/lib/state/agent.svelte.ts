@@ -132,7 +132,10 @@ export async function popOutPanel(identity: string): Promise<void> {
 			width: panel.panelWidth,
 			height: Math.max(window.innerHeight, 480),
 			minWidth: 360,
-			minHeight: 400
+			minHeight: 400,
+			// Undecorated: AgentWindow renders a custom title bar styled after
+			// the main window's (design 01 §1.2).
+			decorations: false
 		});
 		void win.once('tauri://error', (e) => {
 			console.error('Failed to create detached agent window:', e);
@@ -142,6 +145,26 @@ export async function popOutPanel(identity: string): Promise<void> {
 		// Non-Tauri env (browser preview) or permission failure: stay docked.
 		console.error('Failed to open detached agent window:', err);
 		updatePanelState(identity, { detached: false });
+	}
+}
+
+/** Latched by `dockBackPanel` so the window-close hook keeps the panel open. */
+let dockBackRequested = false;
+
+/**
+ * Dock the detached panel back into the main window, keeping it open. The
+ * latch makes `initDetachedWindowCloseHook` persist `{ detached: false,
+ * open: true }` instead of the plain-close semantics (design 01 §1.2).
+ */
+export async function dockBackPanel(identity: string): Promise<void> {
+	updatePanelState(identity, { detached: false, open: true });
+	dockBackRequested = true;
+	try {
+		const win = await WebviewWindow.getByLabel(agentWindowLabel(identity));
+		await win?.close();
+	} catch (err) {
+		dockBackRequested = false;
+		console.error('Failed to close detached agent window:', err);
 	}
 }
 
@@ -178,14 +201,16 @@ export function initPanelStorageSync(): void {
  * Detached-window close hook (design 01 §1.2): closing the pop-out window
  * docks the panel back in the closed state — persists
  * `{detached: false, open: false}` to localStorage, which the main window
- * picks up via `initPanelStorageSync`. Returns a cleanup fn.
+ * picks up via `initPanelStorageSync`. When the close comes from
+ * `dockBackPanel`, the latch keeps the panel open instead. Returns a
+ * cleanup fn.
  */
 export function initDetachedWindowCloseHook(identity: string): () => void {
 	const persistClosed = () => {
 		try {
 			const key = panelKey(identity);
 			const stored = JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<AgentPanelState>;
-			localStorage.setItem(key, JSON.stringify({ ...stored, detached: false, open: false }));
+			localStorage.setItem(key, JSON.stringify({ ...stored, detached: false, open: dockBackRequested }));
 		} catch {
 			/* non-fatal */
 		}

@@ -270,6 +270,7 @@
   "agent.branch_nav_tooltip": "切换分支仅改变显示内容，不会撤销已在远程主机上执行的操作。",
   "agent.edit_message_hint": "编辑并从此处重新发送（将分叉出新分支）",
   "agent.pop_out": "在独立窗口中打开",
+  "agent.dock_back": "停靠回主窗口",
   "agent.no_threads": "暂无对话。",
   "agent.error": "错误",
   "agent.meta_provider": "提供商",

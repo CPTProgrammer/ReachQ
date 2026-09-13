@@ -270,6 +270,7 @@
   "agent.branch_nav_tooltip": "Cambiare ramo modifica solo ciò che viene mostrato; non annulla le azioni già eseguite sull'host remoto.",
   "agent.edit_message_hint": "Modifica e reinvia da qui (crea un nuovo ramo)",
   "agent.pop_out": "Apri in una finestra separata",
+  "agent.dock_back": "Riancora nella finestra principale",
   "agent.no_threads": "Ancora nessuna conversazione.",
   "agent.error": "Errore",
   "agent.meta_provider": "Provider",

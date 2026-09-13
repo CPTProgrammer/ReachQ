@@ -3,6 +3,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import type { JumpHostConfig, ProxySessionConfig } from './sessions';
 
 // ---------------------------------------------------------------------------
 // Shared types (mirror src-tauri/src/agent/types.rs + events.rs)
@@ -334,6 +335,22 @@ export const agentTitleModel = {
 
 export function agentMigrateLegacySettings(): Promise<boolean> {
 	return invoke('agent_migrate_legacy_settings');
+}
+
+/**
+ * Compute the agent identity a session would connect with — the exact
+ * normalization `ssh_connect` applies (jump chains fingerprint the hops,
+ * direct links fingerprint the proxy). Lets callers match saved sessions
+ * to identities without reimplementing the chain hash.
+ */
+export function agentComputeIdentity(params: {
+	username: string;
+	host: string;
+	port: number;
+	jumpChain?: JumpHostConfig[] | null;
+	proxy?: ProxySessionConfig | null;
+}): Promise<string> {
+	return invoke<string>('agent_compute_identity', params);
 }
 
 // ---------------------------------------------------------------------------

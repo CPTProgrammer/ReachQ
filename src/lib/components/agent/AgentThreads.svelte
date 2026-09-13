@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-	import { getPanelState, popOutPanel, updatePanelState } from '$lib/state/agent.svelte';
+	import { getPanelState, updatePanelState } from '$lib/state/agent.svelte';
 	import {
 		archiveThread,
 		createThread,
@@ -142,23 +142,6 @@
 				</div>
 			{/each}
 		</div>
-
-		<div class="threads-footer">
-			<button
-				type="button"
-				class="icon-btn popout-btn"
-				class:active={panel.detached}
-				title={t('agent.pop_out')}
-				aria-label={t('agent.pop_out')}
-				onclick={() => void popOutPanel(identity)}
-			>
-				<!-- two overlapping outlined squares (front occludes back) -->
-				<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-					<rect x="9" y="3" width="12" height="12" rx="2.5" />
-					<rect x="3" y="9" width="12" height="12" rx="2.5" fill="var(--color-bg-secondary)" />
-				</svg>
-			</button>
-		</div>
 	</div>
 {/if}
 
@@ -169,8 +152,8 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 8px;
-		padding: 8px 0;
+		gap: 10px;
+		padding: 10px 0;
 		border: none;
 		border-left: 1px solid var(--color-border);
 		background: var(--color-bg-secondary);
@@ -206,6 +189,7 @@
 		padding: 8px 10px;
 		cursor: pointer;
 		flex-shrink: 0;
+		height: 32px;
 	}
 
 	.threads-title {
@@ -287,9 +271,23 @@
 		font-size: 0.75rem;
 		color: var(--color-text-primary);
 		overflow: hidden;
-		text-overflow: ellipsis;
 		white-space: nowrap;
 		padding-right: 44px;
+		position: relative;
+		-webkit-mask-image: linear-gradient(to right, black calc(100% - 55px), transparent calc(100% - 11px));
+		-webkit-mask-size: 100%;
+		-webkit-mask-position: left;
+		-webkit-mask-repeat: no-repeat;
+		mask-image: linear-gradient(to right, black calc(100% - 55px), transparent calc(100% - 11px));
+		mask-size: 100%;
+		mask-position: left;
+		mask-repeat: no-repeat;
+		transition: -webkit-mask-size 0.2s ease, mask-size 0.2s ease;
+	}
+
+	.thread-item:hover .thread-title {
+		-webkit-mask-size: calc(100% - 22px);
+		mask-size: calc(100% - 22px);
 	}
 
 	.thread-time {
@@ -340,22 +338,5 @@
 		font-size: 0.75rem;
 		font-family: var(--font-sans);
 		outline: none;
-	}
-
-	.threads-footer {
-		display: flex;
-		justify-content: flex-end;
-		padding: 6px 8px;
-		border-top: 1px solid var(--color-border);
-		flex-shrink: 0;
-	}
-
-	.popout-btn {
-		width: 22px;
-		height: 22px;
-	}
-
-	.popout-btn.active {
-		color: var(--color-accent);
 	}
 </style>
