@@ -444,6 +444,79 @@ enum LoopExit {
     Error(String),
 }
 
+/// Persist the text/thinking a round managed to stream before dying
+/// mid-stream (cancel / provider error), under the same message id the
+/// round's events already carried, so a thread switch no longer wipes it.
+/// Tool calls are dropped by design: they never executed, so half-streamed
+/// args have no place in history. Empty rounds persist nothing, mirroring
+/// the success path's "don't persist noise" check. Failures are logged,
+/// not propagated — the run is already exiting abnormally.
+#[allow(clippy::too_many_arguments)]
+async fn flush_partial_round(
+    app: &AppHandle,
+    store: &Arc<ThreadStore>,
+    identity: &str,
+    thread_id: &str,
+    message_id: &str,
+    acc: &RoundAcc,
+    resolved: &ResolvedModel,
+    round_start: Instant,
+    first_delta_at: Option<Duration>,
+) {
+    let mut content: Vec<ContentBlock> = Vec::new();
+    if !acc.thinking.is_empty() || acc.thinking_details.is_some() {
+        content.push(ContentBlock::Thinking {
+            text: acc.thinking.clone(),
+            provider_payload: acc.thinking_details.clone(),
+        });
+    }
+    if !acc.text.is_empty() {
+        content.push(ContentBlock::Text {
+            text: acc.text.clone(),
+        });
+    }
+    if content.is_empty() {
+        return;
+    }
+
+    if let Some(usage) = &acc.last_usage {
+        let _ = store.record_usage(thread_id, usage).await;
+    }
+    let metadata = MessageMetadata {
+        provider_instance: Some(resolved.instance.name.clone()),
+        model: Some(resolved.model_id.clone()),
+        usage: acc.last_usage.clone(),
+        duration_ms: Some(round_start.elapsed().as_millis() as u64),
+        ttft_ms: first_delta_at.map(|d| d.as_millis() as u64),
+        tool_call_count: Some(0),
+    };
+    let parent = active_leaf(store, thread_id).await;
+    match store
+        .append_message(
+            thread_id,
+            parent.as_deref(),
+            "assistant",
+            content,
+            acc.last_usage.as_ref(),
+            Some(&metadata),
+            Some(message_id),
+        )
+        .await
+    {
+        Ok(_) => {
+            // Attach metadata to the frontend's streaming placeholder (same
+            // message id); the terminal Cancelled/Error event follows from
+            // run_agent.
+            emit(app, identity, AgentEvent::MessageDone {
+                thread_id: thread_id.to_string(),
+                message_id: message_id.to_string(),
+                metadata: Some(metadata),
+            });
+        }
+        Err(e) => tracing::warn!("agent: failed to persist partial round: {e}"),
+    }
+}
+
 /// Best-effort `uname` detection, cached per identity for the app session.
 async fn detect_os(
     _app: &AppHandle,
@@ -715,19 +788,35 @@ async fn run_loop(
         }
 
         let provider_result = provider_task.await;
-        if cancel.is_cancelled() {
-            return Err(LoopExit::Cancelled);
-        }
-        match provider_result {
-            Err(e) => return Err(LoopExit::Error(format!("Provider task failed: {e}"))),
-            Ok(Err(crate::agent::providers::ProviderError::Cancelled)) => {
-                return Err(LoopExit::Cancelled);
+        // Abnormal exit from the streaming phase (cancel / provider error):
+        // flush the text/thinking the round already produced so it survives
+        // a thread switch. Tool calls that never executed are dropped.
+        let abnormal: Option<LoopExit> = if cancel.is_cancelled() {
+            Some(LoopExit::Cancelled)
+        } else {
+            match provider_result {
+                Err(e) => Some(LoopExit::Error(format!("Provider task failed: {e}"))),
+                Ok(Err(crate::agent::providers::ProviderError::Cancelled)) => {
+                    Some(LoopExit::Cancelled)
+                }
+                Ok(Err(e)) => Some(LoopExit::Error(e.to_string())),
+                Ok(Ok(())) => acc.error.take().map(LoopExit::Error),
             }
-            Ok(Err(e)) => return Err(LoopExit::Error(e.to_string())),
-            Ok(Ok(())) => {}
-        }
-        if let Some(e) = acc.error.take() {
-            return Err(LoopExit::Error(e));
+        };
+        if let Some(exit) = abnormal {
+            flush_partial_round(
+                app,
+                store,
+                identity,
+                thread_id,
+                &message_id,
+                &acc,
+                resolved,
+                round_start,
+                first_delta_at,
+            )
+            .await;
+            return Err(exit);
         }
 
         if let Some(usage) = &acc.last_usage {

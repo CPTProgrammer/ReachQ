@@ -137,6 +137,10 @@ interface MockRun {
 	cancelled: boolean;
 	/** Rejects all pending waitApproval calls when the run is cancelled. */
 	rejectApprovals: Set<() => void>;
+	/** Assistant message ids begun in this run (beginAssistant order). */
+	messageIds: string[];
+	/** Tool calls announced in this run; setToolStatus mutates the views. */
+	toolCalls: ToolCallView[];
 }
 
 interface MockThread {
@@ -732,7 +736,7 @@ class MockAgentBackend implements AgentBackend {
 			return 'queued';
 		}
 		thread.running = true;
-		thread.run = { cancelled: false, rejectApprovals: new Set() };
+		thread.run = { cancelled: false, rejectApprovals: new Set(), messageIds: [], toolCalls: [] };
 		// Model snapshot on the thread (design 05 §5).
 		thread.summary.model = { model: opts.model, thinking: opts.thinking, effort: opts.effort };
 		const msg = this.appendUserMessage(thread, text);
@@ -782,7 +786,7 @@ class MockAgentBackend implements AgentBackend {
 		}
 		// Fresh run (same as sendMessage's 'started' branch).
 		thread.running = true;
-		thread.run = { cancelled: false, rejectApprovals: new Set() };
+		thread.run = { cancelled: false, rejectApprovals: new Set(), messageIds: [], toolCalls: [] };
 		thread.summary.model = { model: opts.model, thinking: opts.thinking, effort: opts.effort };
 		const msg = this.appendUserMessage(thread, text);
 		this.emit(identity, { kind: 'user_message', threadId, message: msg });
@@ -840,9 +844,52 @@ class MockAgentBackend implements AgentBackend {
 			thread.run = null;
 			this.emit(identity, { kind: 'run_end', threadId });
 		} catch (e) {
-			// Abnormal exit: the queued message dies with the run (mirrors the
-			// real backend's cleanup; no ghost injection into the next run).
+			// Abnormal exit (mirrors the real backend): calls that reached
+			// execution — pending approval or running — settle as cancelled with
+			// their full args; calls still streaming were never persisted and
+			// leave no record. Messages emptied by the drop are removed;
+			// surviving partial text/thinking messages get message_done metadata.
 			thread.queued = null;
+			for (const call of run.toolCalls) {
+				if (
+					call.status !== 'streaming' &&
+					call.status !== 'pending_approval' &&
+					call.status !== 'running'
+				)
+					continue;
+				const msg = thread.messages.get(call.messageId);
+				if (call.status === 'streaming') {
+					if (msg) {
+						msg.content = msg.content.filter(
+							(b) => b.type !== 'tool_call' || b.id !== call.id
+						);
+					}
+					continue;
+				}
+				call.status = 'cancelled';
+				this.emit(identity, { kind: 'tool_call', threadId, toolCall: { ...call } });
+				const block = msg?.content.find((b) => b.type === 'tool_call' && b.id === call.id);
+				if (block && block.type === 'tool_call') {
+					block.status = 'cancelled';
+					block.args = safeParse(call.argsJson);
+				}
+			}
+			for (const id of run.messageIds) {
+				const msg = thread.messages.get(id);
+				if (!msg || msg.metadata) continue;
+				if (msg.content.length > 0) {
+					ctx.finishMessage(id, 0);
+					continue;
+				}
+				thread.messages.delete(id);
+				const key = msg.parentId ?? '';
+				const kids = thread.children.get(key);
+				const idx = kids?.indexOf(id) ?? -1;
+				if (kids && idx >= 0) {
+					kids.splice(idx, 1);
+					thread.activeChild.set(key, kids.length - 1);
+				}
+			}
 			if (e === CANCELLED) {
 				this.emit(identity, { kind: 'cancelled', threadId });
 			} else {
@@ -936,6 +983,7 @@ class MockAgentBackend implements AgentBackend {
 					createdAt: Date.now()
 				};
 				this.link(thread, msg);
+				run.messageIds.push(msg.id);
 				timings.set(msg.id, { startedAt: Date.now() });
 				return msg.id;
 			},
@@ -949,6 +997,7 @@ class MockAgentBackend implements AgentBackend {
 					argsJson: '',
 					status: 'streaming'
 				};
+				run.toolCalls.push(call);
 				this.emit(identity, { kind: 'tool_call', threadId, toolCall: { ...call } });
 				const msg = thread.messages.get(messageId);
 				msg?.content.push({
@@ -1049,9 +1098,9 @@ class MockAgentBackend implements AgentBackend {
 							resolve(ok);
 						}
 					});
+					call.status = 'pending_approval';
 					const pending: ToolCallView = {
 						...call,
-						status: 'pending_approval',
 						warnings
 					};
 					this.emit(identity, { kind: 'tool_call', threadId, toolCall: pending });
@@ -1176,7 +1225,7 @@ class MockAgentBackend implements AgentBackend {
 			};
 			this.link(thread, msg);
 			thread.running = true;
-			thread.run = { cancelled: false, rejectApprovals: new Set() };
+			thread.run = { cancelled: false, rejectApprovals: new Set(), messageIds: [], toolCalls: [] };
 			// Mirror the real backend: forks emit no user_message event; the
 			// caller applies the returned snapshot to switch the visible path.
 			// Take it before the run starts, as the real command does.

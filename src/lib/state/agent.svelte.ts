@@ -489,6 +489,24 @@ function dropEmptyStreamingMessage(rt: ThreadRuntime, messageId: string | null):
 	}
 }
 
+/// Drop tool calls that never reached a terminal state when a run dies
+/// abnormally: the backend persists no record of un-executed calls, so the
+/// live view converges to what a reload will show — no phantom streaming
+/// cards. Execute-phase cancels arrive as terminal tool_call events before
+/// the terminal run event (channel ordering), so they survive the sweep.
+function dropUnfinishedToolCalls(rt: ThreadRuntime): void {
+	for (const [id, view] of Object.entries(rt.toolCalls)) {
+		if (isTerminalCall(view.status)) continue;
+		const msg = rt.messages.find((m) => m.id === view.messageId);
+		if (msg) {
+			msg.content = msg.content.filter((b) => !(b.type === 'tool_call' && b.id === id));
+		}
+		delete rt.toolCalls[id];
+		delete rt.previews[id];
+		delete rt.argsPatched[id];
+	}
+}
+
 function handleEvent(e: AgentEvent): void {
 	switch (e.kind) {
 		case 'message_start': {
@@ -625,6 +643,7 @@ function handleEvent(e: AgentEvent): void {
 			const rt = ensureThreadRuntime(e.threadId);
 			rt.running = false;
 			rt.error = e.message;
+			dropUnfinishedToolCalls(rt);
 			dropEmptyStreamingMessage(rt, rt.streamingMessageId);
 			rt.streamingMessageId = null;
 			// The backend drops the queue on abnormal exit; return the text to
@@ -638,6 +657,7 @@ function handleEvent(e: AgentEvent): void {
 		case 'cancelled': {
 			const rt = ensureThreadRuntime(e.threadId);
 			rt.running = false;
+			dropUnfinishedToolCalls(rt);
 			dropEmptyStreamingMessage(rt, rt.streamingMessageId);
 			rt.streamingMessageId = null;
 			break;
