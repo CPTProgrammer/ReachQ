@@ -597,7 +597,9 @@ class MockAgentBackend implements AgentBackend {
 				title: '',
 				archived: false,
 				createdAt: now,
-				updatedAt: now
+				updatedAt: now,
+				draft: '',
+				messageCount: 0
 			},
 			messages: new Map(),
 			children: new Map(),
@@ -676,7 +678,24 @@ class MockAgentBackend implements AgentBackend {
 	}
 
 	private snapshot(thread: MockThread): ThreadSnapshot {
-		return { thread: { ...thread.summary }, messages: this.computePath(thread) };
+		return { thread: this.summaryView(thread), messages: this.computePath(thread) };
+	}
+
+	/** Summary plus computed fields mirroring the real backend's SQL:
+	 * live message count, and a first-user-message preview for empty-title
+	 * threads that already have messages. */
+	private summaryView(thread: MockThread): ThreadSummary {
+		const summary: ThreadSummary = { ...thread.summary, messageCount: thread.messages.size };
+		delete summary.preview;
+		if (!summary.title && summary.messageCount > 0) {
+			const firstUser = [...thread.messages.values()]
+				.filter((m) => m.role === 'user')
+				.sort((a, b) => a.seq - b.seq)[0];
+			const block = firstUser?.content.find((b) => b.type === 'text');
+			const text = block && block.type === 'text' ? block.text.trim() : '';
+			if (text) summary.preview = [...text].slice(0, 30).join('');
+		}
+		return summary;
 	}
 
 	/**
@@ -844,52 +863,9 @@ class MockAgentBackend implements AgentBackend {
 			thread.run = null;
 			this.emit(identity, { kind: 'run_end', threadId });
 		} catch (e) {
-			// Abnormal exit (mirrors the real backend): calls that reached
-			// execution — pending approval or running — settle as cancelled with
-			// their full args; calls still streaming were never persisted and
-			// leave no record. Messages emptied by the drop are removed;
-			// surviving partial text/thinking messages get message_done metadata.
+			// Abnormal exit: the queued message dies with the run (mirrors the
+			// real backend's cleanup; no ghost injection into the next run).
 			thread.queued = null;
-			for (const call of run.toolCalls) {
-				if (
-					call.status !== 'streaming' &&
-					call.status !== 'pending_approval' &&
-					call.status !== 'running'
-				)
-					continue;
-				const msg = thread.messages.get(call.messageId);
-				if (call.status === 'streaming') {
-					if (msg) {
-						msg.content = msg.content.filter(
-							(b) => b.type !== 'tool_call' || b.id !== call.id
-						);
-					}
-					continue;
-				}
-				call.status = 'cancelled';
-				this.emit(identity, { kind: 'tool_call', threadId, toolCall: { ...call } });
-				const block = msg?.content.find((b) => b.type === 'tool_call' && b.id === call.id);
-				if (block && block.type === 'tool_call') {
-					block.status = 'cancelled';
-					block.args = safeParse(call.argsJson);
-				}
-			}
-			for (const id of run.messageIds) {
-				const msg = thread.messages.get(id);
-				if (!msg || msg.metadata) continue;
-				if (msg.content.length > 0) {
-					ctx.finishMessage(id, 0);
-					continue;
-				}
-				thread.messages.delete(id);
-				const key = msg.parentId ?? '';
-				const kids = thread.children.get(key);
-				const idx = kids?.indexOf(id) ?? -1;
-				if (kids && idx >= 0) {
-					kids.splice(idx, 1);
-					thread.activeChild.set(key, kids.length - 1);
-				}
-			}
 			if (e === CANCELLED) {
 				this.emit(identity, { kind: 'cancelled', threadId });
 			} else {
@@ -983,7 +959,6 @@ class MockAgentBackend implements AgentBackend {
 					createdAt: Date.now()
 				};
 				this.link(thread, msg);
-				run.messageIds.push(msg.id);
 				timings.set(msg.id, { startedAt: Date.now() });
 				return msg.id;
 			},
@@ -997,7 +972,6 @@ class MockAgentBackend implements AgentBackend {
 					argsJson: '',
 					status: 'streaming'
 				};
-				run.toolCalls.push(call);
 				this.emit(identity, { kind: 'tool_call', threadId, toolCall: { ...call } });
 				const msg = thread.messages.get(messageId);
 				msg?.content.push({
@@ -1098,9 +1072,9 @@ class MockAgentBackend implements AgentBackend {
 							resolve(ok);
 						}
 					});
-					call.status = 'pending_approval';
 					const pending: ToolCallView = {
 						...call,
+						status: 'pending_approval',
 						warnings
 					};
 					this.emit(identity, { kind: 'tool_call', threadId, toolCall: pending });
@@ -1159,21 +1133,21 @@ class MockAgentBackend implements AgentBackend {
 
 		async threadsList(identity: string): Promise<ThreadSummary[]> {
 			return [...this.threads.values()]
-				.map((t) => ({ ...t.summary }))
-				.filter((t) => t.identity === identity && !t.archived)
+				.filter((t) => t.summary.identity === identity && !t.summary.archived)
+				.map((t) => this.summaryView(t))
 				.sort((a, b) => b.updatedAt - a.updatedAt);
 		}
 
 		async threadsListAll(): Promise<ThreadSummary[]> {
 			return [...this.threads.values()]
-				.map((t) => ({ ...t.summary }))
+				.map((t) => this.summaryView(t))
 				.sort((a, b) => b.updatedAt - a.updatedAt);
 		}
 
 		async threadCreate(identity: string): Promise<ThreadSummary> {
 			const thread = this.newThread(identity);
 			this.scenarios[thread.scenario]?.seed?.(thread);
-			return { ...thread.summary };
+			return this.summaryView(thread);
 		}
 
 		async threadRename(threadId: string, title: string): Promise<void> {
@@ -1191,6 +1165,10 @@ class MockAgentBackend implements AgentBackend {
 				for (const reject of thread.run.rejectApprovals) reject();
 			}
 			this.threads.delete(threadId);
+		}
+
+		async threadSetDraft(threadId: string, draft: string): Promise<void> {
+			this.requireThread(threadId).summary.draft = draft;
 		}
 
 		async threadMessages(threadId: string): Promise<ThreadSnapshot> {
@@ -1225,7 +1203,7 @@ class MockAgentBackend implements AgentBackend {
 			};
 			this.link(thread, msg);
 			thread.running = true;
-			thread.run = { cancelled: false, rejectApprovals: new Set(), messageIds: [], toolCalls: [] };
+			thread.run = { cancelled: false, rejectApprovals: new Set() };
 			// Mirror the real backend: forks emit no user_message event; the
 			// caller applies the returned snapshot to switch the visible path.
 			// Take it before the run starts, as the real command does.

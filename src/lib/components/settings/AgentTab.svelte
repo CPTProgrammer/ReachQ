@@ -26,6 +26,7 @@
 		loadAllThreads,
 		relativeTime,
 		renameThread,
+		threadDisplayTitle,
 		unarchiveThread
 	} from '$lib/state/agent-threads.svelte';
 	import { isLocked } from '$lib/state/vault.svelte';
@@ -424,7 +425,7 @@
 								onblur={() => void commitRename()}
 							/>
 						{:else}
-							<span class="thread-title" class:archived={thread.archived}>{thread.title}</span>
+							<span class="thread-title" class:archived={thread.archived} class:untitled={!thread.title}>{threadDisplayTitle(thread)}</span>
 						{/if}
 						<div class="thread-meta">
 							{#if thread.archived}
@@ -1582,6 +1583,11 @@
 
 	.thread-title.archived {
 		color: var(--color-text-secondary);
+	}
+
+	.thread-title.untitled {
+		color: var(--color-text-secondary);
+		font-weight: 400;
 	}
 
 	.thread-meta {

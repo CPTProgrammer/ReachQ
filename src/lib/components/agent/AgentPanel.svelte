@@ -21,7 +21,8 @@
 		getActiveThreadId,
 		getThreads,
 		loadThreads,
-		selectThread
+		selectThread,
+		threadDisplayTitle
 	} from '$lib/state/agent-threads.svelte';
 	import { loadModels, loadProviders } from '$lib/state/agent-settings.svelte';
 	import { t } from '$lib/state/i18n.svelte';
@@ -36,7 +37,7 @@
 	let isOpen = $derived(detached || panel.open);
 	let threads = $derived(getThreads());
 	let activeThread = $derived(threads.find((x) => x.id === activeThreadId));
-	let threadTitle = $derived(activeThread ? activeThread.title || activeThread.id.slice(0, 8) : '');
+	let threadTitle = $derived(activeThread ? threadDisplayTitle(activeThread) : '');
 
 	// Subscribe + load when the panel is open (design 01 §5). The event
 	// subscription intentionally survives panel close (loop keeps running);

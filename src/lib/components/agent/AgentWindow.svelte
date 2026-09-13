@@ -15,7 +15,7 @@
 	import AgentPanel from './AgentPanel.svelte';
 	import { agentComputeIdentity } from '$lib/ipc/agent';
 	import { sessionList } from '$lib/ipc/sessions';
-	import { getActiveThreadId, getThreads } from '$lib/state/agent-threads.svelte';
+	import { getActiveThreadId, getThreads, threadDisplayTitle } from '$lib/state/agent-threads.svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { t } from '$lib/state/i18n.svelte';
 
@@ -70,7 +70,7 @@
 	let windowTitle = $derived.by(() => {
 		const host = sessionNames.get(identity) ?? hostLabel(identity);
 		const th = activeThread;
-		const title = th ? th.title || th.id.slice(0, 8) : '';
+		const title = th ? threadDisplayTitle(th) : '';
 		return title ? `${host} · ${title}` : host;
 	});
 

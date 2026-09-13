@@ -2,8 +2,15 @@
 //! thread pointer, archive flows, and the settings-page "View all threads"
 //! listing across identities.
 
-import { getAgentBackend } from './agent.svelte';
-import type { ThreadSummary } from '$lib/ipc/agent';
+import { getAgentBackend, getThreadRuntime } from './agent.svelte';
+import type { ContentBlock, ThreadSummary } from '$lib/ipc/agent';
+import { t } from '$lib/state/i18n.svelte';
+import {
+	discardDraft,
+	flushDrafts,
+	getDraft,
+	hydrateDrafts
+} from '$lib/components/agent/composer-draft.svelte';
 
 /** Threads of the currently displayed identity (unarchived, recent first). */
 let threads = $state<ThreadSummary[]>([]);
@@ -33,6 +40,7 @@ export async function loadThreads(identity: string): Promise<void> {
 	loading = true;
 	try {
 		threads = await getAgentBackend().threadsList(identity);
+		hydrateDrafts(threads);
 	} finally {
 		loading = false;
 	}
@@ -43,14 +51,37 @@ export async function loadAllThreads(): Promise<void> {
 }
 
 export async function createThread(identity: string): Promise<ThreadSummary> {
+	const prevId = activeThreadId;
 	const thread = await getAgentBackend().threadCreate(identity);
 	threads = [thread, ...threads];
 	activeThreadId = thread.id;
+	if (prevId && prevId !== thread.id) void pruneIfEmpty(prevId);
 	return thread;
 }
 
 export function selectThread(threadId: string): void {
+	const prevId = activeThreadId;
+	if (prevId === threadId) return;
 	activeThreadId = threadId;
+	if (prevId) void pruneIfEmpty(prevId);
+}
+
+/** Auto-delete the thread switched away from when it is an untouched shell:
+ * no messages, no draft, no title (a user-set title is explicit intent to
+ * keep). Drafts are flushed first so the check sees the latest text and the
+ * surviving thread's draft is on disk. */
+async function pruneIfEmpty(threadId: string): Promise<void> {
+	await flushDrafts().catch(() => {});
+	// The user may have switched back while the flush was in flight.
+	if (activeThreadId === threadId) return;
+	const summary = threads.find((x) => x.id === threadId);
+	if (!summary) return; // archived / deleted / another identity's list
+	if (summary.title) return;
+	const rt = getThreadRuntime(threadId);
+	const hasMessages = rt?.loaded ? rt.messages.length > 0 : summary.messageCount > 0;
+	if (hasMessages) return;
+	if (getDraft(threadId).trim().length > 0) return;
+	await deleteThread(threadId).catch(() => {});
 }
 
 export async function renameThread(threadId: string, title: string): Promise<void> {
@@ -73,6 +104,7 @@ export async function unarchiveThread(threadId: string): Promise<void> {
 
 export async function deleteThread(threadId: string): Promise<void> {
 	await getAgentBackend().threadDelete(threadId);
+	discardDraft(threadId);
 	threads = threads.filter((t) => t.id !== threadId);
 	allThreads = allThreads.filter((t) => t.id !== threadId);
 	if (activeThreadId === threadId) activeThreadId = threads[0]?.id ?? null;
@@ -82,6 +114,48 @@ export async function deleteThread(threadId: string): Promise<void> {
 export function applyThreadTitle(threadId: string, title: string): void {
 	threads = threads.map((t) => (t.id === threadId ? { ...t, title } : t));
 	allThreads = allThreads.map((t) => (t.id === threadId ? { ...t, title } : t));
+}
+
+const PREVIEW_LENGTH = 30;
+
+/** Collapse whitespace/newlines so previews stay single-line. */
+function normalizePreview(text: string): string {
+	return text.replace(/\s+/g, ' ').trim();
+}
+
+function truncatePreview(text: string): string {
+	return [...text].slice(0, PREVIEW_LENGTH).join('');
+}
+
+type TextBlock = Extract<ContentBlock, { type: 'text' }>;
+
+/** First user message preview from the live runtime (loaded threads only).
+ * Reactive and always current — unlike the summary's `preview`, which is a
+ * list-time snapshot. */
+function liveFirstUserPreview(threadId: string): string | null {
+	const rt = getThreadRuntime(threadId);
+	if (!rt?.loaded) return null;
+	for (const p of rt.messages) {
+		if (p.role !== 'user') continue;
+		const block = p.content.find((b): b is TextBlock => b.type === 'text');
+		const normalized = block ? normalizePreview(block.text) : '';
+		if (normalized) return truncatePreview(normalized);
+	}
+	return null;
+}
+
+/** Display title for an untitled thread: real title → first-user-message
+ * preview (live runtime, then list-time snapshot) → in-progress draft →
+ * localized "New Thread". Drafts/runtimes are `$state`, so the label
+ * updates while typing and right after the first send. */
+export function threadDisplayTitle(thread: ThreadSummary): string {
+	if (thread.title) return thread.title;
+	const live = liveFirstUserPreview(thread.id);
+	if (live) return live;
+	if (thread.preview) return truncatePreview(normalizePreview(thread.preview));
+	const draft = normalizePreview(getDraft(thread.id));
+	if (draft) return truncatePreview(draft);
+	return t('agent.untitled_thread');
 }
 
 /** Relative "last active" label (design 01 §2.1: 1m / 1h / 1d / 1w / 1mo). */

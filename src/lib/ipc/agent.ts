@@ -107,6 +107,12 @@ export interface ThreadSummary {
 	lastUsage?: Usage;
 	/** { model: "{instanceId}/{modelId}", thinking, effort } snapshot */
 	model?: { model: string; thinking: boolean; effort?: string };
+	/** Unsent composer draft persisted in agent.db (empty when none). */
+	draft: string;
+	/** Total messages across all branches; 0 = untouched shell. */
+	messageCount: number;
+	/** First user message's first 30 chars; only for empty-title threads with messages. */
+	preview?: string;
 }
 
 export interface ThreadSnapshot {
@@ -290,6 +296,8 @@ export const agentThreads = {
 	archive: (threadId: string, archived: boolean) =>
 		invoke<void>('agent_thread_archive', { threadId, archived }),
 	delete: (threadId: string) => invoke<void>('agent_thread_delete', { threadId }),
+	setDraft: (threadId: string, draft: string) =>
+		invoke<void>('agent_thread_set_draft', { threadId, draft }),
 	messages: (threadId: string) => invoke<ThreadSnapshot>('agent_thread_messages', { threadId }),
 	state: (threadId: string) => invoke<ThreadState>('agent_get_thread_state', { threadId }),
 	editMessage: (

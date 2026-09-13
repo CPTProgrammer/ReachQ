@@ -227,6 +227,7 @@
   "agent.toggle": "AI 智能体",
   "agent.threads": "对话",
   "agent.new_thread": "新建",
+  "agent.untitled_thread": "新对话",
   "agent.archive": "归档",
   "agent.unarchive": "取消归档",
   "agent.delete_thread": "删除",

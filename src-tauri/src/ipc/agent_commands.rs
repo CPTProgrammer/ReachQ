@@ -254,6 +254,15 @@ pub async fn agent_thread_delete(
 }
 
 #[tauri::command]
+pub async fn agent_thread_set_draft(
+    state: State<'_, AppState>,
+    thread_id: String,
+    draft: String,
+) -> Result<(), String> {
+    store(&state).await?.set_draft(&thread_id, &draft).await
+}
+
+#[tauri::command]
 pub async fn agent_thread_messages(
     state: State<'_, AppState>,
     thread_id: String,

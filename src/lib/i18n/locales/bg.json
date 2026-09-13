@@ -227,6 +227,7 @@
   "agent.toggle": "AI Агент",
   "agent.threads": "Разговори",
   "agent.new_thread": "Нов",
+  "agent.untitled_thread": "Нов разговор",
   "agent.archive": "Архивирай",
   "agent.unarchive": "Възстанови",
   "agent.delete_thread": "Изтрий",

@@ -227,6 +227,7 @@
   "agent.toggle": "AI-Agent",
   "agent.threads": "Unterhaltungen",
   "agent.new_thread": "Neu",
+  "agent.untitled_thread": "Neue Unterhaltung",
   "agent.archive": "Archivieren",
   "agent.unarchive": "Wiederherstellen",
   "agent.delete_thread": "Löschen",

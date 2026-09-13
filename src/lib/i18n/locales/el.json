@@ -227,6 +227,7 @@
   "agent.toggle": "Πράκτορας AI",
   "agent.threads": "Συνομιλίες",
   "agent.new_thread": "Νέα",
+  "agent.untitled_thread": "Νέα συνομιλία",
   "agent.archive": "Αρχειοθέτηση",
   "agent.unarchive": "Επαναφορά",
   "agent.delete_thread": "Διαγραφή",

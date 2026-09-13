@@ -218,6 +218,7 @@
   "agent.toggle": "ИИ‑агент",
   "agent.threads": "Диалоги",
   "agent.new_thread": "Новый",
+  "agent.untitled_thread": "Новый диалог",
   "agent.archive": "Архивировать",
   "agent.unarchive": "Восстановить",
   "agent.delete_thread": "Удалить",

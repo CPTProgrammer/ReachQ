@@ -17,7 +17,7 @@
 	} from '$lib/state/agent-settings.svelte';
 	import { getThreads } from '$lib/state/agent-threads.svelte';
 	import { t } from '$lib/state/i18n.svelte';
-	import { getDraft, setDraft } from './composer-draft.svelte';
+	import { flushDraft, getDraft, setDraft } from './composer-draft.svelte';
 	import { setFollowing } from './chat-follow.svelte';
 	import { formatContextLength } from './utils';
 	import { formatEffort } from '$lib/utils/formatters';
@@ -122,6 +122,7 @@
 		if (!text || !threadId || !sendOpts) return;
 		if (running && runtime?.queued) return; // queue full: no-op (design 01 §3.5)
 		setDraft(draftKey, '');
+		void flushDraft(draftKey); // delete the persisted draft row now, not in 400ms
 		setFollowing(true); // sending always jumps the chat to the bottom
 		await agentSendMessage(identity, threadId, text, sendOpts);
 	}

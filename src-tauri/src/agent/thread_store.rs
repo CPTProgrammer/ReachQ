@@ -56,6 +56,15 @@ CREATE TABLE IF NOT EXISTS agent_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON agent_messages(thread_id, seq);
 CREATE INDEX IF NOT EXISTS idx_messages_parent ON agent_messages(parent_id);
+
+-- Unsent composer drafts, one per thread. Separate table (not a column on
+-- agent_threads) so existing databases need no ALTER TABLE; the FK cascade
+-- makes drafts die with their thread.
+CREATE TABLE IF NOT EXISTS agent_drafts (
+    thread_id TEXT PRIMARY KEY REFERENCES agent_threads(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
 ";
 
 fn now_millis() -> i64 {
@@ -64,6 +73,13 @@ fn now_millis() -> i64 {
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
 }
+
+/// Thread list columns: base fields + live message count + persisted draft.
+const THREAD_SELECT: &str = "\
+SELECT t.id, t.identity, t.title, t.archived, t.created_at, t.updated_at, t.last_usage, t.model, \
+       (SELECT COUNT(*) FROM agent_messages m WHERE m.thread_id = t.id), \
+       COALESCE((SELECT d.text FROM agent_drafts d WHERE d.thread_id = t.id), '') \
+FROM agent_threads t";
 
 impl ThreadStore {
     pub async fn open(app_dir: &Path) -> Result<Self, String> {
@@ -120,6 +136,9 @@ impl ThreadStore {
             updated_at: now,
             last_usage: None,
             model: None,
+            draft: String::new(),
+            message_count: 0,
+            preview: None,
         })
     }
 
@@ -128,13 +147,14 @@ impl ThreadStore {
         let mut rows = self
             .conn
             .query(
-                "SELECT id, identity, title, archived, created_at, updated_at, last_usage, model \
-                 FROM agent_threads WHERE identity = ?1 AND archived = 0 ORDER BY updated_at DESC",
+                &format!("{THREAD_SELECT} WHERE t.identity = ?1 AND t.archived = 0 ORDER BY t.updated_at DESC"),
                 params![identity.to_string()],
             )
             .await
             .map_err(|e| format!("list threads: {e}"))?;
-        collect_thread_rows(&mut rows).await
+        let mut threads = collect_thread_rows(&mut rows).await?;
+        self.fill_previews(&mut threads).await?;
+        Ok(threads)
     }
 
     /// All threads across identities, including archived (settings page
@@ -143,13 +163,14 @@ impl ThreadStore {
         let mut rows = self
             .conn
             .query(
-                "SELECT id, identity, title, archived, created_at, updated_at, last_usage, model \
-                 FROM agent_threads ORDER BY updated_at DESC",
+                &format!("{THREAD_SELECT} ORDER BY t.updated_at DESC"),
                 (),
             )
             .await
             .map_err(|e| format!("list all threads: {e}"))?;
-        collect_thread_rows(&mut rows).await
+        let mut threads = collect_thread_rows(&mut rows).await?;
+        self.fill_previews(&mut threads).await?;
+        Ok(threads)
     }
 
     pub async fn rename_thread(&self, id: &str, title: &str) -> Result<(), String> {
@@ -189,14 +210,92 @@ impl ThreadStore {
         let mut rows = self
             .conn
             .query(
-                "SELECT id, identity, title, archived, created_at, updated_at, last_usage, model \
-                 FROM agent_threads WHERE id = ?1",
+                &format!("{THREAD_SELECT} WHERE t.id = ?1"),
                 params![id.to_string()],
             )
             .await
             .map_err(|e| format!("get thread: {e}"))?;
         let mut threads = collect_thread_rows(&mut rows).await?;
+        self.fill_previews(&mut threads).await?;
         Ok(threads.pop())
+    }
+
+    /// Persist (or clear, on empty text) the unsent composer draft.
+    pub async fn set_draft(&self, id: &str, text: &str) -> Result<(), String> {
+        if text.is_empty() {
+            self.conn
+                .execute(
+                    "DELETE FROM agent_drafts WHERE thread_id = ?1",
+                    params![id.to_string()],
+                )
+                .await
+                .map_err(|e| format!("clear draft: {e}"))?;
+        } else {
+            self.conn
+                .execute(
+                    "INSERT INTO agent_drafts (thread_id, text, updated_at) VALUES (?1, ?2, ?3) \
+                     ON CONFLICT(thread_id) DO UPDATE \
+                     SET text = excluded.text, updated_at = excluded.updated_at",
+                    params![id.to_string(), text.to_string(), now_millis()],
+                )
+                .await
+                .map_err(|e| format!("set draft: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Fill `preview` (first user message, 30 chars) for empty-title threads
+    /// that already have messages. One batched query for the whole list.
+    async fn fill_previews(&self, threads: &mut [ThreadSummary]) -> Result<(), String> {
+        let ids: Vec<String> = threads
+            .iter()
+            .filter(|t| t.title.is_empty() && t.message_count > 0)
+            .map(|t| t.id.clone())
+            .collect();
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let placeholders = (1..=ids.len())
+            .map(|i| format!("?{i}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT m.thread_id, m.content FROM agent_messages m \
+             JOIN (SELECT thread_id, MIN(seq) AS min_seq FROM agent_messages \
+                   WHERE role = 'user' AND thread_id IN ({placeholders}) GROUP BY thread_id) f \
+             ON m.thread_id = f.thread_id AND m.seq = f.min_seq"
+        );
+        let params = libsql::params::Params::Positional(
+            ids.iter()
+                .map(|s| libsql::Value::from(s.clone()))
+                .collect(),
+        );
+        let mut rows = self
+            .conn
+            .query(&sql, params)
+            .await
+            .map_err(|e| format!("preview query: {e}"))?;
+        let mut contents: HashMap<String, String> = HashMap::new();
+        while let Ok(Some(row)) = rows.next().await {
+            let thread_id: String = row.get(0).map_err(|e| e.to_string())?;
+            let content: String = row.get(1).map_err(|e| e.to_string())?;
+            contents.insert(thread_id, content);
+        }
+        for t in threads.iter_mut() {
+            let Some(content) = contents.get(&t.id) else { continue };
+            let Ok(blocks) = serde_json::from_str::<Vec<super::types::ContentBlock>>(content)
+            else {
+                continue;
+            };
+            let text = blocks.iter().find_map(|b| match b {
+                super::types::ContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            });
+            if let Some(text) = text.map(str::trim).filter(|s| !s.is_empty()) {
+                t.preview = Some(text.chars().take(30).collect());
+            }
+        }
+        Ok(())
     }
 
     pub async fn update_model_snapshot(
@@ -622,6 +721,9 @@ async fn collect_thread_rows(rows: &mut libsql::Rows) -> Result<Vec<ThreadSummar
             updated_at: row.get(5).map_err(|e| e.to_string())?,
             last_usage: last_usage.and_then(|s| serde_json::from_str(&s).ok()),
             model: model.and_then(|s| serde_json::from_str(&s).ok()),
+            message_count: row.get(8).map_err(|e| e.to_string())?,
+            draft: row.get(9).map_err(|e| e.to_string())?,
+            preview: None,
         });
     }
     Ok(out)

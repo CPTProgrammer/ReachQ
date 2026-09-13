@@ -227,6 +227,7 @@
   "agent.toggle": "Agente AI",
   "agent.threads": "Conversazioni",
   "agent.new_thread": "Nuova",
+  "agent.untitled_thread": "Nuova conversazione",
   "agent.archive": "Archivia",
   "agent.unarchive": "Ripristina",
   "agent.delete_thread": "Elimina",

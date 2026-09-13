@@ -57,6 +57,7 @@ export interface AgentBackend {
 	threadRename(threadId: string, title: string): Promise<void>;
 	threadArchive(threadId: string, archived: boolean): Promise<void>;
 	threadDelete(threadId: string): Promise<void>;
+	threadSetDraft(threadId: string, draft: string): Promise<void>;
 	threadMessages(threadId: string): Promise<ThreadSnapshot>;
 	threadState(threadId: string): Promise<ThreadState>;
 	threadEditMessage(
@@ -116,6 +117,7 @@ export const tauriBackend: AgentBackend = {
 	threadRename: agentThreads.rename,
 	threadArchive: agentThreads.archive,
 	threadDelete: agentThreads.delete,
+	threadSetDraft: agentThreads.setDraft,
 	threadMessages: agentThreads.messages,
 	threadState: agentThreads.state,
 	threadEditMessage: agentThreads.editMessage,

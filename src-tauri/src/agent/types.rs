@@ -154,6 +154,17 @@ pub struct ThreadSummary {
     /// JSON triple snapshot { model, thinking, effort } (design 05 §5).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<serde_json::Value>,
+    /// Unsent composer draft (empty when none).
+    #[serde(default)]
+    pub draft: String,
+    /// Total messages across all branches; 0 means the thread is an untouched
+    /// shell (the frontend auto-deletes it on switch-away when also draftless).
+    #[serde(default)]
+    pub message_count: i64,
+    /// First user message's first 30 chars; filled only for empty-title
+    /// threads that already have messages (display fallback).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
 }
 
 /// Full thread snapshot: active path + branch info (design 02 §4).

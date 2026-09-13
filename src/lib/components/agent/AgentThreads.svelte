@@ -13,7 +13,8 @@
 		getThreads,
 		relativeTime,
 		renameThread,
-		selectThread
+		selectThread,
+		threadDisplayTitle
 	} from '$lib/state/agent-threads.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 
@@ -22,10 +23,6 @@
 	let panel = $derived(getPanelState(identity));
 	let threads = $derived(getThreads());
 	let activeThreadId = $derived(getActiveThreadId());
-
-	function displayTitle(thread: { id: string; title: string }): string {
-		return thread.title || thread.id.slice(0, 8);
-	}
 
 	// ── Inline rename ─────────────────────────────────────────────────────────
 
@@ -110,7 +107,7 @@
 							autofocus
 						/>
 					{:else}
-						<div class="thread-title">{displayTitle(thread)}</div>
+						<div class="thread-title" class:untitled={!thread.title}>{threadDisplayTitle(thread)}</div>
 						<div class="thread-time">{relativeTime(thread.updatedAt)}</div>
 						<div class="thread-actions">
 							<button
@@ -283,6 +280,10 @@
 		mask-position: left;
 		mask-repeat: no-repeat;
 		transition: -webkit-mask-size 0.2s ease, mask-size 0.2s ease;
+	}
+
+	.thread-title.untitled {
+		color: var(--color-text-secondary);
 	}
 
 	.thread-item:hover .thread-title {
