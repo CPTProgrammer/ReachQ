@@ -413,7 +413,7 @@
 				<div class="empty-hint">{t('agent.no_threads')}</div>
 			{/if}
 			{#each sortedThreads as thread (thread.id)}
-				<div class="thread-item">
+				<div class="thread-item" class:confirming={confirmDeleteThreadId === thread.id}>
 					<div class="thread-text">
 						{#if editingThreadId === thread.id}
 							<input
@@ -434,7 +434,7 @@
 							<span>{relativeTime(thread.updatedAt)}</span>
 						</div>
 					</div>
-					{#if editingThreadId !== thread.id}
+					{#if editingThreadId !== thread.id && confirmDeleteThreadId !== thread.id}
 						<div class="thread-actions">
 							{#if thread.archived}
 								<button
@@ -478,18 +478,18 @@
 							{/if}
 						</div>
 					{/if}
+					{#if confirmDeleteThreadId === thread.id}
+						<div class="confirm-bar">
+							<span class="confirm-text">{t('agent.delete_thread_confirm')}</span>
+							<button class="confirm-btn danger" onclick={() => void confirmDeleteThread(thread.id)}>
+								{t('common.confirm')}
+							</button>
+							<button class="confirm-btn" onclick={() => (confirmDeleteThreadId = null)}>
+								{t('common.cancel')}
+							</button>
+						</div>
+					{/if}
 				</div>
-				{#if confirmDeleteThreadId === thread.id}
-					<div class="confirm-bar">
-						<span class="confirm-text">{t('agent.delete_thread_confirm')}</span>
-						<button class="confirm-btn danger" onclick={() => void confirmDeleteThread(thread.id)}>
-							{t('common.confirm')}
-						</button>
-						<button class="confirm-btn" onclick={() => (confirmDeleteThreadId = null)}>
-							{t('common.cancel')}
-						</button>
-					</div>
-				{/if}
 			{/each}
 		</div>
 	</div>
@@ -1199,11 +1199,6 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin-top: 10px;
-		padding: 8px 10px;
-		background-color: color-mix(in srgb, var(--color-danger) 10%, transparent);
-		border: 1px solid color-mix(in srgb, var(--color-danger) 35%, transparent);
-		border-radius: var(--radius-btn);
 	}
 
 	.confirm-text {
@@ -1553,15 +1548,43 @@
 		position: relative;
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 8px;
 		padding: 8px 6px;
-		border-bottom: 1px solid var(--color-border);
 		border-radius: 6px;
 		transition: background-color var(--duration-default) var(--ease-default);
 	}
 
-	.thread-item:hover {
+	.thread-item::after {
+		content: '';
+		position: absolute;
+		left: 6px;
+		right: 6px;
+		bottom: 0;
+		height: 1px;
+		background: var(--color-border);
+	}
+
+	.thread-item:last-child::after {
+		display: none;
+	}
+
+	.thread-item:not(.confirming):hover {
 		background-color: rgba(255, 255, 255, 0.04);
+	}
+
+	.thread-item.confirming {
+		background-color: color-mix(in srgb, var(--color-danger) 10%, transparent);
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-danger) 35%, transparent);
+	}
+
+	.thread-item .confirm-bar {
+		flex-basis: 100%;
+		margin-top: 0;
+		padding: 8px 2px 0 4px;
+		background: transparent;
+		border: none;
+		border-top: 1px solid color-mix(in srgb, var(--color-danger) 20%, transparent);
 	}
 
 	.thread-text {
@@ -1612,10 +1635,6 @@
 
 	.thread-item:hover .thread-actions {
 		display: flex;
-	}
-
-	.thread-list > .confirm-bar {
-		margin: 4px 0 8px;
 	}
 
 	.title-edit {
