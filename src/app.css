@@ -27,7 +27,11 @@
 
   /* Fonts */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas,
+    'Sarasa Mono SC', 'Noto Sans Mono CJK SC', 'Microsoft YaHei UI', 'PingFang SC',
+    'Noto Sans CJK SC', monospace;
+  /* --font-mono with the user's configured font prepended; overridden at runtime in +layout.svelte */
+  --font-content-mono: var(--font-mono);
 
   /* Transitions */
   --ease-default: cubic-bezier(0.25, 0.1, 0.25, 1);

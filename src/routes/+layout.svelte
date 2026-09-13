@@ -67,6 +67,14 @@
 	});
 
 	$effect(() => {
+		const font = settings.fontFamily;
+		document.documentElement.style.setProperty(
+			'--font-content-mono',
+			font && font !== 'monospace' ? `"${font}", var(--font-mono)` : 'var(--font-mono)'
+		);
+	});
+
+	$effect(() => {
 		const theme = settings.theme;
 		const root = document.documentElement;
 		root.classList.remove('dark', 'light');

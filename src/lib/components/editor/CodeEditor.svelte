@@ -61,7 +61,6 @@
 
 	const settings = getSettings();
 	const editorFontSize = settings.fontSize ?? 14;
-	const editorFontFamily = settings.fontFamily;
 	const WHITESPACE_HIGHLIGHT_COLOR = "#FFFFFF";
 	const WHITESPACE_HIGHLIGHT_OPACITY = "10%";
 	const appleDarkTheme = EditorView.theme(
@@ -72,7 +71,7 @@
 			},
 			'.cm-scroller': {
 				overflow: 'auto',
-				fontFamily: `${editorFontFamily ? `"${editorFontFamily}", ` : ""}'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace`,
+				fontFamily: 'var(--font-content-mono)',
 				fontSize: `${editorFontSize}px`,
 				lineHeight: '1.6'
 			},

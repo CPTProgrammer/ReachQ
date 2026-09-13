@@ -634,7 +634,7 @@
 		title={t('terminal.paste_confirm_title')}
 	>
 		<p class="paste-confirm-text">{t('terminal.paste_confirm_body')}</p>
-			<pre class="paste-preview"><code style="font-family: {getSettings().fontFamily}, monospace">{pendingPasteText}</code></pre>
+			<pre class="paste-preview"><code style="font-family: var(--font-content-mono)">{pendingPasteText}</code></pre>
 		{#snippet actions()}
 			<Button variant="ghost" onclick={closePasteConfirm}>{t('common.cancel')}</Button>
 			<Button variant="primary" onclick={confirmPaste}>{t('common.confirm')}</Button>

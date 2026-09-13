@@ -114,7 +114,7 @@
 <style>
 	.patch-view {
 		padding: 6px 0;
-		font-family: var(--font-mono);
+		font-family: var(--font-content-mono);
 		font-size: 0.72rem;
 		line-height: 1.5;
 		color: var(--color-text-primary);

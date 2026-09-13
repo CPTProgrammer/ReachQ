@@ -724,7 +724,7 @@
 		padding: 1px 4px;
 		border-radius: 4px;
 		background: var(--color-border);
-		font-family: var(--font-mono);
+		font-family: var(--font-content-mono);
 		font-size: 0.72rem;
 	}
 
@@ -768,7 +768,7 @@
 	}
 
 	.md :global(pre code) {
-		font-family: var(--font-mono);
+		font-family: var(--font-content-mono);
 		font-size: 0.72rem;
 		line-height: 1.5;
 	}

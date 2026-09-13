@@ -398,7 +398,7 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-family: var(--font-mono);
+		font-family: var(--font-content-mono);
 		font-size: 0.72rem;
 		color: var(--color-text-primary);
 	}
@@ -455,7 +455,7 @@
 		padding: 7px 10px;
 		background: var(--color-bg-secondary);
 		color: var(--color-text-primary);
-		font-family: var(--font-mono);
+		font-family: var(--font-content-mono);
 		font-size: 0.72rem;
 		line-height: 1.5;
 		white-space: pre-wrap;
@@ -487,7 +487,7 @@
 	.text-block {
 		margin: 0;
 		padding: 8px 10px;
-		font-family: var(--font-mono);
+		font-family: var(--font-content-mono);
 		font-size: 0.72rem;
 		line-height: 1.5;
 		color: var(--color-text-secondary);
@@ -549,7 +549,7 @@
 	}
 
 	.md :global(code) {
-		font-family: var(--font-mono);
+		font-family: var(--font-content-mono);
 		font-size: 0.7rem;
 	}
 
