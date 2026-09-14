@@ -20,26 +20,63 @@
 	import { getTerminalTheme } from '$lib/data/terminal-themes';
 	import { decodeBase64 } from './utils';
 
+	/** The card grows with its content between these row bounds; past the cap
+	 *  the xterm viewport scrolls internally. */
+	const MIN_ROWS = 5;
+	const MAX_ROWS = 1000;
+
 	let { toolCallId, expanded, fallbackText }: Props = $props();
 
 	let containerEl: HTMLDivElement | undefined = $state();
 	let term: Terminal | undefined;
 	let fit: FitAddon | undefined;
 	let unsubscribe: (() => void) | undefined;
+	let unsubscribeFeed: (() => void) | undefined;
 	let resizeObserver: ResizeObserver | undefined;
+	let sizeRaf: number | undefined;
+	let notifiedCols = 0;
+	let notifiedRows = 0;
 
-	function fitAndNotify(): void {
+	function notifyPty(cols: number, rows: number): void {
+		if (cols === notifiedCols && rows === notifiedRows) return;
+		notifiedCols = cols;
+		notifiedRows = rows;
+		agentResizeTerminal(toolCallId, cols, rows).catch(() => {});
+	}
+
+	/** Size the grid to its content: columns from the card width, rows from
+	 *  the buffer length clamped to [MIN_ROWS, MAX_ROWS]. The wrapper has no
+	 *  fixed height — .xterm-screen is in normal flow and the renderer sets
+	 *  its pixel height on every resize, so the card simply wraps the grid. */
+	function updateSize(): void {
 		const t = term;
 		const f = fit;
 		const el = containerEl;
 		if (!t || !f || !el || !t.element) return;
-		if (el.clientWidth === 0 || el.clientHeight === 0) return;
+		if (!expanded || el.clientWidth === 0) return;
 		try {
-			f.fit();
-			agentResizeTerminal(toolCallId, t.cols, t.rows).catch(() => {});
+			const proposed = f.proposeDimensions();
+			if (!proposed) return;
+			// Columns first so reflow settles before lines are counted.
+			if (proposed.cols !== t.cols) {
+				t.resize(proposed.cols, t.rows);
+			}
+			const rows = Math.min(MAX_ROWS, Math.max(MIN_ROWS, t.buffer.active.length));
+			if (rows !== t.rows) {
+				t.resize(t.cols, rows);
+			}
+			notifyPty(t.cols, t.rows);
 		} catch {
-			/* fit on a hidden container */
+			/* measure on a hidden container */
 		}
+	}
+
+	function scheduleSizeUpdate(): void {
+		if (sizeRaf !== undefined) return;
+		sizeRaf = requestAnimationFrame(() => {
+			sizeRaf = undefined;
+			updateSize();
+		});
 	}
 
 	$effect(() => {
@@ -54,6 +91,8 @@
 		const t = new Terminal({
 			fontFamily: s.fontFamily || 'monospace',
 			fontSize: Math.max(10, (s.fontSize ?? 14) - 1),
+			cols: 100,
+			rows: MIN_ROWS,
 			cursorBlink: false,
 			disableStdin: true,
 			scrollback: 5000,
@@ -71,6 +110,8 @@
 			replayed++;
 			t.write(decodeBase64(dataB64));
 		});
+		const feedDisposable = t.onLineFeed(() => scheduleSizeUpdate());
+		unsubscribeFeed = () => feedDisposable.dispose();
 
 		// Settled call with no buffered output to replay (app restart, buffer
 		// eviction): restore the persisted text projection so the card is not
@@ -83,21 +124,21 @@
 		let resizeTimer: ReturnType<typeof setTimeout> | undefined;
 		resizeObserver = new ResizeObserver(() => {
 			if (resizeTimer) clearTimeout(resizeTimer);
-			resizeTimer = setTimeout(() => {
-				if (expanded) fitAndNotify();
-			}, 50);
+			resizeTimer = setTimeout(() => scheduleSizeUpdate(), 50);
 		});
 		resizeObserver.observe(el);
 
-		requestAnimationFrame(() => fitAndNotify());
+		scheduleSizeUpdate();
 
 		return () => {
 			resizeObserver?.disconnect();
 			if (resizeTimer) clearTimeout(resizeTimer);
+			if (sizeRaf !== undefined) cancelAnimationFrame(sizeRaf);
 			unsubscribe?.();
+			unsubscribeFeed?.();
 			// Leaving the layout: remote PTY returns to the default width
 			// (design 01 §2.3 terminal section).
-			agentResizeTerminal(id, 100, 24).catch(() => {});
+			notifyPty(100, 24);
 			t.dispose();
 			term = undefined;
 			fit = undefined;
@@ -117,7 +158,7 @@
 			t.options.fontFamily = fontFamily;
 			t.options.fontSize = fontSize;
 			t.clearTextureAtlas();
-			fitAndNotify();
+			scheduleSizeUpdate();
 		}
 		if (t.options.theme !== theme) {
 			t.options.theme = theme;
@@ -125,13 +166,13 @@
 		}
 	});
 
-	// Collapse -> shrink the remote PTY to 100 cols; expand -> real width.
+	// Collapse -> shrink the remote PTY to 100 cols; expand -> fit content.
 	$effect(() => {
 		if (!term) return;
 		if (expanded) {
-			requestAnimationFrame(() => fitAndNotify());
+			scheduleSizeUpdate();
 		} else {
-			agentResizeTerminal(toolCallId, 100, 24).catch(() => {});
+			notifyPty(100, 24);
 		}
 	});
 </script>
@@ -142,7 +183,6 @@
 
 <style>
 	.tool-terminal {
-		height: 240px;
 		background: var(--color-bg-primary);
 		overflow: hidden;
 	}
@@ -153,15 +193,33 @@
 
 	.tool-terminal-container {
 		width: 100%;
-		height: 100%;
 	}
 
 	.tool-terminal-container :global(.xterm) {
-		height: 100%;
 		padding: 4px 6px;
 	}
 
+	/* The viewport keeps xterm's default overflow-y: scroll, so the scrollbar
+	   gutter is always present but only usable past the MAX_ROWS cap. */
 	.tool-terminal-container :global(.xterm-viewport) {
 		scrollbar-width: thin;
+		scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+	}
+
+	.tool-terminal-container :global(.xterm-viewport::-webkit-scrollbar) {
+		width: 6px;
+	}
+
+	.tool-terminal-container :global(.xterm-viewport::-webkit-scrollbar-track) {
+		background: transparent;
+	}
+
+	.tool-terminal-container :global(.xterm-viewport::-webkit-scrollbar-thumb) {
+		background-color: rgba(255, 255, 255, 0.15);
+		border-radius: 3px;
+	}
+
+	.tool-terminal-container :global(.xterm-viewport::-webkit-scrollbar-thumb:hover) {
+		background-color: rgba(255, 255, 255, 0.25);
 	}
 </style>

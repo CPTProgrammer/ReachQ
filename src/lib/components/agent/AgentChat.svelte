@@ -808,8 +808,6 @@
 		color: var(--color-text-secondary);
 		white-space: pre-wrap;
 		word-break: break-word;
-		max-height: 240px;
-		overflow-y: auto;
 		user-select: text;
 	}
 
