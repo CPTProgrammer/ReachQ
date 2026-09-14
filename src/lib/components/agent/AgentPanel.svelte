@@ -5,6 +5,8 @@
 		/** Rendered inside a detached pop-out window: always open, fills the
 		 * window, no left-edge resizer (design 01 §1.2). */
 		detached?: boolean;
+		/** Disable the 50%-of-parent max-width cap (mock preview page). */
+		unrestrictedWidth?: boolean;
 	}
 </script>
 
@@ -30,7 +32,7 @@
 	import AgentComposer from './AgentComposer.svelte';
 	import AgentThreads from './AgentThreads.svelte';
 
-	let { identity, detached = false }: Props = $props();
+	let { identity, detached = false, unrestrictedWidth = false }: Props = $props();
 
 	let panel = $derived(getPanelState(identity));
 	let activeThreadId = $derived(getActiveThreadId());
@@ -82,18 +84,32 @@
 
 	// ── Two-level resize drag (design 01 §2) ─────────────────────────────────
 
+	let asideEl = $state<HTMLElement>();
+
 	function startPanelDrag(e: MouseEvent): void {
 		e.preventDefault();
+		if (!asideEl) return;
+		const aside = asideEl;
 		const startX = e.clientX;
-		const startW = panel.panelWidth;
+		// Measure the *rendered* width: CSS max-width may be clamping the
+		// stored panelWidth, so the state value can be stale here.
+		const startW = aside.getBoundingClientRect().width;
 		const move = (ev: MouseEvent) => {
-			const max = window.innerWidth * 0.5;
-			const w = Math.round(Math.min(Math.max(startW + (startX - ev.clientX), 360), max));
+			// The cap is half of the terminal tab's inner window (the panel's
+			// parent container), not the app window.
+			const parentW = aside.parentElement?.getBoundingClientRect().width ?? window.innerWidth;
+			const max = unrestrictedWidth ? Infinity : parentW * 0.5;
+			// Min beats max (mirroring CSS min-width vs max-width): in a
+			// container narrower than 720px the panel may exceed half.
+			const w = Math.round(Math.max(Math.min(startW + (startX - ev.clientX), max), 360));
 			updatePanelState(identity, { panelWidth: w });
 		};
 		const up = () => {
 			window.removeEventListener('mousemove', move);
 			window.removeEventListener('mouseup', up);
+			// Sync the stored width to the rendered width: CSS min-/max-width
+			// may have overridden the values written during the drag.
+			updatePanelState(identity, { panelWidth: Math.round(aside.getBoundingClientRect().width) });
 		};
 		window.addEventListener('mousemove', move);
 		window.addEventListener('mouseup', up);
@@ -117,7 +133,13 @@
 </script>
 
 {#if isOpen}
-	<aside class="agent-panel" class:detached style:width={detached ? '100%' : `${panel.panelWidth}px`}>
+	<aside
+		bind:this={asideEl}
+		class="agent-panel"
+		class:detached
+		class:unrestricted={unrestrictedWidth}
+		style:width={detached ? '100%' : `${panel.panelWidth}px`}
+	>
 		{#if !detached}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="panel-resizer" onmousedown={startPanelDrag}></div>
@@ -162,12 +184,23 @@
 		flex-shrink: 0;
 		height: 100%;
 		display: flex;
+		min-width: 360px;
+		/* Cap at half of the parent container (the terminal tab's inner
+		   window); the browser re-evaluates it on any layout change. CSS
+		   min-width wins over max-width, so narrow containers may exceed half. */
+		max-width: 50%;
 		border-left: 1px solid var(--color-border);
 		background: var(--color-bg-elevated);
 	}
 
 	.agent-panel.detached {
 		border-left: none;
+	}
+
+	/* Detached fills its own window; unrestricted (mock preview) has no cap. */
+	.agent-panel.detached,
+	.agent-panel.unrestricted {
+		max-width: none;
 	}
 
 	.panel-resizer {

@@ -75,7 +75,8 @@
 		{/if}
 	</aside>
 	<div class="panel-host">
-		<AgentPanel identity={MOCK_IDENTITY} />
+		<!-- No max-width cap here: the panel may fill the host (design 01 §4.1). -->
+		<AgentPanel identity={MOCK_IDENTITY} unrestrictedWidth />
 	</div>
 </div>
 
