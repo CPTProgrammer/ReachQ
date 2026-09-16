@@ -1203,7 +1203,7 @@ class MockAgentBackend implements AgentBackend {
 			};
 			this.link(thread, msg);
 			thread.running = true;
-			thread.run = { cancelled: false, rejectApprovals: new Set() };
+			thread.run = { cancelled: false, rejectApprovals: new Set(), messageIds: [], toolCalls: [] };
 			// Mirror the real backend: forks emit no user_message event; the
 			// caller applies the returned snapshot to switch the visible path.
 			// Take it before the run starts, as the real command does.
