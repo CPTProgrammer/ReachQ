@@ -331,8 +331,6 @@ pub async fn run_agent(
         }
     }
 
-    let _ = agent.ensure_read_paths(&thread_id).await;
-
     let resolved = match resolve_model(&deps, &opts.model).await {
         Ok(r) => r,
         Err(e) => {
@@ -1137,9 +1135,19 @@ async fn execute_one_tool(
             let ctx = build_context(
                 &app, &deps, &identity, &thread_id, &tool_call_id, &config, &opts,
             );
-            let payload = tool.approval_payload(&args, &ctx).await;
-            // The payload computation may itself fail (e.g. gate violations);
-            // write/edit tools return None then and the error surfaces at run.
+            // Validation errors and no-ops short-circuit: finish immediately
+            // instead of showing a blank approval card.
+            let payload = match tool.approval_payload(&args, &ctx).await {
+                tools::ApprovalPrep::Proceed(p) => p,
+                tools::ApprovalPrep::ShortCircuit(result) => {
+                    let status = if result.is_error {
+                        ToolCallStatus::Failed
+                    } else {
+                        ToolCallStatus::Success
+                    };
+                    return finish(status, result, None);
+                }
+            };
             let mut all_warnings = warnings;
             all_warnings.extend(tool.approval_warnings(&args, &ctx));
 
@@ -1242,16 +1250,6 @@ fn build_context(
     _opts: &SendOpts,
 ) -> ToolContext {
     let agent = &deps.agent;
-    let read_paths = {
-        // Sync bridge: read_paths_for is async; the map is cheap to probe.
-        // The run guarantees ensure_read_paths ran before any tool call.
-        agent
-            .read_paths
-            .try_lock()
-            .ok()
-            .and_then(|m| m.get(thread_id).cloned())
-            .unwrap_or_else(|| Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())))
-    };
     ToolContext {
         app: app.clone(),
         identity: identity.to_string(),
@@ -1261,7 +1259,6 @@ fn build_context(
         sftp_backends: deps.sftp_backends.clone(),
         options: config.options.clone(),
         read_cache: agent.read_cache.clone(),
-        read_paths,
         pending_writes: agent.pending_writes.clone(),
         terminals: agent.terminals.clone(),
     }

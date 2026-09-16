@@ -13,7 +13,7 @@ use super::edit_match::{
 };
 use crate::agent::remote_fs::{self, PreparedWrite};
 use crate::agent::tools::{
-    deserialize_maybe_stringified, err_text, ok_text, AgentTool, ToolContext,
+    deserialize_maybe_stringified, err_text, ok_text, AgentTool, ApprovalPrep, ToolContext,
 };
 use crate::agent::providers::ToolSchema;
 use crate::agent::types::ToolResult;
@@ -64,13 +64,6 @@ async fn prepare_edit(ctx: &ToolContext, path: &str, edits: &[Edit]) -> Result<V
     })?;
     if stat.is_dir {
         return Err(err_text("Can't edit file: path is a directory"));
-    }
-
-    // Read-before-edit gate (design 03 §2 behavior 0).
-    if !ctx.read_paths.lock().unwrap().contains(path) {
-        return Err(err_text(
-            "You must read the file with read_file before editing it.",
-        ));
     }
 
     // Fingerprint at the last read (for the changed-since-read hint).
@@ -204,9 +197,21 @@ impl AgentTool for EditFileTool {
         args.get("path").and_then(|p| p.as_str()).unwrap_or("").to_string()
     }
 
-    async fn approval_payload(&self, args: &Value, ctx: &ToolContext) -> Option<Value> {
-        let input: EditFileInput = serde_json::from_value(args.clone()).ok()?;
-        prepare_edit(ctx, input.path.trim(), &input.edits).await.ok()
+    async fn approval_payload(&self, args: &Value, ctx: &ToolContext) -> ApprovalPrep {
+        let input: EditFileInput = match serde_json::from_value(args.clone()) {
+            Ok(input) => input,
+            Err(e) => {
+                return ApprovalPrep::ShortCircuit(err_text(format!("Invalid arguments: {e}")));
+            }
+        };
+        match prepare_edit(ctx, input.path.trim(), &input.edits).await {
+            // No-op edit: succeed immediately without an approval round.
+            Ok(Value::Null) => ApprovalPrep::ShortCircuit(ok_text("No edits were made.")),
+            Ok(payload) => ApprovalPrep::Proceed(Some(payload)),
+            // Validation failures short-circuit before the approval request:
+            // no blank card, the model gets the error in the same round.
+            Err(err) => ApprovalPrep::ShortCircuit(err),
+        }
     }
 
     async fn run(

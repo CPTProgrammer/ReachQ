@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::events::ToolCallView;
 use super::providers::ToolSchema;
-use super::remote_fs::{PendingWrites, ReadCache, ReadPaths};
+use super::remote_fs::{PendingWrites, ReadCache};
 use super::types::{SshIdentity, ToolResult};
 use crate::sftp::backend::SftpBackendManager;
 use crate::ssh::client::SshManager;
@@ -36,8 +36,6 @@ pub struct ToolContext {
     pub options: serde_json::Map<String, Value>,
     /// In-memory read cache shared across the identity (design 03 §1.7).
     pub read_cache: ReadCache,
-    /// Paths this thread has successfully read (read-before-write gate).
-    pub read_paths: ReadPaths,
     /// Prepared writes stashed between approval and execution, keyed by
     /// tool_call_id (the approved diff is exactly what gets written).
     pub pending_writes: PendingWrites,
@@ -99,6 +97,14 @@ pub struct ToolDescriptor {
     pub options: Vec<ToolOptionSpec>,
 }
 
+/// Outcome of pre-approval preparation: either show the approval card
+/// (with or without a detail payload), or finish the tool call immediately
+/// without consuming a user approval (validation errors, no-op edits).
+pub enum ApprovalPrep {
+    Proceed(Option<Value>),
+    ShortCircuit(ToolResult),
+}
+
 #[async_trait]
 pub trait AgentTool: Send + Sync {
     fn name(&self) -> &'static str;
@@ -116,14 +122,15 @@ pub trait AgentTool: Send + Sync {
     /// URL). Used by approval requests and the tool_call view.
     fn title(&self, args: &Value) -> String;
 
-    /// Approval-card detail payload (diff text, etc), computed before the
-    /// approval request is emitted. Default: none.
+    /// Pre-approval preparation: compute the approval-card detail payload
+    /// (diff text, etc), or short-circuit the call without asking the user
+    /// (validation errors, no-op edits). Default: proceed without a payload.
     async fn approval_payload(
         &self,
         _args: &Value,
         _ctx: &ToolContext,
-    ) -> Option<Value> {
-        None
+    ) -> ApprovalPrep {
+        ApprovalPrep::Proceed(None)
     }
 
     /// Approval warning lines (dangerous command keywords, sensitive

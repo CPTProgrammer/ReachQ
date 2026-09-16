@@ -6,9 +6,9 @@
 //!   detection -> LF normalization -> fingerprint
 //! - the write pipeline: re-stat fingerprint check -> line-ending restore ->
 //!   encode -> round-trip verification -> write -> new fingerprint
-//! - the read cache (03 §1.7) and read-before-write path set (03 §2)
+//! - the read cache (03 §1.7)
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -43,9 +43,6 @@ pub struct ReadCacheEntry {
 
 /// (identity, path) -> decoded file content.
 pub type ReadCache = Arc<Mutex<HashMap<(String, String), ReadCacheEntry>>>;
-
-/// Per-thread set of paths successfully read (read-before-write gate).
-pub type ReadPaths = Arc<Mutex<HashSet<String>>>;
 
 /// A prepared file write, stashed between the approval request (which
 /// computes the diff) and the actual write after Accept. Keyed by

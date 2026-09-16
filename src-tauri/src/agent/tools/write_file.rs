@@ -1,6 +1,6 @@
-//! write_file tool (design 03 §2): whole-file overwrite with the
-//! read-before-write gate, fingerprint race protection, and a prepared
-//! write stashed between approval and execution.
+//! write_file tool (design 03 §2): whole-file overwrite with fingerprint
+//! race protection and a prepared write stashed between approval and
+//! execution.
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::agent::tools::edit_match::{format_hunks, structured_diff, DiffHunk, DiffPreview};
 use crate::agent::remote_fs::{self, Fingerprint, LineEnding, PreparedWrite, ReadCacheEntry};
-use crate::agent::tools::{err_text, AgentTool, ToolContext};
+use crate::agent::tools::{err_text, AgentTool, ApprovalPrep, ToolContext};
 use crate::agent::providers::ToolSchema;
 use crate::agent::types::ToolResult;
 
@@ -48,12 +48,6 @@ pub(crate) async fn prepare_write(
         Ok(stat) => {
             if stat.is_dir {
                 return Err(err_text("Can't write to file: path is a directory"));
-            }
-            // Read-before-write gate (design 03 §2 behavior 0).
-            if !ctx.read_paths.lock().unwrap().contains(path) {
-                return Err(err_text(
-                    "You must read the file with read_file before overwriting it.",
-                ));
             }
             let decoded = remote_fs::read_pipeline(&fs, path).await?;
             (
@@ -199,13 +193,18 @@ impl AgentTool for WriteFileTool {
         args.get("path").and_then(|p| p.as_str()).unwrap_or("").to_string()
     }
 
-    async fn approval_payload(&self, args: &Value, ctx: &ToolContext) -> Option<Value> {
-        let input: WriteFileInput = serde_json::from_value(args.clone()).ok()?;
+    async fn approval_payload(&self, args: &Value, ctx: &ToolContext) -> ApprovalPrep {
+        let input: WriteFileInput = match serde_json::from_value(args.clone()) {
+            Ok(input) => input,
+            Err(e) => {
+                return ApprovalPrep::ShortCircuit(err_text(format!("Invalid arguments: {e}")));
+            }
+        };
+        // Validation failures short-circuit before the approval request:
+        // no blank card, the model gets the error in the same round.
         match prepare_write(ctx, input.path.trim(), &input.content).await {
-            Ok(payload) => Some(payload),
-            // Path/gate errors are surfaced at run time as tool results;
-            // approval cards only exist when there is something to approve.
-            Err(_) => None,
+            Ok(payload) => ApprovalPrep::Proceed(Some(payload)),
+            Err(err) => ApprovalPrep::ShortCircuit(err),
         }
     }
 

@@ -664,47 +664,6 @@ impl ThreadStore {
         self.set_active_leaf(thread_id, &cursor.id).await?;
         self.snapshot(thread_id).await
     }
-
-    /// Count successful read_file tool calls in the thread history and
-    /// collect the set of paths read (read-before-write gate, design 03 §2
-    /// behavior 0: rebuilt from history on recovery).
-    pub async fn collect_read_paths(&self, thread_id: &str) -> Result<Vec<String>, String> {
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT content FROM agent_messages WHERE thread_id = ?1 AND role = 'assistant'",
-                params![thread_id.to_string()],
-            )
-            .await
-            .map_err(|e| format!("collect read paths: {e}"))?;
-        let mut paths = Vec::new();
-        while let Ok(Some(row)) = rows.next().await {
-            let content: String = match row.get(0) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            let blocks: Vec<super::types::ContentBlock> = match serde_json::from_str(&content) {
-                Ok(b) => b,
-                Err(_) => continue,
-            };
-            for block in blocks {
-                if let super::types::ContentBlock::ToolCall {
-                    name,
-                    args,
-                    status,
-                    ..
-                } = block
-                {
-                    if name == "read_file" && status == super::types::ToolCallStatus::Success {
-                        if let Some(path) = args.get("path").and_then(|p| p.as_str()) {
-                            paths.push(path.to_string());
-                        }
-                    }
-                }
-            }
-        }
-        Ok(paths)
-    }
 }
 
 async fn collect_thread_rows(rows: &mut libsql::Rows) -> Result<Vec<ThreadSummary>, String> {

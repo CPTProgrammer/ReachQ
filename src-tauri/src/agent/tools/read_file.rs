@@ -197,10 +197,6 @@ impl AgentTool for ReadFileTool {
             }
         };
 
-        // Register the path for the read-before-write gate (does not expire
-        // with the cache TTL; design 03 §2 behavior 0).
-        ctx.read_paths.lock().unwrap().insert(path.clone());
-
         // Range normalization (Zed defensive: 0 clamps to 1, end < start
         // still reads one line).
         let lines: Vec<&str> = text.split('\n').collect();

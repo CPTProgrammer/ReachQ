@@ -21,7 +21,7 @@ use std::time::Instant;
 use tokio::sync::{Mutex, Notify, OnceCell, RwLock};
 use tokio_util::sync::CancellationToken;
 
-use remote_fs::{PendingWrites, ReadCache, ReadPaths};
+use remote_fs::{PendingWrites, ReadCache};
 use thread_store::ThreadStore;
 use tools::edit_match::DiffPreview;
 pub use tools::terminal::SharedTerminals;
@@ -78,8 +78,6 @@ pub struct AgentState {
     /// (emitted as tool_call_preview; read back for snapshot recovery).
     pub previews: Mutex<HashMap<String, preview::PreviewEntry>>,
     pub read_cache: ReadCache,
-    /// thread_id -> set of paths read (read-before-write gate).
-    pub read_paths: Mutex<HashMap<String, ReadPaths>>,
     pub pending_writes: PendingWrites,
     pub terminals: SharedTerminals,
     /// Tool configs cached from the vault; invalidated on settings writes.
@@ -100,7 +98,6 @@ impl AgentState {
             approvals: Mutex::new(HashMap::new()),
             previews: Mutex::new(HashMap::new()),
             read_cache: remote_fs::new_read_cache(),
-            read_paths: Mutex::new(HashMap::new()),
             pending_writes: remote_fs::new_pending_writes(),
             terminals: tools::terminal::new_shared_terminals(),
             tool_configs: RwLock::new(None),
@@ -117,31 +114,6 @@ impl AgentState {
             })
             .await
             .map(|s| s.clone())
-    }
-
-    /// Read the read-paths set for a thread (creating it empty).
-    pub async fn read_paths_for(&self, thread_id: &str) -> ReadPaths {
-        let mut map = self.read_paths.lock().await;
-        map.entry(thread_id.to_string())
-            .or_insert_with(|| Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())))
-            .clone()
-    }
-
-    /// Rebuild a thread's read-path set from history (recovery after
-    /// restart; design 03 §2 behavior 0).
-    pub async fn ensure_read_paths(&self, thread_id: &str) -> Result<(), String> {
-        let exists = self.read_paths.lock().await.contains_key(thread_id);
-        if exists {
-            return Ok(());
-        }
-        let store = self.thread_store().await?;
-        let paths = store.collect_read_paths(thread_id).await?;
-        let set = self.read_paths_for(thread_id).await;
-        let mut guard = set.lock().unwrap();
-        for p in paths {
-            guard.insert(p);
-        }
-        Ok(())
     }
 
     /// Enrich a thread snapshot for the panel-reopen / thread-switch path:
