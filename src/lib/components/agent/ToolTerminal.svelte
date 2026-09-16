@@ -105,13 +105,22 @@
 		term = t;
 		fit = f;
 
+		// Synchronous mount settle: columns first so the replay wraps at the
+		// final width, then a synchronous replay, then rows grown to fit. Each
+		// step is synchronous per xterm's source, so the first paint already
+		// shows the final height — no frame-by-frame growth on (re)mount.
+		try {
+			const proposed = f.proposeDimensions();
+			if (proposed && proposed.cols !== t.cols) t.resize(proposed.cols, t.rows);
+		} catch {
+			/* measure on a hidden container */
+		}
+
 		let replayed = 0;
 		unsubscribe = onTerminalOutput(id, (dataB64) => {
 			replayed++;
 			t.write(decodeBase64(dataB64));
 		});
-		const feedDisposable = t.onLineFeed(() => scheduleSizeUpdate());
-		unsubscribeFeed = () => feedDisposable.dispose();
 
 		// Settled call with no buffered output to replay (app restart, buffer
 		// eviction): restore the persisted text projection so the card is not
@@ -121,14 +130,19 @@
 			t.write(fb.replace(/\r?\n/g, '\r\n'));
 		}
 
+		// Rows to fit the replayed content + the single PTY size notification.
+		updateSize();
+
+		// Live growth from here on: a line feed schedules an incremental resize.
+		const feedDisposable = t.onLineFeed(() => scheduleSizeUpdate());
+		unsubscribeFeed = () => feedDisposable.dispose();
+
 		let resizeTimer: ReturnType<typeof setTimeout> | undefined;
 		resizeObserver = new ResizeObserver(() => {
 			if (resizeTimer) clearTimeout(resizeTimer);
 			resizeTimer = setTimeout(() => scheduleSizeUpdate(), 50);
 		});
 		resizeObserver.observe(el);
-
-		scheduleSizeUpdate();
 
 		return () => {
 			resizeObserver?.disconnect();
@@ -158,7 +172,9 @@
 			t.options.fontFamily = fontFamily;
 			t.options.fontSize = fontSize;
 			t.clearTextureAtlas();
-			scheduleSizeUpdate();
+			// Char-size re-measure and the screen height update are synchronous;
+			// settle in the same frame instead of a rAF later.
+			updateSize();
 		}
 		if (t.options.theme !== theme) {
 			t.options.theme = theme;
@@ -170,7 +186,7 @@
 	$effect(() => {
 		if (!term) return;
 		if (expanded) {
-			scheduleSizeUpdate();
+			updateSize();
 		} else {
 			notifyPty(100, 24);
 		}

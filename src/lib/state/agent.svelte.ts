@@ -284,6 +284,8 @@ export interface ThreadRuntime {
 	error: string | null;
 	/** Whether the runtime has been seeded from a backend snapshot. */
 	loaded: boolean;
+	/** The stream epoch at the last snapshot application; see streamEpoch. */
+	loadedEpoch: number;
 }
 
 let runtimes = $state<Record<string, ThreadRuntime>>({});
@@ -307,7 +309,8 @@ function ensureThreadRuntime(threadId: string): ThreadRuntime {
 			approvalPayloads: {},
 			lastUsage: null,
 			error: null,
-			loaded: false
+			loaded: false,
+			loadedEpoch: 0
 		};
 	}
 	return runtimes[threadId];
@@ -380,6 +383,7 @@ export function applySnapshot(
 ) {
 	const rt = ensureThreadRuntime(threadId);
 	rt.messages = snapshot.messages;
+	rt.loadedEpoch = streamEpoch;
 	rt.running = running;
 	rt.loaded = true;
 	rt.error = null;
@@ -431,8 +435,19 @@ export function applySnapshot(
 
 const subscriptions: Record<string, () => void> = {};
 
+/**
+ * Bumped on every (re)subscription to an identity's event stream. While
+ * subscribed, every runtime of the identity stays live-synced by the stream
+ * (handleEvent routes by thread id), so re-applying a persisted snapshot over
+ * such a runtime is redundant churn (it remounts tool cards) and can even
+ * overwrite newer live state. A runtime whose loadedEpoch lags the current
+ * epoch may have missed events (panel closed / resubscribed) and must reload.
+ */
+let streamEpoch = 0;
+
 export function subscribeIdentity(identity: string): void {
 	if (subscriptions[identity]) return;
+	streamEpoch++;
 	let cancelled = false;
 	let unlisten: (() => void) | null = null;
 	const wrapper = () => {
@@ -866,7 +881,12 @@ export async function agentSwitchBranch(
 }
 
 /** Load a thread's state (panel open / thread switch). */
-export async function loadThread(threadId: string): Promise<ThreadSnapshot> {
+export async function loadThread(threadId: string): Promise<ThreadSnapshot | null> {
+	const rt = getThreadRuntime(threadId);
+	// In-sync runtime: the event stream has kept it current since load, so
+	// applying a persisted snapshot over it would only churn the view
+	// (remounting xterm cards) and could even overwrite newer live state.
+	if (rt?.loaded && rt.loadedEpoch === streamEpoch) return null;
 	const state = await backend.threadState(threadId);
 	applySnapshot(threadId, state, state.running);
 	return state;

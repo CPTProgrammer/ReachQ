@@ -29,15 +29,12 @@
 	// ── Scroll (stick-to-bottom) ─────────────────────────────────────────────
 
 	let scrollEl: HTMLDivElement | undefined = $state();
+	let contentEl: HTMLDivElement | undefined = $state();
 	let following = $derived(getFollowing());
 
 	/** Re-entry hysteresis: scrolling *down* into this zone re-engages follow. */
 	const REENTER_PX = 4;
 
-	// Snap-to-bottom marks the scrollTop it landed on; the coalesced scroll
-	// event triggered by a programmatic write is recognized by value match
-	// (consumed once) instead of being classified as a user gesture.
-	let lastProgrammaticTop: number | null = null;
 	let lastObservedTop = 0;
 
 	function distanceToBottom(el: HTMLDivElement): number {
@@ -48,7 +45,6 @@
 		const el = scrollEl;
 		if (!el) return;
 		el.scrollTop = el.scrollHeight;
-		lastProgrammaticTop = el.scrollTop;
 		lastObservedTop = el.scrollTop;
 	}
 
@@ -57,15 +53,15 @@
 		snapToBottom();
 	}
 
+	// Scroll events carry no provenance: upward moves are only ever user
+	// gestures (wheel/touch/drag/keys below), while programmatic clamps from
+	// shrinking content are re-pinned by the ResizeObserver. So the scroller's
+	// scroll event is used for re-entry only — never for leaving follow.
 	function onScroll(): void {
 		const el = scrollEl;
 		if (!el) return;
 		const top = el.scrollTop;
-		if (lastProgrammaticTop !== null && top === lastProgrammaticTop) {
-			lastProgrammaticTop = null;
-		} else if (top < lastObservedTop && !(distanceToBottom(el) <= 2)) {
-			setFollowing(false); // any upward movement leaves follow instantly
-		} else if (top > lastObservedTop && distanceToBottom(el) < REENTER_PX) {
+		if (top > lastObservedTop && distanceToBottom(el) < REENTER_PX) {
 			setFollowing(true); // scrolling back down into the zone re-enters
 		}
 		lastObservedTop = top;
@@ -73,6 +69,23 @@
 
 	function onWheel(e: WheelEvent): void {
 		if (e.deltaY < 0) setFollowing(false);
+	}
+
+	/** Scrollbar-track drags produce no wheel events; leaving follow on press
+	 *  keeps the ResizeObserver from fighting the drag. The gutter sits past
+	 *  the padding box, and clicks there target the scroller itself. */
+	function onPointerDown(e: PointerEvent): void {
+		const el = scrollEl;
+		if (!el || e.target !== el || e.button !== 0) return;
+		if (e.offsetX > el.clientWidth) setFollowing(false);
+	}
+
+	function onKeydown(e: KeyboardEvent): void {
+		const t = e.target as HTMLElement | null;
+		if (t?.closest('input, textarea, [contenteditable="true"]')) return;
+		if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'Home') {
+			setFollowing(false);
+		}
 	}
 
 	let lastTouchY = 0;
@@ -87,24 +100,20 @@
 		lastTouchY = y;
 	}
 
-	// While following, pin the scroller to the bottom every frame. A frame
-	// loop (instead of reacting to state changes) absorbs growth from any
-	// source — Svelte renders as well as non-reactive DOM such as streaming
-	// xterm output — and batches bursty deltas into at most one scroll per
-	// frame.
+	// While following, the ResizeObserver re-pins the scroller to the bottom on
+	// any content or viewport size change (text, diffs, tool cards, xterm,
+	// images, panel resizes). Browser clamps from shrinking content are thus
+	// corrected in the same frame, before paint.
 	$effect(() => {
-		if (!following || !scrollEl) return;
 		const el = scrollEl;
-		let raf = 0;
-		const pin = () => {
-			const max = el.scrollHeight - el.clientHeight;
-			if (el.scrollTop !== max) el.scrollTop = max;
-			lastProgrammaticTop = el.scrollTop;
-			lastObservedTop = el.scrollTop;
-			raf = requestAnimationFrame(pin);
-		};
-		raf = requestAnimationFrame(pin);
-		return () => cancelAnimationFrame(raf);
+		const content = contentEl;
+		if (!el || !content) return;
+		const ro = new ResizeObserver(() => {
+			if (getFollowing()) snapToBottom();
+		});
+		ro.observe(content);
+		ro.observe(el);
+		return () => ro.disconnect();
 	});
 
 	// ── User message inline editing / fork (design 01 §2.4) ──────────────────
@@ -305,11 +314,14 @@
 		bind:this={scrollEl}
 		onscroll={onScroll}
 		onwheel={onWheel}
+		onpointerdown={onPointerDown}
+		onkeydown={onKeydown}
 		ontouchstart={onTouchStart}
 		ontouchmove={onTouchMove}
 		onclick={onChatClick}
 	>
-		{#if !runtime || runtime.messages.length === 0}
+		<div class="messages-content" bind:this={contentEl}>
+			{#if !runtime || runtime.messages.length === 0}
 			<div class="empty-state">
 				<p>{t('agent.empty_thread')}</p>
 			</div>
@@ -448,6 +460,7 @@
 				</div>
 			{/each}
 		{/if}
+		</div>
 	</div>
 
 	{#if runtime?.error}
@@ -493,16 +506,19 @@
 
 	.messages {
 		flex: 1;
+		width: 100%;
 		padding: 10px;
+		overflow-y: auto;
+	}
+
+	.messages-content {
+		max-width: var(--chat-max-width);
+		width: 100%;
+		min-height: 100%;
+		margin: 0 auto;
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
-		max-width: var(--chat-max-width);
-		width: 100%;
-		overflow-y: auto;
-		/* Stick-to-bottom is driven by the pin loop; scroll anchoring would
-		   fight it and emit stray scroll events (see chat-follow). */
-		overflow-anchor: none;
 	}
 
 	.to-bottom {
