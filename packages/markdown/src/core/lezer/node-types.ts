@@ -64,10 +64,19 @@ export type GFMNodeName = TableNodeName | TaskListNodeName | StrikethroughNodeNa
 export type AllNodeName = DefaultNodeName | GFMNodeName;
 
 export const inlineContentBlockNames = [
-	"Paragraph", "TableCell",
+	"Paragraph", "TableCell", "Task",
 	"ATXHeading1", "ATXHeading2", "ATXHeading3",
 	"ATXHeading4", "ATXHeading5", "ATXHeading6",
 	"SetextHeading1", "SetextHeading2"
+] as const satisfies AllNodeName[];
+
+/**
+ * Raw-text blocks whose source text must be preserved verbatim (like inline
+ * containers, gaps between their element children — container markers — are
+ * materialized as Text nodes during lowering).
+ */
+export const rawTextBlockNames = [
+	"HTMLBlock", "CommentBlock", "ProcessingInstructionBlock"
 ] as const satisfies AllNodeName[];
 
 export const headingBlockNames = [

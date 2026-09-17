@@ -1,8 +1,123 @@
 diff --git a/node_modules/@lezer/markdown/dist/index.cjs b/node_modules/@lezer/markdown/dist/index.cjs
-index c7a9a06..252db21 100644
+index c7a9a06..4eb8a44 100644
 --- a/node_modules/@lezer/markdown/dist/index.cjs
 +++ b/node_modules/@lezer/markdown/dist/index.cjs
-@@ -1305,6 +1305,7 @@ class Buffer {
+@@ -262,6 +262,14 @@ const DefaultSkipMarkup = {
+         return true;
+     },
+     [Type.ListItem](bl, _cx, line) {
++        // REACH PATCH: an item whose opening line was blank after the marker
++        // ends when another blank line arrives (an item can begin with at
++        // most one blank line).
++        if (bl.blankStart) {
++            if (line.pos == line.text.length)
++                return false;
++            bl.blankStart = false;
++        }
+         if (line.indent < line.baseIndent + bl.value && line.next > -1)
+             return false;
+         line.moveBaseColumn(line.baseIndent + bl.value);
+@@ -370,7 +378,8 @@ function isSetextUnderline(line) {
+ }
+ const EmptyLine = /^[ \t]*$/, CommentEnd = /-->/, ProcessingEnd = /\?>/;
+ const HTMLBlockStyle = [
+-    [/^<(?:script|pre|style)(?:\s|>|$)/i, /<\/(?:script|pre|style)>/i],
++    // REACH PATCH: CommonMark HTML block type 1 also covers <textarea>.
++    [/^(?:<(?:script|pre|style|textarea)(?:\s|>|$))/i, /<\/(?:script|pre|style|textarea)>/i],
+     [/^\s*<!--/, CommentEnd],
+     [/^\s*<\?/, ProcessingEnd],
+     [/^\s*<![A-Z]/, />/],
+@@ -389,6 +398,10 @@ function isHTMLBlock(line, _cx, breaking) {
+ }
+ function getListIndent(line, pos) {
+     let indentAfter = line.countIndent(pos, line.pos, line.indent);
++    // REACH PATCH: when nothing but whitespace follows the marker, the item's
++    // content indent is the marker width plus one space.
++    if (line.skipSpace(pos) == line.text.length)
++        return indentAfter + 1;
+     let indented = line.countIndent(line.skipSpace(pos), pos, indentAfter);
+     return indented >= indentAfter + 5 ? indentAfter + 1 : indented;
+ }
+@@ -416,6 +429,11 @@ const DefaultBlockParsers = {
+         while (cx.nextLine() && line.depth >= cx.stack.length) {
+             if (line.pos == line.text.length) { // Empty
+                 addCodeText(pendingMarks, cx.lineStart - 1, cx.lineStart);
++                // REACH PATCH: a blank interior line still contributes any
++                // indentation it has beyond the code block's base indent.
++                let residual = cx.lineStart + line.findColumn(base);
++                if (residual < cx.lineStart + line.text.length)
++                    addCodeText(pendingMarks, residual, cx.lineStart + line.text.length);
+                 for (let m of line.markers)
+                     pendingMarks.push(m);
+             }
+@@ -455,6 +473,9 @@ const DefaultBlockParsers = {
+             return false;
+         let from = cx.lineStart + line.pos, ch = line.next, len = fenceEnd - line.pos;
+         let infoFrom = line.skipSpace(fenceEnd), infoTo = skipSpaceBack(line.text, line.text.length, infoFrom);
++        // REACH PATCH: CommonMark strips up to N spaces from content lines,
++        // where N is the opening fence's indentation relative to its container.
++        let fenceIndent = line.pos - line.basePos;
+         let marks = [elt(Type.CodeMark, from, from + len)];
+         if (infoFrom < infoTo)
+             marks.push(elt(Type.CodeInfo, cx.lineStart + infoFrom, cx.lineStart + infoTo));
+@@ -466,7 +487,9 @@ const DefaultBlockParsers = {
+             if (i - line.pos >= len && line.skipSpace(i) == line.text.length) {
+                 for (let m of line.markers)
+                     marks.push(m);
+-                if (empty && hasLine)
++                // REACH PATCH: the last content line's terminator belongs to
++                // the code block even when that line was blank.
++                if (hasLine)
+                     addCodeText(marks, cx.lineStart - 1, cx.lineStart);
+                 marks.push(elt(Type.CodeMark, cx.lineStart + line.pos, cx.lineStart + i));
+                 cx.nextLine();
+@@ -480,7 +503,11 @@ const DefaultBlockParsers = {
+                 }
+                 for (let m of line.markers)
+                     marks.push(m);
+-                let textStart = cx.lineStart + line.basePos, textEnd = cx.lineStart + line.text.length;
++                // REACH PATCH: strip up to fenceIndent spaces of indentation.
++                let textPos = line.basePos;
++                for (let stripped = 0; stripped < fenceIndent && textPos < line.text.length && line.text.charCodeAt(textPos) == 32; stripped++)
++                    textPos++;
++                let textStart = cx.lineStart + textPos, textEnd = cx.lineStart + line.text.length;
+                 if (textStart < textEnd) {
+                     addCodeText(marks, textStart, textEnd);
+                     empty = false;
+@@ -516,6 +543,9 @@ const DefaultBlockParsers = {
+             cx.startContext(Type.BulletList, line.basePos, line.next);
+         let newBase = getListIndent(line, line.pos + 1);
+         cx.startContext(Type.ListItem, line.basePos, newBase - line.baseIndent);
++        // REACH PATCH: remember when the item's opening line is blank.
++        if (line.skipSpace(line.pos + size) == line.text.length)
++            cx.block.blankStart = true;
+         cx.addNode(Type.ListMark, cx.lineStart + line.pos, cx.lineStart + line.pos + size);
+         line.moveBaseColumn(newBase);
+         return null;
+@@ -528,6 +558,9 @@ const DefaultBlockParsers = {
+             cx.startContext(Type.OrderedList, line.basePos, line.text.charCodeAt(line.pos + size - 1));
+         let newBase = getListIndent(line, line.pos + size);
+         cx.startContext(Type.ListItem, line.basePos, newBase - line.baseIndent);
++        // REACH PATCH: remember when the item's opening line is blank.
++        if (line.skipSpace(line.pos + size) == line.text.length)
++            cx.block.blankStart = true;
+         cx.addNode(Type.ListMark, cx.lineStart + line.pos, cx.lineStart + line.pos + size);
+         line.moveBaseColumn(newBase);
+         return null;
+@@ -796,6 +829,12 @@ class BlockContext {
+                     if (stop(this, line, leaf))
+                         break lines;
+             }
++            else if (!/[^ \t]/.test(leaf.content)) {
++                // REACH PATCH: a leaf whose first line is blank (e.g. a bare
++                // list marker) must not absorb an indented line as paragraph
++                // text — the line starts an indented code block instead.
++                break;
++            }
+             for (let parser of leaf.parsers)
+                 if (parser.nextLine(this, line, leaf))
+                     return null;
+@@ -1305,6 +1344,7 @@ class Buffer {
              nodeSet: this.nodeSet,
              reused: this.nodes,
              topID: type,
@@ -10,11 +125,278 @@ index c7a9a06..252db21 100644
              length
          });
      }
+@@ -1388,6 +1428,31 @@ try {
+     Punctuation = new RegExp("[\\p{S}|\\p{P}]", "u");
+ }
+ catch (_) { }
++// REACH PATCH: code-point-aware character reads for delimiter flanking
++// checks, so astral punctuation/symbols (e.g. U+1E2FF) are classified
++// correctly instead of testing a lone UTF-16 surrogate.
++function codePointBefore(text, pos) {
++    if (pos <= 0 || pos > text.length)
++        return "";
++    let c = text.charCodeAt(pos - 1);
++    if ((c & 0xFC00) == 0xDC00 && pos > 1) {
++        let hi = text.charCodeAt(pos - 2);
++        if ((hi & 0xFC00) == 0xD800)
++            return text.slice(pos - 2, pos);
++    }
++    return text.slice(pos - 1, pos);
++}
++function codePointAfter(text, pos) {
++    if (pos < 0 || pos >= text.length)
++        return "";
++    let c = text.charCodeAt(pos);
++    if ((c & 0xFC00) == 0xD800 && pos + 1 < text.length) {
++        let lo = text.charCodeAt(pos + 1);
++        if ((lo & 0xFC00) == 0xDC00)
++            return text.slice(pos, pos + 2);
++    }
++    return text.slice(pos, pos + 1);
++}
+ const DefaultInline = {
+     Escape(cx, next, start) {
+         if (next != 92 /* '\\' */ || start == cx.end - 1)
+@@ -1445,7 +1510,10 @@ const DefaultInline = {
+         let procInst = /^\?[^]*?\?>/.exec(after);
+         if (procInst)
+             return cx.append(elt(Type.ProcessingInstruction, start, start + 1 + procInst[0].length));
+-        let m = /^(?:![A-Z][^]*?>|!\[CDATA\[[^]*?\]\]>|\/\s*[a-zA-Z][\w-]*\s*>|\s*[a-zA-Z][\w-]*(\s+[a-zA-Z:_][\w-.:]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*(\/\s*)?>)/.exec(after);
++        // REACH PATCH: tightened to CommonMark's tag definition — no
++        // whitespace after `<` or the closing `/`, and no whitespace between
++        // a self-closing `/` and `>`.
++        let m = /^(?:![A-Z][^]*?>|!\[CDATA\[[^]*?\]\]>|\/[a-zA-Z][\w-]*\s*>|[a-zA-Z][\w-]*(\s+[a-zA-Z:_][\w-.:]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*\/?>)/.exec(after);
+         if (!m)
+             return -1;
+         return cx.append(elt(Type.HTMLTag, start, start + 1 + m[0].length));
+@@ -1456,7 +1524,7 @@ const DefaultInline = {
+         let pos = start + 1;
+         while (cx.char(pos) == next)
+             pos++;
+-        let before = cx.slice(start - 1, start), after = cx.slice(pos, pos + 1);
++        let before = codePointBefore(cx.text, start - cx.offset), after = codePointAfter(cx.text, pos - cx.offset);
+         let pBefore = Punctuation.test(before), pAfter = Punctuation.test(after);
+         let sBefore = /\s|^$/.test(before), sAfter = /\s|^$/.test(after);
+         let leftFlanking = !sAfter && (!pAfter || sBefore || pBefore);
+@@ -1497,10 +1565,32 @@ const DefaultInline = {
+                     cx.parts[i] = null;
+                     return -1;
+                 }
++                // REACH PATCH: Without a reference map to consult, a `[` opener
++                // whose `]` is not followed by an inline destination or label can
++                // never form a link. Per the CommonMark appendix, such openers are
++                // popped and the brackets render as literal text (this also lets
++                // emphasis and outer links resolve across them).
++                let follows = cx.char(start + 1);
++                if (follows == 40 /* '(' */) {
++                    if (scanInlineLinkDest(cx, start + 1) < 0) {
++                        cx.parts[i] = null;
++                        return -1;
++                    }
++                }
++                else if (follows == 91 /* '[' */) {
++                    if (!parseLinkLabel(cx.text, start + 1 - cx.offset, cx.offset, false)) {
++                        cx.parts[i] = null;
++                        return -1;
++                    }
++                }
++                else {
++                    cx.parts[i] = null;
++                    return -1;
++                }
+                 // Finish the content and replace the entire range in
+                 // this.parts with the link/image node.
+                 let content = cx.takeContent(i);
+-                let link = cx.parts[i] = finishLink(cx, content, part.type == LinkStart ? Type.Link : Type.Image, part.from, start + 1);
++                let link = cx.parts[i] = finishLink(cx, content, part.type == Type.Link ? Type.Link : Type.Image, part.from, start + 1);
+                 // Set any open-link markers before this link to invalid.
+                 if (part.type == LinkStart)
+                     for (let j = 0; j < i; j++) {
+@@ -1514,6 +1604,23 @@ const DefaultInline = {
+         return -1;
+     }
+ };
++// REACH PATCH: Preflight check for an inline link destination/title after a
++// `](`, mirroring the `(` branch of finishLink. Returns the position of the
++// closing paren, or -1 when the link is malformed.
++function scanInlineLinkDest(cx, startPos) {
++    let pos = cx.skipSpace(startPos + 1);
++    let dest = parseURL(cx.text, pos - cx.offset, cx.offset), title;
++    if (dest) {
++        pos = cx.skipSpace(dest.to);
++        // The destination and title must be separated by whitespace
++        if (pos != dest.to) {
++            title = parseLinkTitle(cx.text, pos - cx.offset, cx.offset);
++            if (title)
++                pos = cx.skipSpace(title.to);
++        }
++    }
++    return cx.char(pos) == 41 /* ')' */ ? pos : -1;
++}
+ function finishLink(cx, content, type, start, startPos) {
+     let { text } = cx, next = cx.char(startPos), endPos = startPos;
+     content.unshift(elt(Type.LinkMark, start, start + (type == Type.Image ? 2 : 1)));
+@@ -1555,8 +1662,18 @@ function finishLink(cx, content, type, start, startPos) {
+ function parseURL(text, start, offset) {
+     let next = text.charCodeAt(start);
+     if (next == 60 /* '<' */) {
+-        for (let pos = start + 1; pos < text.length; pos++) {
++        // REACH PATCH: backslash escapes are honored inside pointy-bracket
++        // destinations (`\>` does not close the destination).
++        for (let pos = start + 1, escaped = false; pos < text.length; pos++) {
+             let ch = text.charCodeAt(pos);
++            if (escaped) {
++                escaped = false;
++                continue;
++            }
++            if (ch == 92 /* '\\' */) {
++                escaped = true;
++                continue;
++            }
+             if (ch == 62 /* '>' */)
+                 return elt(Type.URL, start + offset, pos + 1 + offset);
+             if (ch == 60 || ch == 10 /* '<\n' */)
+@@ -2184,7 +2301,8 @@ const TaskList = {
+             after: "SetextHeading"
+         }]
+ };
+-const autolinkRE = /(www\.)|(https?:\/\/)|([\w.+-]{1,100}@)|(mailto:|xmpp:)/gy;
++// REACH PATCH: GFM also autolinks the ftp:// scheme.
++const autolinkRE = /(www\.)|((?:https?|ftp):\/\/)|([\w.+-]{1,100}@)|(mailto:|xmpp:)/gy;
+ const urlRE = /[\w-]+(\.[\w-]+)+(\/[^\s<]*)?/gy;
+ const lastTwoDomainWords = /[\w-]+\.[\w-]+($|\/)/;
+ const emailRE = /[\w.+-]+@[\w-]+(\.[\w.-]+)+/gy;
+@@ -2232,7 +2350,9 @@ const Autolink = {
+             name: "Autolink",
+             parse(cx, next, absPos) {
+                 let pos = absPos - cx.offset;
+-                if (pos && /\w/.test(cx.text[pos - 1]))
++                // REACH PATCH: GFM only recognizes extended autolinks at the
++                // start of a line, after whitespace, or after `*`, `_`, `~`, `(`.
++                if (pos && !/[\s*_~(]/.test(cx.text[pos - 1]))
+                     return -1;
+                 autolinkRE.lastIndex = pos;
+                 let m = autolinkRE.exec(cx.text), end = -1;
 diff --git a/node_modules/@lezer/markdown/dist/index.js b/node_modules/@lezer/markdown/dist/index.js
-index 07ce727..12f3c1c 100644
+index 07ce727..9975fb0 100644
 --- a/node_modules/@lezer/markdown/dist/index.js
 +++ b/node_modules/@lezer/markdown/dist/index.js
-@@ -1303,6 +1303,7 @@ class Buffer {
+@@ -260,6 +260,14 @@ const DefaultSkipMarkup = {
+         return true;
+     },
+     [Type.ListItem](bl, _cx, line) {
++        // REACH PATCH: an item whose opening line was blank after the marker
++        // ends when another blank line arrives (an item can begin with at
++        // most one blank line).
++        if (bl.blankStart) {
++            if (line.pos == line.text.length)
++                return false;
++            bl.blankStart = false;
++        }
+         if (line.indent < line.baseIndent + bl.value && line.next > -1)
+             return false;
+         line.moveBaseColumn(line.baseIndent + bl.value);
+@@ -368,7 +376,8 @@ function isSetextUnderline(line) {
+ }
+ const EmptyLine = /^[ \t]*$/, CommentEnd = /-->/, ProcessingEnd = /\?>/;
+ const HTMLBlockStyle = [
+-    [/^<(?:script|pre|style)(?:\s|>|$)/i, /<\/(?:script|pre|style)>/i],
++    // REACH PATCH: CommonMark HTML block type 1 also covers <textarea>.
++    [/^<(?:script|pre|style|textarea)(?:\s|>|$)/i, /<\/(?:script|pre|style|textarea)>/i],
+     [/^\s*<!--/, CommentEnd],
+     [/^\s*<\?/, ProcessingEnd],
+     [/^\s*<![A-Z]/, />/],
+@@ -387,6 +396,10 @@ function isHTMLBlock(line, _cx, breaking) {
+ }
+ function getListIndent(line, pos) {
+     let indentAfter = line.countIndent(pos, line.pos, line.indent);
++    // REACH PATCH: when nothing but whitespace follows the marker, the item's
++    // content indent is the marker width plus one space.
++    if (line.skipSpace(pos) == line.text.length)
++        return indentAfter + 1;
+     let indented = line.countIndent(line.skipSpace(pos), pos, indentAfter);
+     return indented >= indentAfter + 5 ? indentAfter + 1 : indented;
+ }
+@@ -414,6 +427,11 @@ const DefaultBlockParsers = {
+         while (cx.nextLine() && line.depth >= cx.stack.length) {
+             if (line.pos == line.text.length) { // Empty
+                 addCodeText(pendingMarks, cx.lineStart - 1, cx.lineStart);
++                // REACH PATCH: a blank interior line still contributes any
++                // indentation it has beyond the code block's base indent.
++                let residual = cx.lineStart + line.findColumn(base);
++                if (residual < cx.lineStart + line.text.length)
++                    addCodeText(pendingMarks, residual, cx.lineStart + line.text.length);
+                 for (let m of line.markers)
+                     pendingMarks.push(m);
+             }
+@@ -453,6 +471,9 @@ const DefaultBlockParsers = {
+             return false;
+         let from = cx.lineStart + line.pos, ch = line.next, len = fenceEnd - line.pos;
+         let infoFrom = line.skipSpace(fenceEnd), infoTo = skipSpaceBack(line.text, line.text.length, infoFrom);
++        // REACH PATCH: CommonMark strips up to N spaces from content lines,
++        // where N is the opening fence's indentation relative to its container.
++        let fenceIndent = line.pos - line.basePos;
+         let marks = [elt(Type.CodeMark, from, from + len)];
+         if (infoFrom < infoTo)
+             marks.push(elt(Type.CodeInfo, cx.lineStart + infoFrom, cx.lineStart + infoTo));
+@@ -464,7 +485,9 @@ const DefaultBlockParsers = {
+             if (i - line.pos >= len && line.skipSpace(i) == line.text.length) {
+                 for (let m of line.markers)
+                     marks.push(m);
+-                if (empty && hasLine)
++                // REACH PATCH: the last content line's terminator belongs to
++                // the code block even when that line was blank.
++                if (hasLine)
+                     addCodeText(marks, cx.lineStart - 1, cx.lineStart);
+                 marks.push(elt(Type.CodeMark, cx.lineStart + line.pos, cx.lineStart + i));
+                 cx.nextLine();
+@@ -478,7 +501,11 @@ const DefaultBlockParsers = {
+                 }
+                 for (let m of line.markers)
+                     marks.push(m);
+-                let textStart = cx.lineStart + line.basePos, textEnd = cx.lineStart + line.text.length;
++                // REACH PATCH: strip up to fenceIndent spaces of indentation.
++                let textPos = line.basePos;
++                for (let stripped = 0; stripped < fenceIndent && textPos < line.text.length && line.text.charCodeAt(textPos) == 32; stripped++)
++                    textPos++;
++                let textStart = cx.lineStart + textPos, textEnd = cx.lineStart + line.text.length;
+                 if (textStart < textEnd) {
+                     addCodeText(marks, textStart, textEnd);
+                     empty = false;
+@@ -514,6 +541,9 @@ const DefaultBlockParsers = {
+             cx.startContext(Type.BulletList, line.basePos, line.next);
+         let newBase = getListIndent(line, line.pos + 1);
+         cx.startContext(Type.ListItem, line.basePos, newBase - line.baseIndent);
++        // REACH PATCH: remember when the item's opening line is blank.
++        if (line.skipSpace(line.pos + size) == line.text.length)
++            cx.block.blankStart = true;
+         cx.addNode(Type.ListMark, cx.lineStart + line.pos, cx.lineStart + line.pos + size);
+         line.moveBaseColumn(newBase);
+         return null;
+@@ -526,6 +556,9 @@ const DefaultBlockParsers = {
+             cx.startContext(Type.OrderedList, line.basePos, line.text.charCodeAt(line.pos + size - 1));
+         let newBase = getListIndent(line, line.pos + size);
+         cx.startContext(Type.ListItem, line.basePos, newBase - line.baseIndent);
++        // REACH PATCH: remember when the item's opening line is blank.
++        if (line.skipSpace(line.pos + size) == line.text.length)
++            cx.block.blankStart = true;
+         cx.addNode(Type.ListMark, cx.lineStart + line.pos, cx.lineStart + line.pos + size);
+         line.moveBaseColumn(newBase);
+         return null;
+@@ -794,6 +827,12 @@ class BlockContext {
+                     if (stop(this, line, leaf))
+                         break lines;
+             }
++            else if (!/[^ \t]/.test(leaf.content)) {
++                // REACH PATCH: a leaf whose first line is blank (e.g. a bare
++                // list marker) must not absorb an indented line as paragraph
++                // text — the line starts an indented code block instead.
++                break;
++            }
+             for (let parser of leaf.parsers)
+                 if (parser.nextLine(this, line, leaf))
+                     return null;
+@@ -1303,6 +1342,7 @@ class Buffer {
              nodeSet: this.nodeSet,
              reused: this.nodes,
              topID: type,
@@ -22,3 +404,150 @@ index 07ce727..12f3c1c 100644
              length
          });
      }
+@@ -1386,6 +1426,31 @@ try {
+     Punctuation = new RegExp("[\\p{S}|\\p{P}]", "u");
+ }
+ catch (_) { }
++// REACH PATCH: code-point-aware character reads for delimiter flanking
++// checks, so astral punctuation/symbols (e.g. U+1E2FF) are classified
++// correctly instead of testing a lone UTF-16 surrogate.
++function codePointBefore(text, pos) {
++    if (pos <= 0 || pos > text.length)
++        return "";
++    let c = text.charCodeAt(pos - 1);
++    if ((c & 0xFC00) == 0xDC00 && pos > 1) {
++        let hi = text.charCodeAt(pos - 2);
++        if ((hi & 0xFC00) == 0xD800)
++            return text.slice(pos - 2, pos);
++    }
++    return text.slice(pos - 1, pos);
++}
++function codePointAfter(text, pos) {
++    if (pos < 0 || pos >= text.length)
++        return "";
++    let c = text.charCodeAt(pos);
++    if ((c & 0xFC00) == 0xD800 && pos + 1 < text.length) {
++        let lo = text.charCodeAt(pos + 1);
++        if ((lo & 0xFC00) == 0xDC00)
++            return text.slice(pos, pos + 2);
++    }
++    return text.slice(pos, pos + 1);
++}
+ const DefaultInline = {
+     Escape(cx, next, start) {
+         if (next != 92 /* '\\' */ || start == cx.end - 1)
+@@ -1443,7 +1508,10 @@ const DefaultInline = {
+         let procInst = /^\?[^]*?\?>/.exec(after);
+         if (procInst)
+             return cx.append(elt(Type.ProcessingInstruction, start, start + 1 + procInst[0].length));
+-        let m = /^(?:![A-Z][^]*?>|!\[CDATA\[[^]*?\]\]>|\/\s*[a-zA-Z][\w-]*\s*>|\s*[a-zA-Z][\w-]*(\s+[a-zA-Z:_][\w-.:]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*(\/\s*)?>)/.exec(after);
++        // REACH PATCH: tightened to CommonMark's tag definition — no
++        // whitespace after `<` or the closing `/`, and no whitespace between
++        // a self-closing `/` and `>`.
++        let m = /^(?:![A-Z][^]*?>|!\[CDATA\[[^]*?\]\]>|\/[a-zA-Z][\w-]*\s*>|[a-zA-Z][\w-]*(\s+[a-zA-Z:_][\w-.:]*(?:\s*=\s*(?:[^\s"'=<>`]+|'[^']*'|"[^"]*"))?)*\s*\/?>)/.exec(after);
+         if (!m)
+             return -1;
+         return cx.append(elt(Type.HTMLTag, start, start + 1 + m[0].length));
+@@ -1454,7 +1522,7 @@ const DefaultInline = {
+         let pos = start + 1;
+         while (cx.char(pos) == next)
+             pos++;
+-        let before = cx.slice(start - 1, start), after = cx.slice(pos, pos + 1);
++        let before = codePointBefore(cx.text, start - cx.offset), after = codePointAfter(cx.text, pos - cx.offset);
+         let pBefore = Punctuation.test(before), pAfter = Punctuation.test(after);
+         let sBefore = /\s|^$/.test(before), sAfter = /\s|^$/.test(after);
+         let leftFlanking = !sAfter && (!pAfter || sBefore || pBefore);
+@@ -1495,6 +1563,28 @@ const DefaultInline = {
+                     cx.parts[i] = null;
+                     return -1;
+                 }
++                // REACH PATCH: Without a reference map to consult, a `[` opener
++                // whose `]` is not followed by an inline destination or label can
++                // never form a link. Per the CommonMark appendix, such openers are
++                // popped and the brackets render as literal text (this also lets
++                // emphasis and outer links resolve across them).
++                let follows = cx.char(start + 1);
++                if (follows == 40 /* '(' */) {
++                    if (scanInlineLinkDest(cx, start + 1) < 0) {
++                        cx.parts[i] = null;
++                        return -1;
++                    }
++                }
++                else if (follows == 91 /* '[' */) {
++                    if (!parseLinkLabel(cx.text, start + 1 - cx.offset, cx.offset, false)) {
++                        cx.parts[i] = null;
++                        return -1;
++                    }
++                }
++                else {
++                    cx.parts[i] = null;
++                    return -1;
++                }
+                 // Finish the content and replace the entire range in
+                 // this.parts with the link/image node.
+                 let content = cx.takeContent(i);
+@@ -1512,6 +1602,23 @@ const DefaultInline = {
+         return -1;
+     }
+ };
++// REACH PATCH: Preflight check for an inline link destination/title after a
++// `](`, mirroring the `(` branch of finishLink. Returns the position of the
++// closing paren, or -1 when the link is malformed.
++function scanInlineLinkDest(cx, startPos) {
++    let pos = cx.skipSpace(startPos + 1);
++    let dest = parseURL(cx.text, pos - cx.offset, cx.offset), title;
++    if (dest) {
++        pos = cx.skipSpace(dest.to);
++        // The destination and title must be separated by whitespace
++        if (pos != dest.to) {
++            title = parseLinkTitle(cx.text, pos - cx.offset, cx.offset);
++            if (title)
++                pos = cx.skipSpace(title.to);
++        }
++    }
++    return cx.char(pos) == 41 /* ')' */ ? pos : -1;
++}
+ function finishLink(cx, content, type, start, startPos) {
+     let { text } = cx, next = cx.char(startPos), endPos = startPos;
+     content.unshift(elt(Type.LinkMark, start, start + (type == Type.Image ? 2 : 1)));
+@@ -1553,8 +1660,18 @@ function finishLink(cx, content, type, start, startPos) {
+ function parseURL(text, start, offset) {
+     let next = text.charCodeAt(start);
+     if (next == 60 /* '<' */) {
+-        for (let pos = start + 1; pos < text.length; pos++) {
++        // REACH PATCH: backslash escapes are honored inside pointy-bracket
++        // destinations (`\>` does not close the destination).
++        for (let pos = start + 1, escaped = false; pos < text.length; pos++) {
+             let ch = text.charCodeAt(pos);
++            if (escaped) {
++                escaped = false;
++                continue;
++            }
++            if (ch == 92 /* '\\' */) {
++                escaped = true;
++                continue;
++            }
+             if (ch == 62 /* '>' */)
+                 return elt(Type.URL, start + offset, pos + 1 + offset);
+             if (ch == 60 || ch == 10 /* '<\n' */)
+@@ -2182,7 +2299,8 @@ const TaskList = {
+             after: "SetextHeading"
+         }]
+ };
+-const autolinkRE = /(www\.)|(https?:\/\/)|([\w.+-]{1,100}@)|(mailto:|xmpp:)/gy;
++// REACH PATCH: GFM also autolinks the ftp:// scheme.
++const autolinkRE = /(www\.)|((?:https?|ftp):\/\/)|([\w.+-]{1,100}@)|(mailto:|xmpp:)/gy;
+ const urlRE = /[\w-]+(\.[\w-]+)+(\/[^\s<]*)?/gy;
+ const lastTwoDomainWords = /[\w-]+\.[\w-]+($|\/)/;
+ const emailRE = /[\w.+-]+@[\w-]+(\.[\w.-]+)+/gy;
+@@ -2230,7 +2348,9 @@ const Autolink = {
+             name: "Autolink",
+             parse(cx, next, absPos) {
+                 let pos = absPos - cx.offset;
+-                if (pos && /\w/.test(cx.text[pos - 1]))
++                // REACH PATCH: GFM only recognizes extended autolinks at the
++                // start of a line, after whitespace, or after `*`, `_`, `~`, `(`.
++                if (pos && !/[\s*_~(]/.test(cx.text[pos - 1]))
+                     return -1;
+                 autolinkRE.lastIndex = pos;
+                 let m = autolinkRE.exec(cx.text), end = -1;

@@ -38,7 +38,7 @@ class MultiChangeSet implements ChangeSet {
 	private upper(key: "toA" | "toB", pos: number): number {
 		let lo = 0, hi = this.changes.length;
 		while (lo < hi) {
-			const mid = (lo = hi) >> 1;
+			const mid = (lo + hi) >> 1;
 			if (this.changes[mid][key] <= pos) {
 				lo = mid + 1;
 			} else {

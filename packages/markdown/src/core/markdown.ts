@@ -10,12 +10,13 @@ import { type ChangedRange, TreeFragment, type SyntaxNode, type Tree } from '@le
 import { GFM, type GetNodeNames, type TypedSyntaxNode, type TypedTree, parser as baseParser } from './lezer/wrapper';
 import { TreeCursor } from '@lezer/common';
 import { type ChangeSet, createChangeSet } from './utils/change';
-import { headingBlockNames, inlineContentBlockNames } from './lezer/node-types';
+import { headingBlockNames, inlineContentBlockNames, rawTextBlockNames } from './lezer/node-types';
 
 export const parser = baseParser.configure([GFM]);
 
 const inlineSet: Set<string> = new Set(inlineContentBlockNames);
 const headingSet: Set<string> = new Set(headingBlockNames);
+const rawTextSet: Set<string> = new Set(rawTextBlockNames);
 
 /** Reads a source range. Identity is stable per session, unlike `doc` itself. */
 export type Slice = (from: number, to: number) => string;
@@ -118,18 +119,43 @@ function computeChangedRange(before: string, after: string): ChangedRange {
 // }
 
 function normalizeInlineNode<N extends string>(node: Node<N>) {
-	if (inlineSet.has(node.name)) {
-		const lastChild = node.children.at(-1);
-		if (lastChild?.name === "Text" && lastChild.content) {
-			lastChild.content = lastChild.content.replace(/[ \t]+$/, "");
+	if (!inlineSet.has(node.name)) return;
+	const children = node.children;
+
+	for (let i = 0; i < children.length; i++) {
+		const child = children[i];
+		if (child.name !== "Text" || !child.content) continue;
+		const prev = children[i - 1];
+		if (prev?.name === "QuoteMark") {
+			// A blockquote marker consumes one optional following space.
+			child.content = child.content.replace(/^ /, "");
+		} else if (prev?.name === "HardBreak") {
+			// Leading whitespace on the line after a hard break is stripped.
+			child.content = child.content.replace(/^[ \t]+/, "");
 		}
 	}
 
 	if (headingSet.has(node.name)) {
-		const firstChild = node.children.find(n => n.name === "Text");
-		if (firstChild && firstChild.content) {
-			firstChild.content = firstChild.content.replace(/^[ \t]+/, "");
+		// ATX: strip whitespace after the opening marker, and the whitespace
+		// before a closing marker (`## foo ##` renders as `foo`).
+		if (children[0]?.name === "HeaderMark") {
+			const firstText = children.find(n => n.name === "Text");
+			if (firstText?.content) firstText.content = firstText.content.replace(/^[ \t]+/, "");
+			// Find the closing marker (a HeaderMark after the opening one).
+			for (let i = children.length - 1; i >= 1; i--) {
+				if (children[i].name === "HeaderMark") {
+					const beforeMark = children[i - 1];
+					if (beforeMark?.name === "Text" && beforeMark.content) {
+						beforeMark.content = beforeMark.content.replace(/[ \t]+$/, "");
+					}
+					break;
+				}
+			}
 		}
+	}
+	const lastChild = children.at(-1);
+	if (lastChild?.name === "Text" && lastChild.content) {
+		lastChild.content = lastChild.content.replace(/[ \t]+$/, "");
 	}
 }
 
@@ -249,7 +275,7 @@ export class MarkdownSession {
 					node.children = this.reconcileNodes(
 						newDoc, slot.tree, node.children,
 						slot.from, oldParentFrom + nodeOldFrom, changeSet,
-						inline || inlineSet.has(node.name)
+						inline || inlineSet.has(node.name) || rawTextSet.has(node.name)
 					);
 					normalizeInlineNode(node);
 				}
@@ -286,7 +312,7 @@ export class MarkdownSession {
 			return node;
 		}
 
-		const inline = parentInline || inlineSet.has(node.name);
+		const inline = parentInline || inlineSet.has(node.name) || rawTextSet.has(node.name);
 		for (const child of childSlots(slot.tree, slot.from, inline)) {
 			node.children.push(this.buildSlot(child, newDoc, slot.from, inline));
 		}

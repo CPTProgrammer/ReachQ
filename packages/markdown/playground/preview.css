@@ -302,3 +302,14 @@ body {
 .streaming-markdown a {
 	color: #6ea8fe;
 }
+
+.streaming-markdown table {
+	border: 1px solid #3a4150;
+	border-collapse: collapse;
+	width: 100%;
+}
+
+.streaming-markdown th, .streaming-markdown td {
+	padding: 8px 10px;
+	border: 1px solid #3a4150;
+}
