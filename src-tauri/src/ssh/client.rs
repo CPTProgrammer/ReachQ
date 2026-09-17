@@ -306,8 +306,9 @@ pub struct ConnectionInfo {
     pub host: String,
     pub port: u16,
     pub username: String,
-    /// Normalized agent identity: "user@host:port[#via=chainhash]".
-    pub identity: String,
+    /// Agent owner scope: "session:<uuid>" when the connection was started
+    /// from a saved session, else "link:<identity>" for quick connects.
+    pub agent_scope: String,
 }
 
 struct ActiveConnection {
@@ -379,6 +380,7 @@ impl SshManager {
         proxy: Option<ProxyConfig>,
         pending_host_keys: Arc<tokio::sync::Mutex<HashMap<String, Vec<oneshot::Sender<HostKeyDecision>>>>>,
         known_hosts: Arc<tokio::sync::RwLock<KnownHosts>>,
+        session_id: Option<&str>,
     ) -> Result<ConnectionInfo, SshError> {
         tracing::info!("SSH connecting to {}@{}:{}", username, host, port);
 
@@ -425,7 +427,8 @@ impl SshManager {
             .map_err(|_| SshError::ConnectionFailed("Connection timed out".into()))??;
 
         self.open_session_and_register(id, host, port, username, handle, cols, rows, color_init, app_handle, Vec::new(),
-            crate::agent::identity::compute_identity(username, host, port, None, proxy.as_ref())).await
+            crate::agent::identity::agent_scope(session_id,
+                crate::agent::identity::compute_identity(username, host, port, None, proxy.as_ref()))).await
     }
 
     /// Connect to a target host through one or more jump hosts (ProxyJump).
@@ -521,6 +524,7 @@ impl SshManager {
         app_handle: tauri::AppHandle,
         pending_host_keys: Arc<tokio::sync::Mutex<HashMap<String, Vec<oneshot::Sender<HostKeyDecision>>>>>,
         known_hosts: Arc<tokio::sync::RwLock<KnownHosts>>,
+        session_id: Option<&str>,
     ) -> Result<ConnectionInfo, SshError> {
         let identity = crate::agent::identity::compute_identity(
             target_username,
@@ -529,6 +533,7 @@ impl SshManager {
             Some(&jump_chain.iter().map(crate::agent::identity::ChainHop::from).collect::<Vec<_>>()),
             None,
         );
+        let agent_scope = crate::agent::identity::agent_scope(session_id, identity);
         tracing::info!(
             "SSH connecting to {}@{}:{} via {} jump host(s)",
             target_username, target_host, target_port, jump_chain.len()
@@ -753,7 +758,7 @@ impl SshManager {
 
         self.open_session_and_register(
             id, target_host, target_port, target_username,
-            target_handle, cols, rows, color_init, app_handle, jump_handles, identity,
+            target_handle, cols, rows, color_init, app_handle, jump_handles, agent_scope,
         ).await
     }
 
@@ -785,7 +790,7 @@ impl SshManager {
         color_init: bool,
         app_handle: tauri::AppHandle,
         jump_handles: Vec<SharedHandle>,
-        identity: String,
+        agent_scope: String,
     ) -> Result<ConnectionInfo, SshError> {
         let channel = handle
             .channel_open_session()
@@ -822,7 +827,7 @@ impl SshManager {
             host: host.to_string(),
             port,
             username: username.to_string(),
-            identity,
+            agent_scope,
         };
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
@@ -912,20 +917,25 @@ impl SshManager {
         false
     }
 
-    /// Find a live connection id for an agent identity, preferring
+    /// Find a live connection id for an agent owner scope, preferring
     /// `prefer` (e.g. the active tab's connection).
-    pub fn find_by_identity(&self, identity: &str, prefer: Option<&str>) -> Option<String> {
+    pub fn find_by_scope(&self, scope: &str, prefer: Option<&str>) -> Option<String> {
         if let Some(p) = prefer {
             if let Some(conn) = self.connections.get(p) {
-                if conn.info.identity == identity {
+                if conn.info.agent_scope == scope {
                     return Some(p.to_string());
                 }
             }
         }
         self.connections
             .values()
-            .find(|c| c.info.identity == identity)
+            .find(|c| c.info.agent_scope == scope)
             .map(|c| c.info.id.clone())
+    }
+
+    /// Connection metadata for a live connection id.
+    pub fn info(&self, id: &str) -> Option<ConnectionInfo> {
+        self.connections.get(id).map(|c| c.info.clone())
     }
 
     pub fn is_pending_close(&self, id: &str) -> bool {

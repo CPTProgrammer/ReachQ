@@ -9,7 +9,7 @@
 	import Toggle from '$lib/components/shared/Toggle.svelte';
 	import { sshConnect, type JumpHostConnectParams } from '$lib/ipc/ssh';
 	import { createTab } from '$lib/state/tabs.svelte';
-	import { registerConnectionIdentity } from '$lib/state/agent.svelte';
+	import { registerConnectionScope } from '$lib/state/agent.svelte';
 	import { getPendingHostKey, clearPendingHostKey } from '$lib/state/host-key.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 
@@ -91,7 +91,7 @@
 				} : undefined,
 			};
 			const info = await sshConnect(connectParams);
-			registerConnectionIdentity(info.id, info.identity);
+			registerConnectionScope(info.id, info.agent_scope);
 
 			const tab = createTab('ssh', `${username.trim()}@${host.trim()}`, info.id);
 			tab.sshConnectParams = connectParams;

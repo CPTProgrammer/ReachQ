@@ -1,7 +1,11 @@
 <script module lang="ts">
 	export interface Props {
-		/** SSH identity (`user@host:port[#via=hash]`, design 01 §1.1). */
-		identity: string;
+		/** Owner scope (`session:<uuid>` | `link:<identity>`): thread ownership,
+		 *  panel geometry, model selection, event stream. */
+		scope: string;
+		/** Live connection of the current tab, used as the tool-execution hint.
+		 *  Absent in the detached window (any connection of the scope works). */
+		connectionId?: string;
 		/** Rendered inside a detached pop-out window: always open, fills the
 		 * window, no left-edge resizer (design 01 §1.2). */
 		detached?: boolean;
@@ -15,8 +19,8 @@
 		getPanelState,
 		loadThread,
 		popOutPanel,
-		subscribeIdentity,
-		unsubscribeIdentity,
+		subscribeScope,
+		unsubscribeScope,
 		updatePanelState
 	} from '$lib/state/agent.svelte';
 	import {
@@ -32,9 +36,9 @@
 	import AgentComposer from './AgentComposer.svelte';
 	import AgentThreads from './AgentThreads.svelte';
 
-	let { identity, detached = false, unrestrictedWidth = false }: Props = $props();
+	let { scope, connectionId, detached = false, unrestrictedWidth = false }: Props = $props();
 
-	let panel = $derived(getPanelState(identity));
+	let panel = $derived(getPanelState(scope));
 	let activeThreadId = $derived(getActiveThreadId());
 	let isOpen = $derived(detached || panel.open);
 	let threads = $derived(getThreads());
@@ -43,21 +47,21 @@
 
 	// Subscribe + load when the panel is open (design 01 §5). The event
 	// subscription intentionally survives panel close (loop keeps running);
-	// it is only torn down on identity change / unmount.
+	// it is only torn down on scope change / unmount.
 	$effect(() => {
 		if (!isOpen) return;
-		subscribeIdentity(identity);
-		void loadThreads(identity);
+		subscribeScope(scope);
+		void loadThreads(scope);
 		void loadProviders();
 		void loadModels();
 	});
 
 	$effect(() => {
-		const id = identity;
-		return () => unsubscribeIdentity(id);
+		const s = scope;
+		return () => unsubscribeScope(s);
 	});
 
-	// Keep the active thread valid for this identity's list.
+	// Keep the active thread valid for this scope's list.
 	$effect(() => {
 		if (!isOpen) return;
 		const list = getThreads();
@@ -102,14 +106,14 @@
 			// Min beats max (mirroring CSS min-width vs max-width): in a
 			// container narrower than 720px the panel may exceed half.
 			const w = Math.round(Math.max(Math.min(startW + (startX - ev.clientX), max), 360));
-			updatePanelState(identity, { panelWidth: w });
+			updatePanelState(scope, { panelWidth: w });
 		};
 		const up = () => {
 			window.removeEventListener('mousemove', move);
 			window.removeEventListener('mouseup', up);
 			// Sync the stored width to the rendered width: CSS min-/max-width
 			// may have overridden the values written during the drag.
-			updatePanelState(identity, { panelWidth: Math.round(aside.getBoundingClientRect().width) });
+			updatePanelState(scope, { panelWidth: Math.round(aside.getBoundingClientRect().width) });
 		};
 		window.addEventListener('mousemove', move);
 		window.addEventListener('mouseup', up);
@@ -121,7 +125,7 @@
 		const startW = panel.threadsWidth;
 		const move = (ev: MouseEvent) => {
 			const w = Math.round(Math.min(Math.max(startW + (startX - ev.clientX), 140), 320));
-			updatePanelState(identity, { threadsWidth: w });
+			updatePanelState(scope, { threadsWidth: w });
 		};
 		const up = () => {
 			window.removeEventListener('mousemove', move);
@@ -155,7 +159,7 @@
 							class="icon-btn"
 							title={t('agent.pop_out')}
 							aria-label={t('agent.pop_out')}
-							onclick={() => void popOutPanel(identity)}
+							onclick={() => void popOutPanel(scope)}
 						>
 							<!-- two overlapping outlined squares (front occludes back) -->
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -166,14 +170,14 @@
 						<span class="chat-header-title">{threadTitle}</span>
 					</div>
 				{/if}
-				<AgentChat {identity} threadId={activeThreadId} />
-				<AgentComposer {identity} threadId={activeThreadId} />
+				<AgentChat {scope} {connectionId} threadId={activeThreadId} />
+				<AgentComposer {scope} {connectionId} threadId={activeThreadId} />
 			</div>
 			{#if !panel.threadsCollapsed}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="threads-resizer" onmousedown={startThreadsDrag}></div>
 			{/if}
-			<AgentThreads {identity} />
+			<AgentThreads {scope} />
 		</div>
 	</aside>
 {/if}

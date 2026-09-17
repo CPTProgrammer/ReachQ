@@ -24,14 +24,16 @@
 		deleteThread,
 		getAllThreads,
 		loadAllThreads,
+		reassignThread,
 		relativeTime,
 		renameThread,
 		threadDisplayTitle,
 		unarchiveThread
 	} from '$lib/state/agent-threads.svelte';
+	import { sessionList, type SessionConfig } from '$lib/ipc/sessions';
 	import { isLocked } from '$lib/state/vault.svelte';
 	import { t, tOr } from '$lib/state/i18n.svelte';
-	import type { ProviderInstance, ThreadSummary, ToolSettingsEntry } from '$lib/ipc/agent';
+	import { agentComputeIdentity, type ProviderInstance, type ThreadSummary, type ToolSettingsEntry } from '$lib/ipc/agent';
 
 	type ToolOption = ToolSettingsEntry['options'][number];
 
@@ -356,6 +358,8 @@
 	let editingTitle = $state('');
 	let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
 	let confirmDeleteThreadId = $state<string | null>(null);
+	let reassignThreadId = $state<string | null>(null);
+	let sessions = $state<SessionConfig[]>([]);
 
 	const sortedThreads = $derived(
 		[...getAllThreads()].sort((a, b) => b.updatedAt - a.updatedAt)
@@ -364,6 +368,52 @@
 	function openThreadsView() {
 		view = 'threads';
 		void loadAllThreads().catch(() => {});
+		void sessionList().then((list) => (sessions = list)).catch(() => {});
+	}
+
+	/** Owner label: session name (or deleted marker) for session scopes,
+	 * the embedded link identity for link scopes. */
+	function ownerLabel(thread: ThreadSummary): string {
+		if (thread.ownerKey.startsWith('session:')) {
+			const id = thread.ownerKey.slice('session:'.length);
+			return sessions.find((s) => s.id === id)?.name ?? t('agent.thread_owner_deleted_session');
+		}
+		if (thread.ownerKey.startsWith('link:')) {
+			return thread.ownerKey.slice('link:'.length);
+		}
+		return thread.ownerKey;
+	}
+
+	/** Whether the thread's owning session still exists (move-to-link target
+	 * can be computed from its current config). */
+	function owningSession(thread: ThreadSummary): SessionConfig | undefined {
+		if (!thread.ownerKey.startsWith('session:')) return undefined;
+		const id = thread.ownerKey.slice('session:'.length);
+		return sessions.find((s) => s.id === id);
+	}
+
+	async function commitReassign(threadId: string, ownerKey: string) {
+		reassignThreadId = null;
+		await reassignThread(threadId, ownerKey).catch(() => {});
+	}
+
+	/** Move a session-owned thread to the quick-connect link its session
+	 * currently resolves to. */
+	async function moveThreadToLink(thread: ThreadSummary) {
+		const s = owningSession(thread);
+		if (!s) return;
+		try {
+			const identity = await agentComputeIdentity({
+				username: s.username,
+				host: s.host,
+				port: s.port,
+				jumpChain: s.jump_chain,
+				proxy: s.proxy
+			});
+			await commitReassign(thread.id, `link:${identity}`);
+		} catch {
+			/* identity computation failed — leave the thread where it is */
+		}
 	}
 
 	function startRename(thread: ThreadSummary) {
@@ -413,7 +463,7 @@
 				<div class="empty-hint">{t('agent.no_threads')}</div>
 			{/if}
 			{#each sortedThreads as thread (thread.id)}
-				<div class="thread-item" class:confirming={confirmDeleteThreadId === thread.id}>
+				<div class="thread-item" class:confirming={confirmDeleteThreadId === thread.id} class:moving={reassignThreadId === thread.id}>
 					<div class="thread-text">
 						{#if editingThreadId === thread.id}
 							<input
@@ -428,13 +478,11 @@
 							<span class="thread-title" class:archived={thread.archived} class:untitled={!thread.title}>{threadDisplayTitle(thread)}</span>
 						{/if}
 						<div class="thread-meta">
-							{#if thread.archived}
-								<span>{thread.identity}</span>
-							{/if}
+							<span class="owner-label" class:owner-deleted={thread.ownerKey.startsWith('session:') && !sessions.some((s) => thread.ownerKey === `session:${s.id}`)}>{ownerLabel(thread)}</span>
 							<span>{relativeTime(thread.updatedAt)}</span>
 						</div>
 					</div>
-					{#if editingThreadId !== thread.id && confirmDeleteThreadId !== thread.id}
+					{#if editingThreadId !== thread.id && confirmDeleteThreadId !== thread.id && reassignThreadId !== thread.id}
 						<div class="thread-actions">
 							{#if thread.archived}
 								<button
@@ -445,6 +493,16 @@
 									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 										<path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
 										<path d="M3 3v5h5" />
+									</svg>
+								</button>
+								<button
+									class="icon-btn"
+									title={t('agent.thread_move')}
+									onclick={() => (reassignThreadId = thread.id)}
+								>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M5 12h14M13 6l6 6-6 6" />
+										<path d="M3 4v16" />
 									</svg>
 								</button>
 								<button
@@ -468,6 +526,16 @@
 								</button>
 								<button
 									class="icon-btn"
+									title={t('agent.thread_move')}
+									onclick={() => (reassignThreadId = thread.id)}
+								>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M5 12h14M13 6l6 6-6 6" />
+										<path d="M3 4v16" />
+									</svg>
+								</button>
+								<button
+									class="icon-btn"
 									title={t('agent.archive')}
 									onclick={() => void archiveThread(thread.id)}
 								>
@@ -476,6 +544,29 @@
 									</svg>
 								</button>
 							{/if}
+						</div>
+					{/if}
+					{#if reassignThreadId === thread.id}
+						<div class="confirm-bar reassign-bar">
+							<span class="confirm-text">{t('agent.thread_move_to')}</span>
+							<div class="reassign-options">
+								{#each sessions as s (s.id)}
+									<button
+										class="confirm-btn"
+										class:active={thread.ownerKey === `session:${s.id}`}
+										onclick={() => void commitReassign(thread.id, `session:${s.id}`)}
+									>{s.name}</button>
+								{/each}
+								{#if !thread.ownerKey.startsWith('link:') && owningSession(thread)}
+									<button
+										class="confirm-btn"
+										onclick={() => void moveThreadToLink(thread)}
+									>{t('agent.thread_move_to_link')}</button>
+								{/if}
+								<button class="confirm-btn" onclick={() => (reassignThreadId = null)}>
+									{t('common.cancel')}
+								</button>
+							</div>
 						</div>
 					{/if}
 					{#if confirmDeleteThreadId === thread.id}
@@ -1585,6 +1676,34 @@
 		background: transparent;
 		border: none;
 		border-top: 1px solid color-mix(in srgb, var(--color-danger) 20%, transparent);
+	}
+
+	/* Reassign (move-to) bar: accent tint instead of the delete danger tint. */
+
+	.thread-item.moving {
+		background-color: color-mix(in srgb, var(--color-accent) 8%, transparent);
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
+	}
+
+	.thread-item .confirm-bar.reassign-bar {
+		border-top-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+		flex-wrap: wrap;
+		row-gap: 6px;
+	}
+
+	.reassign-options {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.confirm-btn.active {
+		border-color: var(--color-accent);
+		color: var(--color-accent);
+	}
+
+	.owner-label.owner-deleted {
+		color: var(--color-warning);
 	}
 
 	.thread-text {

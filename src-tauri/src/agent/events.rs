@@ -152,9 +152,9 @@ pub enum AgentEvent {
 }
 
 impl AgentEvent {
-    /// The event channel name for one identity.
-    pub fn channel(identity: &str) -> String {
-        format!("agent-event-{}", URL_SAFE_NO_PAD.encode(identity))
+    /// The event channel name for one owner scope.
+    pub fn channel(scope: &str) -> String {
+        format!("agent-event-{}", URL_SAFE_NO_PAD.encode(scope))
     }
 }
 

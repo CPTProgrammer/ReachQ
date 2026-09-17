@@ -1,7 +1,7 @@
 //! Agent panel + conversation state (design 01 §4).
 //!
-//! Owns: panel geometry per identity (localStorage), the event-stream
-//! subscription per identity, and the live per-thread message state
+//! Owns: panel geometry per owner scope (localStorage), the event-stream
+//! subscription per scope, and the live per-thread message state
 //! reconciled from backend events. Tool card state lives in `toolCalls`.
 
 import {
@@ -40,7 +40,8 @@ export function setAgentBackend(b: AgentBackend): void {
 }
 
 // ---------------------------------------------------------------------------
-// Panel state per identity (localStorage `reach-agent-panel:{identity}`)
+// Panel state per owner scope (localStorage `reach-agent-panel:{scope}`)
+// Scope: "session:<uuid>" (saved session) | "link:<identity>" (quick connect).
 // ---------------------------------------------------------------------------
 
 export interface AgentPanelState {
@@ -63,8 +64,8 @@ const PANEL_KEY_PREFIX = 'reach-agent-panel:';
 
 let panels = $state<Record<string, AgentPanelState>>({});
 
-function panelKey(identity: string): string {
-	return `${PANEL_KEY_PREFIX}${identity}`;
+function panelKey(scope: string): string {
+	return `${PANEL_KEY_PREFIX}${scope}`;
 }
 
 /**
@@ -72,31 +73,31 @@ function panelKey(identity: string): string {
  * fall back to defaults merged with localStorage without writing to `panels`;
  * the entry is only materialized by `updatePanelState`.
  */
-export function getPanelState(identity: string): AgentPanelState {
-	const existing = panels[identity];
+export function getPanelState(scope: string): AgentPanelState {
+	const existing = panels[scope];
 	if (existing) return existing;
 	let stored: Partial<AgentPanelState> = {};
 	try {
-		stored = JSON.parse(localStorage.getItem(panelKey(identity)) ?? '{}');
+		stored = JSON.parse(localStorage.getItem(panelKey(scope)) ?? '{}');
 	} catch {
 		stored = {};
 	}
 	return { ...PANEL_DEFAULTS, ...stored };
 }
 
-export function updatePanelState(identity: string, patch: Partial<AgentPanelState>): void {
-	const current = getPanelState(identity);
-	panels[identity] = { ...current, ...patch };
+export function updatePanelState(scope: string, patch: Partial<AgentPanelState>): void {
+	const current = getPanelState(scope);
+	panels[scope] = { ...current, ...patch };
 	try {
-		localStorage.setItem(panelKey(identity), JSON.stringify(panels[identity]));
+		localStorage.setItem(panelKey(scope), JSON.stringify(panels[scope]));
 	} catch {
 		/* quota errors are non-fatal */
 	}
 }
 
-export function togglePanel(identity: string): void {
-	const p = getPanelState(identity);
-	updatePanelState(identity, { open: !p.open });
+export function togglePanel(scope: string): void {
+	const p = getPanelState(scope);
+	updatePanelState(scope, { open: !p.open });
 }
 
 // ---------------------------------------------------------------------------
@@ -104,22 +105,23 @@ export function togglePanel(identity: string): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Window label for an identity's detached panel. Tauri labels allow only
- * alphanumerics plus `- / : _`, so percent-encode the identity and flatten
- * anything still unsafe (`%`, `.`, …) to `_`.
+ * Window label for a scope's detached panel. Tauri labels allow only
+ * alphanumerics plus `- / : _`, so percent-encode the scope and flatten
+ * anything still unsafe (`%`, `.`, …) to `_`. Keyed by scope (not identity)
+ * so the pop-out survives session connection-detail edits.
  */
-export function agentWindowLabel(identity: string): string {
-	return `agent-${encodeURIComponent(identity).replace(/[^A-Za-z0-9_-]/g, '_')}`;
+export function agentWindowLabel(scope: string): string {
+	return `agent-${encodeURIComponent(scope).replace(/[^A-Za-z0-9_-]/g, '_')}`;
 }
 
 /**
- * Open the panel as a detached window. If a window for this identity already
+ * Open the panel as a detached window. If a window for this scope already
  * exists, focus it instead of creating a duplicate.
  */
-export async function popOutPanel(identity: string): Promise<void> {
-	const panel = getPanelState(identity);
-	updatePanelState(identity, { detached: true, open: true });
-	const label = agentWindowLabel(identity);
+export async function popOutPanel(scope: string): Promise<void> {
+	const panel = getPanelState(scope);
+	updatePanelState(scope, { detached: true, open: true });
+	const label = agentWindowLabel(scope);
 	try {
 		const existing = await WebviewWindow.getByLabel(label);
 		if (existing) {
@@ -127,8 +129,8 @@ export async function popOutPanel(identity: string): Promise<void> {
 			return;
 		}
 		const win = new WebviewWindow(label, {
-			url: `/?agent=${encodeURIComponent(identity)}`,
-			title: `Agent — ${identity}`,
+			url: `/?agent=${encodeURIComponent(scope)}`,
+			title: `Agent — ${scope.startsWith('link:') ? scope.slice(5) : scope}`,
 			width: panel.panelWidth,
 			height: Math.max(window.innerHeight, 480),
 			minWidth: 360,
@@ -139,12 +141,12 @@ export async function popOutPanel(identity: string): Promise<void> {
 		});
 		void win.once('tauri://error', (e) => {
 			console.error('Failed to create detached agent window:', e);
-			updatePanelState(identity, { detached: false });
+			updatePanelState(scope, { detached: false });
 		});
 	} catch (err) {
 		// Non-Tauri env (browser preview) or permission failure: stay docked.
 		console.error('Failed to open detached agent window:', err);
-		updatePanelState(identity, { detached: false });
+		updatePanelState(scope, { detached: false });
 	}
 }
 
@@ -156,11 +158,11 @@ let dockBackRequested = false;
  * latch makes `initDetachedWindowCloseHook` persist `{ detached: false,
  * open: true }` instead of the plain-close semantics (design 01 §1.2).
  */
-export async function dockBackPanel(identity: string): Promise<void> {
-	updatePanelState(identity, { detached: false, open: true });
+export async function dockBackPanel(scope: string): Promise<void> {
+	updatePanelState(scope, { detached: false, open: true });
 	dockBackRequested = true;
 	try {
-		const win = await WebviewWindow.getByLabel(agentWindowLabel(identity));
+		const win = await WebviewWindow.getByLabel(agentWindowLabel(scope));
 		await win?.close();
 	} catch (err) {
 		dockBackRequested = false;
@@ -181,10 +183,10 @@ export function initPanelStorageSync(): void {
 	storageSyncInitialized = true;
 	window.addEventListener('storage', (e) => {
 		if (!e.key?.startsWith(PANEL_KEY_PREFIX)) return;
-		const identity = e.key.slice(PANEL_KEY_PREFIX.length);
-		if (!identity) return;
+		const scope = e.key.slice(PANEL_KEY_PREFIX.length);
+		if (!scope) return;
 		if (e.newValue === null) {
-			delete panels[identity];
+			delete panels[scope];
 			return;
 		}
 		let stored: Partial<AgentPanelState>;
@@ -193,7 +195,7 @@ export function initPanelStorageSync(): void {
 		} catch {
 			return;
 		}
-		panels[identity] = { ...PANEL_DEFAULTS, ...stored };
+		panels[scope] = { ...PANEL_DEFAULTS, ...stored };
 	});
 }
 
@@ -205,10 +207,10 @@ export function initPanelStorageSync(): void {
  * `dockBackPanel`, the latch keeps the panel open instead. Returns a
  * cleanup fn.
  */
-export function initDetachedWindowCloseHook(identity: string): () => void {
+export function initDetachedWindowCloseHook(scope: string): () => void {
 	const persistClosed = () => {
 		try {
-			const key = panelKey(identity);
+			const key = panelKey(scope);
 			const stored = JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<AgentPanelState>;
 			localStorage.setItem(key, JSON.stringify({ ...stored, detached: false, open: dockBackRequested }));
 		} catch {
@@ -237,21 +239,23 @@ export function initDetachedWindowCloseHook(identity: string): () => void {
 }
 
 // ---------------------------------------------------------------------------
-// Identity tracking: connectionId -> identity (from ssh_connect results)
+// Connection tracking: connectionId -> owner scope (from ssh_connect's
+// ConnectionInfo.agent_scope)
 // ---------------------------------------------------------------------------
 
-let identities = $state<Record<string, string>>({});
+let connections = $state<Record<string, string>>({});
 
-export function registerConnectionIdentity(connectionId: string, identity: string): void {
-	identities[connectionId] = identity;
+export function registerConnectionScope(connectionId: string, scope: string): void {
+	connections[connectionId] = scope;
 }
 
-export function identityForConnection(connectionId: string | undefined): string | null {
-	return connectionId ? (identities[connectionId] ?? null) : null;
+/** Owner scope of a connection ("session:<uuid>" | "link:<identity>"). */
+export function scopeForConnection(connectionId: string | undefined): string | null {
+	return connectionId ? (connections[connectionId] ?? null) : null;
 }
 
 export function forgetConnection(connectionId: string): void {
-	delete identities[connectionId];
+	delete connections[connectionId];
 }
 
 // ---------------------------------------------------------------------------
@@ -430,14 +434,14 @@ export function applySnapshot(
 }
 
 // ---------------------------------------------------------------------------
-// Event stream subscription (per identity; design 01 §5)
+// Event stream subscription (per scope; design 01 §5)
 // ---------------------------------------------------------------------------
 
 const subscriptions: Record<string, () => void> = {};
 
 /**
- * Bumped on every (re)subscription to an identity's event stream. While
- * subscribed, every runtime of the identity stays live-synced by the stream
+ * Bumped on every (re)subscription to a scope's event stream. While
+ * subscribed, every runtime of the scope stays live-synced by the stream
  * (handleEvent routes by thread id), so re-applying a persisted snapshot over
  * such a runtime is redundant churn (it remounts tool cards) and can even
  * overwrite newer live state. A runtime whose loadedEpoch lags the current
@@ -445,8 +449,8 @@ const subscriptions: Record<string, () => void> = {};
  */
 let streamEpoch = 0;
 
-export function subscribeIdentity(identity: string): void {
-	if (subscriptions[identity]) return;
+export function subscribeScope(scope: string): void {
+	if (subscriptions[scope]) return;
 	streamEpoch++;
 	let cancelled = false;
 	let unlisten: (() => void) | null = null;
@@ -454,8 +458,8 @@ export function subscribeIdentity(identity: string): void {
 		cancelled = true;
 		unlisten?.();
 	};
-	subscriptions[identity] = wrapper;
-	const res = backend.onEvent(identity, handleEvent);
+	subscriptions[scope] = wrapper;
+	const res = backend.onEvent(scope, handleEvent);
 	if (res instanceof Promise) {
 		res.then((u) => {
 			if (cancelled) u();
@@ -466,9 +470,9 @@ export function subscribeIdentity(identity: string): void {
 	}
 }
 
-export function unsubscribeIdentity(identity: string): void {
-	subscriptions[identity]?.();
-	delete subscriptions[identity];
+export function unsubscribeScope(scope: string): void {
+	subscriptions[scope]?.();
+	delete subscriptions[scope];
 }
 
 /// Create (or find) the streaming placeholder for one assistant round. The
@@ -780,14 +784,14 @@ export function onTerminalOutput(
 // ---------------------------------------------------------------------------
 
 export async function agentSendMessage(
-	identity: string,
+	scope: string,
 	threadId: string,
 	text: string,
 	opts: AgentSendOpts
 ): Promise<void> {
 	const rt = ensureThreadRuntime(threadId);
 	rt.error = null;
-	const status = await backend.sendMessage(identity, threadId, text, opts);
+	const status = await backend.sendMessage(scope, threadId, text, opts);
 	if (status === 'queued') {
 		rt.queued = { text };
 	} else if (status === 'queued_full') {
@@ -813,7 +817,7 @@ export async function agentCancelRun(threadId: string): Promise<void> {
  * then starts a fresh run. On timeout the message is re-queued backend-side;
  * restore the bar so the UI matches. */
 export async function agentSendNow(
-	identity: string,
+	scope: string,
 	threadId: string,
 	text: string,
 	opts: AgentSendOpts
@@ -822,7 +826,7 @@ export async function agentSendNow(
 	rt.error = null;
 	rt.queued = null;
 	try {
-		await backend.sendNow(identity, threadId, text, opts);
+		await backend.sendNow(scope, threadId, text, opts);
 		rt.running = true;
 	} catch (e) {
 		rt.queued = { text };
@@ -854,7 +858,7 @@ export async function agentResizeTerminal(
 
 /** Edit a user message and fork a new branch (design 01 §2.4). */
 export async function agentEditAndFork(
-	identity: string,
+	scope: string,
 	threadId: string,
 	messageId: string,
 	newContent: string,
@@ -862,7 +866,7 @@ export async function agentEditAndFork(
 ): Promise<void> {
 	const rt = ensureThreadRuntime(threadId);
 	rt.error = null;
-	const snapshot = await backend.threadEditMessage(identity, threadId, messageId, newContent, opts);
+	const snapshot = await backend.threadEditMessage(scope, threadId, messageId, newContent, opts);
 	// The fork switched the active branch backend-side; the snapshot carries
 	// the new path with correct branch info. Run events that already arrived
 	// only added placeholders, which the next delta lazily re-creates.

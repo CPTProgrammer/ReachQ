@@ -34,8 +34,8 @@ import type {
 	Usage
 } from './agent';
 
-/** Identity the preview page binds its AgentPanel to. */
-export const MOCK_IDENTITY = 'mock@preview:22';
+/** Scope the preview page binds its AgentPanel to. */
+export const MOCK_SCOPE = 'link:mock@preview:22';
 
 export interface MockScenarioMeta {
 	name: string;
@@ -159,7 +159,7 @@ interface MockThread {
 }
 
 interface Ctx {
-	identity: string;
+	scope: string;
 	threadId: string;
 	/** Sleeps; rejects with the cancel sentinel when the run was cancelled. */
 	sleep(ms: number): Promise<void>;
@@ -561,7 +561,7 @@ class MockAgentBackend implements AgentBackend {
 	];
 	private toolConfigs = new Map<string, ToolConfig>();
 	private titleModel: string | null = 'mock-ds/deepseek-chat';
-	private lastIdentity = MOCK_IDENTITY;
+	private lastScope = MOCK_SCOPE;
 	private activeScenario = 'text-thinking';
 	private nextMessageId = 1;
 	private nextToolCallId = 1;
@@ -569,12 +569,12 @@ class MockAgentBackend implements AgentBackend {
 
 	// ── event hub ────────────────────────────────────────────────────────────
 
-	onEvent(identity: string, cb: (e: AgentEvent) => void): UnlistenFn {
-		this.lastIdentity = identity;
-		let set = this.listeners.get(identity);
+	onEvent(scope: string, cb: (e: AgentEvent) => void): UnlistenFn {
+		this.lastScope = scope;
+		let set = this.listeners.get(scope);
 		if (!set) {
 			set = new Set();
-			this.listeners.set(identity, set);
+			this.listeners.set(scope, set);
 		}
 		set.add(cb);
 		return () => {
@@ -582,18 +582,18 @@ class MockAgentBackend implements AgentBackend {
 		};
 	}
 
-	private emit(identity: string, e: AgentEvent): void {
-		for (const cb of this.listeners.get(identity) ?? []) cb(e);
+	private emit(scope: string, e: AgentEvent): void {
+		for (const cb of this.listeners.get(scope) ?? []) cb(e);
 	}
 
 	// ── thread store ─────────────────────────────────────────────────────────
 
-	private newThread(identity: string): MockThread {
+	private newThread(scope: string): MockThread {
 		const now = Date.now();
 		const thread: MockThread = {
 			summary: {
 				id: `mock-thread-${this.nextThreadId++}`,
-				identity,
+				ownerKey: scope,
 				title: '',
 				archived: false,
 				createdAt: now,
@@ -741,12 +741,12 @@ class MockAgentBackend implements AgentBackend {
 	// ── messaging ────────────────────────────────────────────────────────────
 
 	async sendMessage(
-		identity: string,
+		scope: string,
 		threadId: string,
 		text: string,
 		opts: AgentSendOpts
 	): Promise<'started' | 'queued' | 'queued_full'> {
-		this.lastIdentity = identity;
+		this.lastScope = scope;
 		const thread = this.requireThread(threadId);
 		if (thread.running) {
 			// One-slot queue (design 01 §3.5); no event until the round boundary.
@@ -759,8 +759,8 @@ class MockAgentBackend implements AgentBackend {
 		// Model snapshot on the thread (design 05 §5).
 		thread.summary.model = { model: opts.model, thinking: opts.thinking, effort: opts.effort };
 		const msg = this.appendUserMessage(thread, text);
-		this.emit(identity, { kind: 'user_message', threadId, message: msg });
-		void this.executeRun(identity, thread, thread.run, opts);
+		this.emit(scope, { kind: 'user_message', threadId, message: msg });
+		void this.executeRun(scope, thread, thread.run, opts);
 		return 'started';
 	}
 
@@ -779,12 +779,12 @@ class MockAgentBackend implements AgentBackend {
 	}
 
 	async sendNow(
-		identity: string,
+		scope: string,
 		threadId: string,
 		text: string,
 		opts: AgentSendOpts
 	): Promise<void> {
-		this.lastIdentity = identity;
+		this.lastScope = scope;
 		const thread = this.requireThread(threadId);
 		const wasQueued = thread.queued != null;
 		thread.queued = null;
@@ -808,8 +808,8 @@ class MockAgentBackend implements AgentBackend {
 		thread.run = { cancelled: false, rejectApprovals: new Set(), messageIds: [], toolCalls: [] };
 		thread.summary.model = { model: opts.model, thinking: opts.thinking, effort: opts.effort };
 		const msg = this.appendUserMessage(thread, text);
-		this.emit(identity, { kind: 'user_message', threadId, message: msg });
-		void this.executeRun(identity, thread, thread.run, opts);
+		this.emit(scope, { kind: 'user_message', threadId, message: msg });
+		void this.executeRun(scope, thread, thread.run, opts);
 	}
 
 	async approve(toolCallId: string, approved: boolean): Promise<void> {
@@ -830,14 +830,14 @@ class MockAgentBackend implements AgentBackend {
 	// ── run engine ───────────────────────────────────────────────────────────
 
 	private async executeRun(
-		identity: string,
+		scope: string,
 		thread: MockThread,
 		run: MockRun,
 		opts: AgentSendOpts | null
 	): Promise<void> {
 		const threadId = thread.summary.id;
 		const scenario = this.scenarios[thread.scenario] ?? this.scenarios['text-thinking'];
-		const ctx = this.makeCtx(identity, thread, run, opts);
+		const ctx = this.makeCtx(scope, thread, run, opts);
 		try {
 			await scenario.run(ctx);
 			// Queue injection at the round boundary (design 01 §3.5).
@@ -845,7 +845,7 @@ class MockAgentBackend implements AgentBackend {
 				const text = thread.queued;
 				thread.queued = null;
 				const msg = this.appendUserMessage(thread, text);
-				this.emit(identity, { kind: 'user_message', threadId, message: msg });
+				this.emit(scope, { kind: 'user_message', threadId, message: msg });
 				const follow = ctx.beginAssistant();
 				await ctx.sleep(350);
 				const reply = scenario.queuedFollowUp
@@ -855,21 +855,21 @@ class MockAgentBackend implements AgentBackend {
 				ctx.addUsage(180);
 				ctx.finishMessage(follow, 0);
 			}
-			this.maybeTitle(identity, thread);
+			this.maybeTitle(scope, thread);
 			// Normal exit: unregister first, then emit the terminal event
 			// (mirrors try_finish_run in the Rust agent loop), so the
 			// composer settles back to the send button.
 			thread.running = false;
 			thread.run = null;
-			this.emit(identity, { kind: 'run_end', threadId });
+			this.emit(scope, { kind: 'run_end', threadId });
 		} catch (e) {
 			// Abnormal exit: the queued message dies with the run (mirrors the
 			// real backend's cleanup; no ghost injection into the next run).
 			thread.queued = null;
 			if (e === CANCELLED) {
-				this.emit(identity, { kind: 'cancelled', threadId });
+				this.emit(scope, { kind: 'cancelled', threadId });
 			} else {
-				this.emit(identity, {
+				this.emit(scope, {
 					kind: 'error',
 					threadId,
 					message: e instanceof Error ? e.message : String(e)
@@ -882,7 +882,7 @@ class MockAgentBackend implements AgentBackend {
 		}
 	}
 
-	private maybeTitle(identity: string, thread: MockThread): void {
+	private maybeTitle(scope: string, thread: MockThread): void {
 		if (thread.summary.title) return;
 		const first = thread.children.get('')?.[0];
 		const text = first
@@ -893,11 +893,11 @@ class MockAgentBackend implements AgentBackend {
 			text && text.type === 'text' ? text.text.trim().split('\n')[0].slice(0, 30) : '';
 		if (!title) return;
 		thread.summary.title = title;
-		this.emit(identity, { kind: 'title_updated', threadId: thread.summary.id, title });
+		this.emit(scope, { kind: 'title_updated', threadId: thread.summary.id, title });
 	}
 
 	private makeCtx(
-		identity: string,
+		scope: string,
 		thread: MockThread,
 		run: MockRun,
 		opts: AgentSendOpts | null
@@ -938,13 +938,13 @@ class MockAgentBackend implements AgentBackend {
 			for (const chunk of wordChunks(text)) {
 				if (run.cancelled) throw CANCELLED;
 				touch(messageId);
-				this.emit(identity, { kind, threadId, messageId, delta: chunk });
+				this.emit(scope, { kind, threadId, messageId, delta: chunk });
 				if (block) block.text += chunk;
 				await sleep(34 + Math.random() * 46);
 			}
 		};
 		return {
-			identity,
+			scope,
 			threadId,
 			sleep,
 			beginAssistant: () => {
@@ -972,7 +972,7 @@ class MockAgentBackend implements AgentBackend {
 					argsJson: '',
 					status: 'streaming'
 				};
-				this.emit(identity, { kind: 'tool_call', threadId, toolCall: { ...call } });
+				this.emit(scope, { kind: 'tool_call', threadId, toolCall: { ...call } });
 				const msg = thread.messages.get(messageId);
 				msg?.content.push({
 					type: 'tool_call',
@@ -993,7 +993,7 @@ class MockAgentBackend implements AgentBackend {
 					if (run.cancelled) throw CANCELLED;
 					touch(messageId);
 					call.argsJson += chunk;
-					this.emit(identity, {
+					this.emit(scope, {
 						kind: 'tool_call_args_delta',
 						threadId,
 						toolCallId: call.id,
@@ -1004,7 +1004,7 @@ class MockAgentBackend implements AgentBackend {
 						const patchedJson = JSON.stringify(patched);
 						if (patchedJson !== lastPatched) {
 							lastPatched = patchedJson;
-							this.emit(identity, {
+							this.emit(scope, {
 								kind: 'tool_call_args_patched',
 								threadId,
 								toolCallId: call.id,
@@ -1016,7 +1016,7 @@ class MockAgentBackend implements AgentBackend {
 						const partialLen = partialEditNewText(patched)?.length ?? 0;
 						if (previewStage === 0 && partialLen >= newTextLen / 2) {
 							previewStage = 1;
-							this.emit(identity, {
+							this.emit(scope, {
 								kind: 'tool_call_preview',
 								threadId,
 								toolCallId: call.id,
@@ -1025,7 +1025,7 @@ class MockAgentBackend implements AgentBackend {
 						}
 						if (previewStage === 1 && partialLen >= newTextLen) {
 							previewStage = 2;
-							this.emit(identity, {
+							this.emit(scope, {
 								kind: 'tool_call_preview',
 								threadId,
 								toolCallId: call.id,
@@ -1041,7 +1041,7 @@ class MockAgentBackend implements AgentBackend {
 				call.status = status;
 				call.result = result;
 				call.warnings = warnings;
-				this.emit(identity, { kind: 'tool_call', threadId, toolCall: { ...call } });
+				this.emit(scope, { kind: 'tool_call', threadId, toolCall: { ...call } });
 				const msg = thread.messages.get(call.messageId);
 				const block = msg?.content.find((b) => b.type === 'tool_call' && b.id === call.id);
 				if (block && block.type === 'tool_call') {
@@ -1077,12 +1077,12 @@ class MockAgentBackend implements AgentBackend {
 						status: 'pending_approval',
 						warnings
 					};
-					this.emit(identity, { kind: 'tool_call', threadId, toolCall: pending });
-					this.emit(identity, { kind: 'approval_needed', threadId, approval: request });
+					this.emit(scope, { kind: 'tool_call', threadId, toolCall: pending });
+					this.emit(scope, { kind: 'approval_needed', threadId, approval: request });
 				});
 			},
 			emitTerminal: (toolCallId, text) => {
-				this.emit(identity, { kind: 'terminal_output', toolCallId, dataB64: b64(text) });
+				this.emit(scope, { kind: 'terminal_output', toolCallId, dataB64: b64(text) });
 			},
 			terminalStopped: (toolCallId) => this.stoppedTerminals.has(toolCallId),
 			addUsage: (completionTokens, cachedTokens) => {
@@ -1093,7 +1093,7 @@ class MockAgentBackend implements AgentBackend {
 					...(cachedTokens != null ? { cachedTokens } : {})
 				};
 				thread.summary.lastUsage = usage;
-				this.emit(identity, { kind: 'usage', threadId, usage });
+				this.emit(scope, { kind: 'usage', threadId, usage });
 			},
 			finishMessage: (messageId, toolCallCount, emitId) => {
 				const msg = thread.messages.get(messageId);
@@ -1117,7 +1117,7 @@ class MockAgentBackend implements AgentBackend {
 					};
 					metadata = msg.metadata;
 				}
-				this.emit(identity, {
+				this.emit(scope, {
 					kind: 'message_done',
 					threadId,
 					messageId: emitId ?? messageId,
@@ -1125,15 +1125,15 @@ class MockAgentBackend implements AgentBackend {
 				});
 			},
 			emitError: (message) => {
-				this.emit(identity, { kind: 'error', threadId, message });
+				this.emit(scope, { kind: 'error', threadId, message });
 			}
 		};
 	}
 		// ── threads (AgentBackend surface) ───────────────────────────────────────
 
-		async threadsList(identity: string): Promise<ThreadSummary[]> {
+		async threadsList(scope: string): Promise<ThreadSummary[]> {
 			return [...this.threads.values()]
-				.filter((t) => t.summary.identity === identity && !t.summary.archived)
+				.filter((t) => t.summary.ownerKey === scope && !t.summary.archived)
 				.map((t) => this.summaryView(t))
 				.sort((a, b) => b.updatedAt - a.updatedAt);
 		}
@@ -1144,10 +1144,14 @@ class MockAgentBackend implements AgentBackend {
 				.sort((a, b) => b.updatedAt - a.updatedAt);
 		}
 
-		async threadCreate(identity: string): Promise<ThreadSummary> {
-			const thread = this.newThread(identity);
+		async threadCreate(scope: string): Promise<ThreadSummary> {
+			const thread = this.newThread(scope);
 			this.scenarios[thread.scenario]?.seed?.(thread);
 			return this.summaryView(thread);
+		}
+
+		async threadReassign(threadId: string, ownerKey: string): Promise<void> {
+			this.requireThread(threadId).summary.ownerKey = ownerKey;
 		}
 
 		async threadRename(threadId: string, title: string): Promise<void> {
@@ -1181,7 +1185,7 @@ class MockAgentBackend implements AgentBackend {
 		}
 
 		async threadEditMessage(
-			identity: string,
+			scope: string,
 			threadId: string,
 			messageId: string,
 			newContent: string,
@@ -1208,7 +1212,7 @@ class MockAgentBackend implements AgentBackend {
 			// caller applies the returned snapshot to switch the visible path.
 			// Take it before the run starts, as the real command does.
 			const snapshot = this.snapshot(thread);
-			void this.executeRun(identity, thread, thread.run, opts);
+			void this.executeRun(scope, thread, thread.run, opts);
 			return snapshot;
 		}
 
@@ -1348,11 +1352,11 @@ class MockAgentBackend implements AgentBackend {
 		 */
 		async playScenario(name: string): Promise<string> {
 			this.setScenario(name);
-			const thread = this.newThread(this.lastIdentity);
+			const thread = this.newThread(this.lastScope);
 			this.scenarios[name]?.seed?.(thread);
 			const prompt = this.scenarios[name]?.prompt;
 			if (prompt) {
-				await this.sendMessage(this.lastIdentity, thread.summary.id, prompt, {
+				await this.sendMessage(this.lastScope, thread.summary.id, prompt, {
 					model: 'mock-or/anthropic/claude-sonnet-4.5',
 					thinking: true,
 					effort: 'medium'

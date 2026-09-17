@@ -71,7 +71,7 @@ async fn prepare_edit(ctx: &ToolContext, path: &str, edits: &[Edit]) -> Result<V
         .read_cache
         .lock()
         .unwrap()
-        .get(&(ctx.identity.clone(), path.to_string()))
+        .get(&(ctx.scope.clone(), path.to_string()))
         .map(|e| e.fingerprint);
 
     let decoded = remote_fs::read_pipeline(&fs, path).await?;

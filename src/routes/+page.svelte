@@ -9,11 +9,11 @@
 	import { monitoringStart, monitoringStop, monitoringGetStats } from '$lib/ipc/monitoring';
 	import { updateStats, removeStats } from '$lib/state/monitoring.svelte';
 	import {
-		identityForConnection,
+		scopeForConnection,
 		forgetConnection,
 		getPanelState,
-		subscribeIdentity,
-		unsubscribeIdentity,
+		subscribeScope,
+		unsubscribeScope,
 		getThreadRuntime,
 		agentCancelRun
 	} from '$lib/state/agent.svelte';
@@ -27,8 +27,8 @@
 	import EditorWindow from '$lib/components/editor/EditorWindow.svelte';
 
 	const isEditorWindow = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('editor');
-	// Detached agent panel window (`?agent=<identity>`, design 01 §1.2).
-	const agentWindowIdentity = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('agent')) || null;
+	// Detached agent panel window (`?agent=<scope>`, design 01 §1.2).
+	const agentWindowScope = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('agent')) || null;
 
 	/**
 	 * Handle terminal title changes from OSC 2 escape sequences.
@@ -70,26 +70,26 @@
 
 	// --- Agent panel binding (design 01 §1) -----------------------------------
 
-	let activeIdentity = $derived(
-		activeTab?.type === 'ssh' ? identityForConnection(activeTab.connectionId) : null
+	let activeScope = $derived(
+		activeTab?.type === 'ssh' ? scopeForConnection(activeTab.connectionId) : null
 	);
 	let activePanelOpen = $state(false);
 
 	// Warm the panel state (lazy localStorage read mutates state, so it must not
-	// run in a template expression) and subscribe to the identity's event stream
+	// run in a template expression) and subscribe to the scope's event stream
 	// while its panel is open. Closing the panel intentionally keeps the
 	// subscription — the agent loop continues in the background (design 01 §5).
 	// A detached panel renders in its own window instead of docked here.
 	$effect(() => {
-		const identity = activeIdentity;
-		if (!identity) {
+		const scope = activeScope;
+		if (!scope) {
 			activePanelOpen = false;
 			return;
 		}
-		const panel = getPanelState(identity);
+		const panel = getPanelState(scope);
 		activePanelOpen = panel.open && !panel.detached;
 		if (activePanelOpen) {
-			subscribeIdentity(identity);
+			subscribeScope(scope);
 		}
 	});
 
@@ -100,11 +100,11 @@
 	/** Unlisteners for `ssh-pending-close-done-{connectionId}`, per pending connection. */
 	const pendingCloseUnlisteners = new Map<string, () => void>();
 
-	/** Best-effort cancel of the identity's running agent loops before a force disconnect. */
-	function cancelIdentityRuns(identity: string): void {
+	/** Best-effort cancel of the scope's running agent loops before a force disconnect. */
+	function cancelScopeRuns(scope: string): void {
 		const threadIds = new Set<string>();
 		for (const thread of [...getThreads(), ...getAllThreads()]) {
-			if (thread.identity === identity) threadIds.add(thread.id);
+			if (thread.ownerKey === scope) threadIds.add(thread.id);
 		}
 		for (const threadId of threadIds) {
 			if (getThreadRuntime(threadId)?.running) {
@@ -130,9 +130,9 @@
 
 		if (tab.pendingClose) {
 			// Second click on a pending-close tab = explicit force disconnect:
-			// cancel the identity's active run, then bypass the agent lease.
-			const identity = identityForConnection(connectionId);
-			if (identity) cancelIdentityRuns(identity);
+			// cancel the scope's active run, then bypass the agent lease.
+			const scope = scopeForConnection(connectionId);
+			if (scope) cancelScopeRuns(scope);
 			try {
 				await sshDisconnect(connectionId, true);
 			} catch (err) {
@@ -248,17 +248,17 @@
 						console.error(`Failed to disconnect SSH ${connId}:`, err);
 					});
 				}
-				// Drop the identity mapping; stop the event subscription when no
-				// other connection uses this identity anymore.
-				const identity = identityForConnection(connId);
+				// Drop the scope mapping; stop the event subscription when no
+				// other connection uses this scope anymore.
+				const scope = scopeForConnection(connId);
 				forgetConnection(connId);
 				if (
-					identity &&
+					scope &&
 					!tabs.some(
-						(t) => t.connectionId && t.connectionId !== connId && identityForConnection(t.connectionId) === identity
+						(t) => t.connectionId && t.connectionId !== connId && scopeForConnection(t.connectionId) === scope
 					)
 				) {
-					unsubscribeIdentity(identity);
+					unsubscribeScope(scope);
 				}
 			}
 		}
@@ -285,8 +285,8 @@
 
 {#if isEditorWindow}
 	<EditorWindow />
-{:else if agentWindowIdentity}
-	<AgentWindow identity={agentWindowIdentity} />
+{:else if agentWindowScope}
+	<AgentWindow scope={agentWindowScope} />
 {:else}
 	<div class="page-container">
 		<div class="page-view" class:active={activePage === 'terminal'}>
@@ -335,8 +335,8 @@
 							</div>
 						{/each}
 					</div>
-					{#if activeIdentity && activePanelOpen}
-						<AgentPanel identity={activeIdentity} />
+					{#if activeScope && activePanelOpen}
+						<AgentPanel scope={activeScope} connectionId={activeTab?.connectionId} />
 					{/if}
 				</div>
 				<MonitoringBar connectionId={activeTab?.connectionId} sshUser={activeTab?.title?.split('@')[0]} />

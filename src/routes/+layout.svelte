@@ -17,7 +17,7 @@
 	let { children }: { children: Snippet } = $props();
 
 	const isEditorWindow = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('editor');
-	// Detached agent panel window (`?agent=<identity>`, design 01 §1.2).
+	// Detached agent panel window (`?agent=<scope>`, design 01 §1.2).
 	const isAgentWindow = typeof window !== 'undefined' && !!new URLSearchParams(window.location.search).get('agent');
 	const settings = getSettings();
 

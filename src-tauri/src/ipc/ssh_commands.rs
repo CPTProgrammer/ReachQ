@@ -63,6 +63,7 @@ pub async fn ssh_connect(
     jump_chain: Option<Vec<JumpHostConnectParams>>,
     proxy: Option<crate::state::ProxyConfig>,
     color_init: Option<bool>,
+    session_id: Option<String>,
 ) -> Result<ConnectionInfo, String> {
     tracing::info!(
         "ssh_connect IPC: id={}, host={}, port={}, user={}, auth_method='{}', has_key_path={}, has_password={}, has_passphrase={}, has_proxy={}, has_jump={}, color_init={}",
@@ -100,7 +101,7 @@ pub async fn ssh_connect(
         if chain.is_empty() {
             // No jump hosts, connect directly
             manager
-                .connect(&id, &host, port, &username, auth, cols, rows, color_init, app.clone(), proxy, pending_host_keys, known_hosts)
+                .connect(&id, &host, port, &username, auth, cols, rows, color_init, app.clone(), proxy, pending_host_keys, known_hosts, session_id.as_deref())
                 .await
                 .map_err(|e| e.to_string())?
         } else {
@@ -137,13 +138,14 @@ pub async fn ssh_connect(
                     app.clone(),
                         pending_host_keys,
                         known_hosts,
+                        session_id.as_deref(),
                     )
                 .await
                 .map_err(|e| e.to_string())?
         }
     } else {
         manager
-            .connect(&id, &host, port, &username, auth, cols, rows, color_init, app.clone(), proxy, pending_host_keys, known_hosts)
+            .connect(&id, &host, port, &username, auth, cols, rows, color_init, app.clone(), proxy, pending_host_keys, known_hosts, session_id.as_deref())
             .await
             .map_err(|e| e.to_string())?
     };
@@ -167,7 +169,7 @@ pub async fn ssh_connect(
         mgr.dispatch_hook(&hook, Some(&app_for_hook)).await;
     });
 
-    // Includes the normalized agent identity (design 01 §1.1).
+    // Includes the connection's agent owner scope (session:/link:).
     Ok(info)
 }
 

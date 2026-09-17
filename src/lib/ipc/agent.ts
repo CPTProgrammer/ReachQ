@@ -99,7 +99,9 @@ export interface PathMessage extends StoredMessage {
 
 export interface ThreadSummary {
 	id: string;
-	identity: string;
+	/** Owning scope: "session:<uuid>" | "link:<identity>". Threads are listed
+	 *  strictly by this key; session-scoped history survives connection edits. */
+	ownerKey: string;
 	title: string;
 	archived: boolean;
 	createdAt: number;
@@ -239,16 +241,17 @@ export interface AgentSendOpts {
 	model: string; // "{instanceId}/{modelId}"
 	thinking: boolean;
 	effort?: string;
+	/** Prefer this connection when the scope has several live ones (active tab). */
 	connectionHint?: string;
 }
 
 export function agentSend(
-	identity: string,
+	scope: string,
 	threadId: string,
 	text: string,
 	opts: AgentSendOpts
 ): Promise<'started' | 'queued' | 'queued_full'> {
-	return invoke('agent_send_message', { identity, threadId, text, opts });
+	return invoke('agent_send_message', { scope, threadId, text, opts });
 }
 
 export function agentCancel(threadId: string): Promise<void> {
@@ -263,12 +266,12 @@ export function agentDequeue(threadId: string): Promise<boolean> {
 /** Force-send the queued message: backend atomically supersedes the queue,
  * cancels the active run, waits for it to exit, then starts a fresh run. */
 export function agentSendNow(
-	identity: string,
+	scope: string,
 	threadId: string,
 	text: string,
 	opts: AgentSendOpts
 ): Promise<void> {
-	return invoke('agent_send_now', { identity, threadId, text, opts });
+	return invoke('agent_send_now', { scope, threadId, text, opts });
 }
 
 export function agentApprove(toolCallId: string, approved: boolean): Promise<void> {
@@ -288,9 +291,11 @@ export function agentTerminalStop(toolCallId: string): Promise<void> {
 }
 
 export const agentThreads = {
-	list: (identity: string) => invoke<ThreadSummary[]>('agent_threads_list', { identity }),
+	list: (scope: string) => invoke<ThreadSummary[]>('agent_threads_list', { scope }),
 	listAll: () => invoke<ThreadSummary[]>('agent_threads_list_all'),
-	create: (identity: string) => invoke<ThreadSummary>('agent_thread_create', { identity }),
+	create: (scope: string) => invoke<ThreadSummary>('agent_thread_create', { scope }),
+	reassign: (threadId: string, ownerKey: string) =>
+		invoke<void>('agent_thread_reassign', { threadId, ownerKey }),
 	rename: (threadId: string, title: string) =>
 		invoke<void>('agent_thread_rename', { threadId, title }),
 	archive: (threadId: string, archived: boolean) =>
@@ -301,13 +306,13 @@ export const agentThreads = {
 	messages: (threadId: string) => invoke<ThreadSnapshot>('agent_thread_messages', { threadId }),
 	state: (threadId: string) => invoke<ThreadState>('agent_get_thread_state', { threadId }),
 	editMessage: (
-		identity: string,
+		scope: string,
 		threadId: string,
 		messageId: string,
 		newContent: string,
 		opts: AgentSendOpts
 	) =>
-		invoke<ThreadSnapshot>('agent_edit_message', { identity, threadId, messageId, newContent, opts }),
+		invoke<ThreadSnapshot>('agent_edit_message', { scope, threadId, messageId, newContent, opts }),
 	setActiveBranch: (threadId: string, atMessageId: string, direction: 'prev' | 'next') =>
 		invoke<ThreadSnapshot>('agent_set_active_branch', { threadId, atMessageId, direction })
 };
@@ -366,26 +371,26 @@ export function agentComputeIdentity(params: {
 // ---------------------------------------------------------------------------
 
 /**
- * Channel name for one identity's event stream. Tauri event names only allow
- * alphanumeric, '-', '/', ':', '_', so the identity
- * ("user@host:port[#via=hash]") is base64url-encoded without padding
- * (alphabet A-Za-z0-9-_). Mirrors `AgentEvent::channel` in
+ * Channel name for one scope's event stream. Tauri event names only allow
+ * alphanumeric, '-', '/', ':', '_', so the scope
+ * ("session:<uuid>" | "link:user@host:port[#via=hash]") is base64url-encoded
+ * without padding (alphabet A-Za-z0-9-_). Mirrors `AgentEvent::channel` in
  * src-tauri/src/agent/events.rs.
  */
-export function agentEventChannel(identity: string): string {
-	const bytes = new TextEncoder().encode(identity);
+export function agentEventChannel(scope: string): string {
+	const bytes = new TextEncoder().encode(scope);
 	let bin = '';
 	for (const b of bytes) bin += String.fromCharCode(b);
 	const b64url = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 	return `agent-event-${b64url}`;
 }
 
-/** Subscribe to the event stream of one identity (design 01 §5). */
+/** Subscribe to the event stream of one scope (design 01 §5). */
 export function onAgentEvent(
-	identity: string,
+	scope: string,
 	cb: (e: AgentEvent) => void
 ): Promise<UnlistenFn> {
-	return listen<AgentEvent>(agentEventChannel(identity), (e) => cb(e.payload));
+	return listen<AgentEvent>(agentEventChannel(scope), (e) => cb(e.payload));
 }
 
 /** Fired when a pending-close connection's last lease released (01 §1.4). */

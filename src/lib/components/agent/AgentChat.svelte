@@ -1,6 +1,8 @@
 <script module lang="ts">
 	export interface Props {
-		identity: string;
+		scope: string;
+		/** Active tab's connection: tool-execution hint in send options. */
+		connectionId?: string;
 		threadId: string | null;
 	}
 </script>
@@ -22,7 +24,7 @@
 	import { formatDuration, formatSpeed, formatTokens, messageText, resolveSendOpts } from './utils';
 	import { autogrowTextarea } from '$lib/utils/autogrow';
 
-	let { identity, threadId }: Props = $props();
+	let { scope, connectionId, threadId }: Props = $props();
 
 	let runtime = $derived(threadId ? getThreadRuntime(threadId) : null);
 
@@ -155,12 +157,12 @@
 		if (!editing || !threadId) return;
 		const text = editing.text.trim();
 		if (!text) return;
-		const opts = resolveSendOpts(identity, threadId);
+		const opts = resolveSendOpts(scope, threadId, connectionId);
 		if (!opts) return;
 		const messageId = editing.id;
 		editing = null;
 		setFollowing(true); // resending jumps the chat to the bottom
-		await agentEditAndFork(identity, threadId, messageId, text, opts);
+		await agentEditAndFork(scope, threadId, messageId, text, opts);
 	}
 
 	function editKeydown(e: KeyboardEvent): void {
@@ -284,11 +286,11 @@
 		const rt = runtime;
 		if (!rt?.queued || !threadId) return;
 		const text = rt.queued.text;
-		const opts = resolveSendOpts(identity, threadId);
+		const opts = resolveSendOpts(scope, threadId, connectionId);
 		// Atomic backend-side: supersede queue + cancel + wait + fresh run.
 		if (opts) {
 			setFollowing(true);
-			await agentSendNow(identity, threadId, text, opts);
+			await agentSendNow(scope, threadId, text, opts);
 		}
 	}
 

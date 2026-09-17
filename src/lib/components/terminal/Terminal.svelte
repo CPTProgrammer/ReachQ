@@ -9,7 +9,7 @@
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { ptyWrite, ptyResize } from '$lib/ipc/pty';
 	import { sshSend, sshResize, sshConnect, sshMarkReady, type SshConnectParams } from '$lib/ipc/ssh';
-	import { registerConnectionIdentity } from '$lib/state/agent.svelte';
+	import { registerConnectionScope } from '$lib/state/agent.svelte';
 	import { registerBufferReader, unregisterBufferReader } from '$lib/state/terminal-buffer.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { getTerminalTheme, type ITheme } from '$lib/data/terminal-themes';
@@ -393,7 +393,7 @@
 				cols: term.cols,
 				rows: term.rows,
 			});
-			registerConnectionIdentity(info.id, info.identity);
+			registerConnectionScope(info.id, info.agent_scope);
 
 			// Tear down old event listeners
 			unlistenData?.();

@@ -255,11 +255,11 @@ impl AgentTool for TerminalTool {
             &ctx.ssh_manager,
             &ctx.sftp_backends,
             ctx.app.clone(),
-            &ctx.identity,
+            &ctx.scope,
             None,
         )
         .await
-        .map_err(|e| remote_fs::connection_lost_result(&ctx.identity, &e))?;
+        .map_err(|e| remote_fs::connection_lost_result(&ctx.scope, &e))?;
 
         let wrapped = wrap_command(&command)?;
 
@@ -306,7 +306,7 @@ impl AgentTool for TerminalTool {
             ctx.terminals.lock().unwrap().remove(&ctx.tool_call_id);
         };
 
-        let event_channel = AgentEvent::channel(&ctx.identity);
+        let event_channel = AgentEvent::channel(&ctx.scope);
         let mut exit_code: Option<i32> = None;
         let mut got_eof = false;
         let mut got_exit = false;

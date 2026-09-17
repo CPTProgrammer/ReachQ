@@ -20,21 +20,21 @@ use tokio_util::sync::CancellationToken;
 use super::events::ToolCallView;
 use super::providers::ToolSchema;
 use super::remote_fs::{PendingWrites, ReadCache};
-use super::types::{SshIdentity, ToolResult};
+use super::types::{AgentScope, ToolResult};
 use crate::sftp::backend::SftpBackendManager;
 use crate::ssh::client::SshManager;
 
 /// Everything a tool needs at execution time.
 pub struct ToolContext {
     pub app: tauri::AppHandle,
-    pub identity: SshIdentity,
+    pub scope: AgentScope,
     pub thread_id: String,
     pub tool_call_id: String,
     pub ssh_manager: Arc<tokio::sync::Mutex<SshManager>>,
     pub sftp_backends: Arc<tokio::sync::Mutex<SftpBackendManager>>,
     /// Resolved tool options (defaults merged with user config).
     pub options: serde_json::Map<String, Value>,
-    /// In-memory read cache shared across the identity (design 03 §1.7).
+    /// In-memory read cache shared across the scope (design 03 §1.7).
     pub read_cache: ReadCache,
     /// Prepared writes stashed between approval and execution, keyed by
     /// tool_call_id (the approved diff is exactly what gets written).
@@ -44,23 +44,23 @@ pub struct ToolContext {
 }
 
 impl ToolContext {
-    /// Resolve a live connection for this identity (preferring `hint`),
+    /// Resolve a live connection for this scope (preferring `hint`),
     /// acquire a tool-call lease, and build a RemoteFs. On connection-level
     /// failure, re-resolves once against another connection of the same
-    /// identity (design 02 §3.1).
+    /// scope (design 02 §3.1).
     pub async fn remote_fs(
         &self,
         connection_hint: Option<&str>,
     ) -> Result<super::remote_fs::AgentRemoteFs, ToolResult> {
-        super::remote_fs::AgentRemoteFs::for_identity(
+        super::remote_fs::AgentRemoteFs::for_scope(
             &self.ssh_manager,
             &self.sftp_backends,
             self.app.clone(),
-            &self.identity,
+            &self.scope,
             connection_hint,
         )
         .await
-        .map_err(|e| super::remote_fs::connection_lost_result(&self.identity, &e))
+        .map_err(|e| super::remote_fs::connection_lost_result(&self.scope, &e))
     }
 }
 

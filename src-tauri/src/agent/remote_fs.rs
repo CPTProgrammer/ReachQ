@@ -1,7 +1,7 @@
 //! Agent-side remote filesystem facade (design 02 §3, 03 §8).
 //!
 //! On top of `sftp::ops::RemoteFs` this adds:
-//! - identity-based connection resolution + tool-call leases (02 §3.1)
+//! - scope-based connection resolution + tool-call leases (02 §3.1)
 //! - the read pipeline: stat -> cache -> raw bytes -> binary/encoding
 //!   detection -> LF normalization -> fingerprint
 //! - the write pipeline: re-stat fingerprint check -> line-ending restore ->
@@ -41,7 +41,7 @@ pub struct ReadCacheEntry {
     pub fetched_at: Instant,
 }
 
-/// (identity, path) -> decoded file content.
+/// (scope, path) -> decoded file content.
 pub type ReadCache = Arc<Mutex<HashMap<(String, String), ReadCacheEntry>>>;
 
 /// A prepared file write, stashed between the approval request (which
@@ -133,14 +133,14 @@ pub struct ConnectionLease {
 }
 
 impl ConnectionLease {
-    /// Resolve a live connection for `identity` (preferring `hint`),
-    /// retrying once on a different connection of the same identity when the
+    /// Resolve a live connection for `scope` (preferring `hint`),
+    /// retrying once on a different connection of the same scope when the
     /// first candidate vanished (design 02 §3.1).
     pub async fn acquire(
         ssh_manager: &Arc<tokio::sync::Mutex<SshManager>>,
         sftp_backends: &Arc<tokio::sync::Mutex<SftpBackendManager>>,
         app: tauri::AppHandle,
-        identity: &str,
+        scope: &str,
         hint: Option<&str>,
     ) -> Result<Self, SftpBrowserError> {
         let mut excluded: Option<String> = None;
@@ -149,7 +149,7 @@ impl ConnectionLease {
                 let manager = ssh_manager.lock().await;
                 let preferred = if attempt == 0 { hint } else { None };
                 manager
-                    .find_by_identity(identity, preferred)
+                    .find_by_scope(scope, preferred)
                     .filter(|id| Some(id) != excluded.as_ref())
             };
             let Some(connection_id) = connection_id else {
@@ -230,15 +230,15 @@ pub struct AgentRemoteFs {
 }
 
 impl AgentRemoteFs {
-    pub async fn for_identity(
+    pub async fn for_scope(
         ssh_manager: &Arc<tokio::sync::Mutex<SshManager>>,
         sftp_backends: &Arc<tokio::sync::Mutex<SftpBackendManager>>,
         app: tauri::AppHandle,
-        identity: &str,
+        scope: &str,
         hint: Option<&str>,
     ) -> Result<Self, SftpBrowserError> {
         let lease =
-            ConnectionLease::acquire(ssh_manager, sftp_backends, app, identity, hint).await?;
+            ConnectionLease::acquire(ssh_manager, sftp_backends, app, scope, hint).await?;
         let fs = RemoteFs::connect(ssh_manager, sftp_backends, &lease.connection_id)
             .await
             .map_err(|e| {
@@ -274,11 +274,11 @@ impl AgentRemoteFs {
 
 /// Structured "connection lost" tool result (design 02 §3.1): fed back to
 /// the model, the loop itself does not crash.
-pub fn connection_lost_result(identity: &str, err: &SftpBrowserError) -> ToolResult {
+pub fn connection_lost_result(scope: &str, err: &SftpBrowserError) -> ToolResult {
     let _ = err;
     err_text(format!(
         "SSH connection to {} was lost. The user may have closed it. Ask the user to reconnect before retrying.",
-        identity
+        scope.strip_prefix("link:").unwrap_or(scope)
     ))
 }
 

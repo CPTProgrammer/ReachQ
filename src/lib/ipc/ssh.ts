@@ -32,6 +32,8 @@ export interface SshConnectParams {
   jumpChain?: JumpHostConnectParams[];
   proxy?: ProxyConfig;
   colorInit?: boolean;
+  /** Saved session this connect was started from (agent owner scope). */
+  sessionId?: string;
 }
 
 export interface ConnectionInfo {
@@ -39,8 +41,8 @@ export interface ConnectionInfo {
   host: string;
   port: number;
   username: string;
-  /** Normalized agent identity: "user@host:port[#via=chainhash]" */
-  identity: string;
+  /** Agent owner scope: "session:<uuid>" | "link:<identity>". */
+  agent_scope: string;
 }
 
 export async function sshConnect(params: SshConnectParams): Promise<ConnectionInfo> {
@@ -58,6 +60,7 @@ export async function sshConnect(params: SshConnectParams): Promise<ConnectionIn
     jumpChain: params.jumpChain ?? null,
     proxy: params.proxy ?? null,
     colorInit: params.colorInit ?? null,
+    sessionId: params.sessionId ?? null,
   });
 }
 

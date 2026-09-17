@@ -2,7 +2,7 @@
 
 import {
 	findModel,
-	getIdentitySelection,
+	getScopeSelection,
 	resolveSelection
 } from '$lib/state/agent-settings.svelte';
 import { getThreads } from '$lib/state/agent-threads.svelte';
@@ -102,14 +102,18 @@ function asDiffPreview(payload: unknown): DiffPreview | null {
 
 /**
  * Effective send options for a thread (design 01 §3.6 / 05 §5):
- * thread snapshot -> identity last-used -> global default, with the
+ * thread snapshot -> scope last-used -> global default, with the
  * thinking flag coerced against model capabilities.
  */
-export function resolveSendOpts(identity: string, threadId: string | null): AgentSendOpts | null {
+export function resolveSendOpts(
+	scope: string,
+	threadId: string | null,
+	connectionId?: string
+): AgentSendOpts | null {
 	const summary = threadId ? getThreads().find((t) => t.id === threadId) : undefined;
 	const sel =
-		resolveSelection(identity, summary?.model ?? null) ??
-		getIdentitySelection(identity) ??
+		resolveSelection(scope, summary?.model ?? null) ??
+		getScopeSelection(scope) ??
 		(summary?.model
 			? { model: summary.model.model, thinking: summary.model.thinking, effort: summary.model.effort ?? null }
 			: null);
@@ -118,7 +122,12 @@ export function resolveSendOpts(identity: string, threadId: string | null): Agen
 	const thinking = meta
 		? meta.thinkingMandatory || (meta.supportsThinking && sel.thinking)
 		: sel.thinking;
-	return { model: sel.model, thinking, effort: thinking ? (sel.effort ?? undefined) : undefined };
+	return {
+		model: sel.model,
+		thinking,
+		effort: thinking ? (sel.effort ?? undefined) : undefined,
+		connectionHint: connectionId
+	};
 }
 
 export function decodeBase64(b64: string): Uint8Array {

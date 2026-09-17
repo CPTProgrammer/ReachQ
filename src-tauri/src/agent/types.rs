@@ -3,9 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Normalized SSH identity: "user@host:port[#via=chainhash]".
-/// See design 01 §1.1 for normalization rules.
-pub type SshIdentity = String;
+/// Agent owner scope: "session:<uuid>" | "link:<identity>".
+pub type AgentScope = String;
 
 /// Token usage reported by a provider at the end of a stream round.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -144,7 +143,11 @@ pub struct PathMessage {
 #[serde(rename_all = "camelCase")]
 pub struct ThreadSummary {
     pub id: String,
-    pub identity: SshIdentity,
+    /// Owning scope: "session:<uuid>" for threads created from a saved
+    /// session, "link:<identity>" for quick-connect links. Threads are
+    /// listed strictly by this key so saved-session history survives
+    /// connection-detail edits (proxy, jump chain, port, ...).
+    pub owner_key: String,
     pub title: String,
     pub archived: bool,
     pub created_at: i64,

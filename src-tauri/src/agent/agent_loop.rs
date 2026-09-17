@@ -36,7 +36,7 @@ pub struct SendOpts {
     pub thinking: bool,
     #[serde(default)]
     pub effort: Option<String>,
-    /// Prefer this connection when resolving the identity (active tab).
+    /// Prefer this connection when resolving the scope (active tab).
     #[serde(default)]
     pub connection_hint: Option<String>,
 }
@@ -101,9 +101,9 @@ async fn resolve_model(deps: &AgentDeps, model: &str) -> Result<ResolvedModel, S
     })
 }
 
-fn build_system_prompt(identity: &str, detected_os: Option<&str>) -> String {
-    // identity = "user@host:port[#via=hash]"
-    let base = identity.split('#').next().unwrap_or(identity);
+fn build_system_prompt(host_display: &str, detected_os: Option<&str>) -> String {
+    // host_display = "user@host:port[#via=hash]"
+    let base = host_display.split('#').next().unwrap_or(host_display);
     let (user, host) = base
         .split_once('@')
         .map(|(u, h)| (u, h))
@@ -238,8 +238,8 @@ struct PendingToolCall {
     args_json: String,
 }
 
-pub(crate) fn emit(app: &AppHandle, identity: &str, event: AgentEvent) {
-    if let Err(e) = app.emit(&AgentEvent::channel(identity), &event) {
+pub(crate) fn emit(app: &AppHandle, scope: &str, event: AgentEvent) {
+    if let Err(e) = app.emit(&AgentEvent::channel(scope), &event) {
         tracing::warn!("agent: emit failed: {}", e);
     }
 }
@@ -255,7 +255,7 @@ pub(crate) fn emit(app: &AppHandle, identity: &str, event: AgentEvent) {
 async fn try_finish_run(
     app: &AppHandle,
     agent: &crate::agent::AgentState,
-    identity: &str,
+    scope: &str,
     thread_id: &str,
     handle: &Arc<RunHandle>,
 ) -> bool {
@@ -271,7 +271,7 @@ async fn try_finish_run(
     }
     emit(
         app,
-        identity,
+        scope,
         AgentEvent::RunEnd {
             thread_id: thread_id.to_string(),
         },
@@ -285,7 +285,7 @@ async fn try_finish_run(
 pub async fn run_agent(
     app: AppHandle,
     deps: AgentDeps,
-    identity: String,
+    scope: String,
     thread_id: String,
     text: Option<String>,
     opts: SendOpts,
@@ -294,7 +294,7 @@ pub async fn run_agent(
     let store = match agent.thread_store().await {
         Ok(s) => s,
         Err(e) => {
-            emit(&app, &identity, AgentEvent::Error {
+            emit(&app, &scope, AgentEvent::Error {
                 thread_id: thread_id.clone(),
                 message: format!("Failed to open the thread store: {e}"),
             });
@@ -317,12 +317,12 @@ pub async fn run_agent(
             )
             .await
         {
-            Ok(msg) => emit(&app, &identity, AgentEvent::UserMessage {
+            Ok(msg) => emit(&app, &scope, AgentEvent::UserMessage {
                 thread_id: thread_id.clone(),
                 message: msg,
             }),
             Err(e) => {
-                emit(&app, &identity, AgentEvent::Error {
+                emit(&app, &scope, AgentEvent::Error {
                     thread_id: thread_id.clone(),
                     message: e,
                 });
@@ -334,7 +334,7 @@ pub async fn run_agent(
     let resolved = match resolve_model(&deps, &opts.model).await {
         Ok(r) => r,
         Err(e) => {
-            emit(&app, &identity, AgentEvent::Error {
+            emit(&app, &scope, AgentEvent::Error {
                 thread_id: thread_id.clone(),
                 message: e,
             });
@@ -354,8 +354,8 @@ pub async fn run_agent(
         )
         .await;
 
-    // Best-effort OS detection, once per identity.
-    let detected_os = detect_os(&app, &deps, &identity, opts.connection_hint.as_deref()).await;
+    // Best-effort OS detection, once per scope.
+    let detected_os = detect_os(&app, &deps, &scope, opts.connection_hint.as_deref()).await;
 
     let handle = Arc::new(RunHandle {
         token: CancellationToken::new(),
@@ -369,7 +369,7 @@ pub async fn run_agent(
         &app,
         &deps,
         &store,
-        &identity,
+        &scope,
         &thread_id,
         &opts,
         &resolved,
@@ -395,12 +395,12 @@ pub async fn run_agent(
     match result {
         Ok(()) => {}
         Err(LoopExit::Cancelled) => {
-            emit(&app, &identity, AgentEvent::Cancelled {
+            emit(&app, &scope, AgentEvent::Cancelled {
                 thread_id: thread_id.clone(),
             });
         }
         Err(LoopExit::Error(e)) => {
-            emit(&app, &identity, AgentEvent::Error {
+            emit(&app, &scope, AgentEvent::Error {
                 thread_id: thread_id.clone(),
                 message: e,
             });
@@ -426,7 +426,7 @@ pub async fn run_agent(
     handle.done.notify_waiters();
 
     // Title generation after the first exchange (design 01 §2.1).
-    maybe_generate_title(&app, &deps, &store, &identity, &thread_id).await;
+    maybe_generate_title(&app, &deps, &store, &scope, &thread_id).await;
 }
 
 async fn active_leaf(store: &ThreadStore, thread_id: &str) -> Option<String> {
@@ -453,7 +453,7 @@ enum LoopExit {
 async fn flush_partial_round(
     app: &AppHandle,
     store: &Arc<ThreadStore>,
-    identity: &str,
+    scope: &str,
     thread_id: &str,
     message_id: &str,
     acc: &RoundAcc,
@@ -505,7 +505,7 @@ async fn flush_partial_round(
             // Attach metadata to the frontend's streaming placeholder (same
             // message id); the terminal Cancelled/Error event follows from
             // run_agent.
-            emit(app, identity, AgentEvent::MessageDone {
+            emit(app, scope, AgentEvent::MessageDone {
                 thread_id: thread_id.to_string(),
                 message_id: message_id.to_string(),
                 metadata: Some(metadata),
@@ -515,22 +515,35 @@ async fn flush_partial_round(
     }
 }
 
-/// Best-effort `uname` detection, cached per identity for the app session.
+/// Human-readable endpoint for the system prompt: the live connection's
+/// user@host:port when the scope has one, else the link identity embedded
+/// in the scope (or the raw session scope as a last resort).
+async fn scope_display(deps: &AgentDeps, scope: &str, hint: Option<&str>) -> String {
+    let manager = deps.ssh_manager.lock().await;
+    if let Some(id) = manager.find_by_scope(scope, hint) {
+        if let Some(info) = manager.info(&id) {
+            return format!("{}@{}:{}", info.username, info.host, info.port);
+        }
+    }
+    scope.strip_prefix("link:").unwrap_or(scope).to_string()
+}
+
+/// Best-effort `uname` detection, cached per scope for the app session.
 async fn detect_os(
     _app: &AppHandle,
     deps: &AgentDeps,
-    identity: &str,
+    scope: &str,
     hint: Option<&str>,
 ) -> Option<String> {
     {
         let cache = deps.agent.detected_os.lock().await;
-        if let Some(os) = cache.get(identity) {
+        if let Some(os) = cache.get(scope) {
             return Some(os.clone());
         }
     }
     let handle = {
         let manager = deps.ssh_manager.lock().await;
-        let id = manager.find_by_identity(identity, hint)?;
+        let id = manager.find_by_scope(scope, hint)?;
         manager.get_handle(&id).ok()?
     };
     let out = crate::ssh::client::exec_on_connection(&handle, "uname -s").await.ok()?;
@@ -543,7 +556,7 @@ async fn detect_os(
         .detected_os
         .lock()
         .await
-        .insert(identity.to_string(), os.clone());
+        .insert(scope.to_string(), os.clone());
     Some(os)
 }
 
@@ -552,7 +565,7 @@ async fn run_loop(
     app: &AppHandle,
     deps: &AgentDeps,
     store: &Arc<ThreadStore>,
-    identity: &str,
+    scope: &str,
     thread_id: &str,
     opts: &SendOpts,
     resolved: &ResolvedModel,
@@ -561,7 +574,8 @@ async fn run_loop(
     handle: &Arc<RunHandle>,
 ) -> Result<(), LoopExit> {
     let agent = &deps.agent;
-    let system_prompt = build_system_prompt(identity, detected_os);
+    let host_display = scope_display(deps, scope, opts.connection_hint.as_deref()).await;
+    let system_prompt = build_system_prompt(&host_display, detected_os);
 
     loop {
         // 0. Queue injection at the round boundary (design 01 §3.5).
@@ -580,7 +594,7 @@ async fn run_loop(
                 )
                 .await
             {
-                Ok(msg) => emit(app, identity, AgentEvent::UserMessage {
+                Ok(msg) => emit(app, scope, AgentEvent::UserMessage {
                     thread_id: thread_id.to_string(),
                     message: msg,
                 }),
@@ -648,7 +662,7 @@ async fn run_loop(
         // deltas) render too. The same id is passed to append_message below,
         // so every event of this round — streaming, tool execution,
         // message_done — carries one stable message id.
-        emit(app, identity, AgentEvent::MessageStart {
+        emit(app, scope, AgentEvent::MessageStart {
             thread_id: thread_id.to_string(),
             message_id: message_id.clone(),
         });
@@ -681,7 +695,7 @@ async fn run_loop(
                                     })
                             })
                             .collect();
-                        preview_tracker.tick(app, deps, identity, thread_id, calls).await;
+                        preview_tracker.tick(app, deps, scope, thread_id, calls).await;
                     }
                     continue;
                 }
@@ -698,7 +712,7 @@ async fn run_loop(
             match event {
                 ChatEvent::TextDelta(delta) => {
                     acc.text.push_str(&delta);
-                    emit(app, identity, AgentEvent::TextDelta {
+                    emit(app, scope, AgentEvent::TextDelta {
                         thread_id: thread_id.to_string(),
                         message_id: message_id.clone(),
                         delta,
@@ -706,7 +720,7 @@ async fn run_loop(
                 }
                 ChatEvent::ThinkingDelta(delta) => {
                     acc.thinking.push_str(&delta);
-                    emit(app, identity, AgentEvent::ThinkingDelta {
+                    emit(app, scope, AgentEvent::ThinkingDelta {
                         thread_id: thread_id.to_string(),
                         message_id: message_id.clone(),
                         delta,
@@ -734,7 +748,7 @@ async fn run_loop(
                     if let (Some(tc_id), Some(_)) = (&entry.id, &entry.name) {
                         if !announced_tools.contains(tc_id) {
                             announced_tools.push(tc_id.clone());
-                            emit(app, identity, AgentEvent::ToolCall {
+                            emit(app, scope, AgentEvent::ToolCall {
                                 thread_id: thread_id.to_string(),
                                 tool_call: ToolCallView {
                                     id: tc_id.clone(),
@@ -748,7 +762,7 @@ async fn run_loop(
                             });
                         }
                         if !args_json_delta.is_empty() {
-                            emit(app, identity, AgentEvent::ToolCallArgsDelta {
+                            emit(app, scope, AgentEvent::ToolCallArgsDelta {
                                 thread_id: thread_id.to_string(),
                                 tool_call_id: tc_id.clone(),
                                 args_json_delta,
@@ -759,7 +773,7 @@ async fn run_loop(
                             if let Some(patched) =
                                 preview_tracker.patched_args(tc_id, &entry.args_json)
                             {
-                                emit(app, identity, AgentEvent::ToolCallArgsPatched {
+                                emit(app, scope, AgentEvent::ToolCallArgsPatched {
                                     thread_id: thread_id.to_string(),
                                     tool_call_id: tc_id.clone(),
                                     args_json: patched,
@@ -771,7 +785,7 @@ async fn run_loop(
                 }
                 ChatEvent::Usage(usage) => {
                     acc.last_usage = Some(usage.clone());
-                    emit(app, identity, AgentEvent::Usage {
+                    emit(app, scope, AgentEvent::Usage {
                         thread_id: thread_id.to_string(),
                         usage,
                     });
@@ -805,7 +819,7 @@ async fn run_loop(
             flush_partial_round(
                 app,
                 store,
-                identity,
+                scope,
                 thread_id,
                 &message_id,
                 &acc,
@@ -864,12 +878,12 @@ async fn run_loop(
 
         if content.is_empty() && !has_tool_calls {
             // Nothing came back (e.g. empty finish). Don't persist noise.
-            emit(app, identity, AgentEvent::MessageDone {
+            emit(app, scope, AgentEvent::MessageDone {
                 thread_id: thread_id.to_string(),
                 message_id: message_id.clone(),
                 metadata: Some(metadata),
             });
-            if try_finish_run(app, agent, identity, thread_id, handle).await {
+            if try_finish_run(app, agent, scope, thread_id, handle).await {
                 return Ok(());
             }
             continue;
@@ -901,7 +915,7 @@ async fn run_loop(
             .map_err(LoopExit::Error)?;
 
         if !has_tool_calls {
-            emit(app, identity, AgentEvent::MessageDone {
+            emit(app, scope, AgentEvent::MessageDone {
                 thread_id: thread_id.to_string(),
                 message_id: message_id.clone(),
                 metadata: Some(metadata),
@@ -909,7 +923,7 @@ async fn run_loop(
             // Run ends when the model produced no tool calls and the queue
             // is empty; otherwise the top of the loop injects the queued
             // message and we continue.
-            if try_finish_run(app, agent, identity, thread_id, handle).await {
+            if try_finish_run(app, agent, scope, thread_id, handle).await {
                 return Ok(());
             }
             continue;
@@ -919,7 +933,7 @@ async fn run_loop(
         let final_content = execute_tool_calls(
             app,
             &deps,
-            identity,
+            scope,
             thread_id,
             &assistant_msg,
             parsed_calls,
@@ -939,7 +953,7 @@ async fn run_loop(
             .await
             .map_err(LoopExit::Error)?;
 
-        emit(app, identity, AgentEvent::MessageDone {
+        emit(app, scope, AgentEvent::MessageDone {
             thread_id: thread_id.to_string(),
             message_id: assistant_msg.id.clone(),
             metadata: Some(metadata),
@@ -957,7 +971,7 @@ async fn run_loop(
 async fn execute_tool_calls(
     app: &AppHandle,
     deps: &AgentDeps,
-    identity: &str,
+    scope: &str,
     thread_id: &str,
     assistant_msg: &StoredMessage,
     parsed_calls: Vec<(String, String, serde_json::Value)>,
@@ -992,7 +1006,7 @@ async fn execute_tool_calls(
     for (id, name, args) in parsed_calls {
         let app = app.clone();
         let deps = deps.clone();
-        let identity = identity.to_string();
+        let scope = scope.to_string();
         let thread_id = thread_id.to_string();
         let message_id = assistant_msg.id.clone();
         let cancel = cancel.clone();
@@ -1001,7 +1015,7 @@ async fn execute_tool_calls(
 
         set.spawn(async move {
             execute_one_tool(
-                app, deps, identity, thread_id, message_id, id, name, args, opts,
+                app, deps, scope, thread_id, message_id, id, name, args, opts,
                 read_file_options, cancel,
             )
             .await
@@ -1046,7 +1060,7 @@ async fn execute_tool_calls(
 async fn execute_one_tool(
     app: AppHandle,
     deps: AgentDeps,
-    identity: String,
+    scope: String,
     thread_id: String,
     message_id: String,
     tool_call_id: String,
@@ -1058,7 +1072,7 @@ async fn execute_one_tool(
 ) -> (String, ContentBlock) {
     let agent = &deps.agent;
     let emit_view = |status: ToolCallStatus, result: Option<ToolResult>, warnings: Option<Vec<ApprovalWarning>>| {
-        emit(&app, &identity, AgentEvent::ToolCall {
+        emit(&app, &scope, AgentEvent::ToolCall {
             thread_id: thread_id.clone(),
             tool_call: ToolCallView {
                 id: tool_call_id.clone(),
@@ -1133,7 +1147,7 @@ async fn execute_one_tool(
         ApprovalDecision::Allow => {}
         ApprovalDecision::RequireApproval { warnings } => {
             let ctx = build_context(
-                &app, &deps, &identity, &thread_id, &tool_call_id, &config, &opts,
+                &app, &deps, &scope, &thread_id, &tool_call_id, &config, &opts,
             );
             // Validation errors and no-ops short-circuit: finish immediately
             // instead of showing a blank approval card.
@@ -1159,7 +1173,7 @@ async fn execute_one_tool(
                 payload,
                 warnings: all_warnings,
             };
-            emit(&app, &identity, AgentEvent::ApprovalNeeded {
+            emit(&app, &scope, AgentEvent::ApprovalNeeded {
                 thread_id: thread_id.clone(),
                 approval: approval.clone(),
             });
@@ -1223,7 +1237,7 @@ async fn execute_one_tool(
     emit_view(ToolCallStatus::Running, None, None);
 
     let ctx = build_context(
-        &app, &deps, &identity, &thread_id, &tool_call_id, &config, &opts,
+        &app, &deps, &scope, &thread_id, &tool_call_id, &config, &opts,
     );
     let result = tool.run(args.clone(), &ctx, cancel.clone()).await;
     let result = match result {
@@ -1243,7 +1257,7 @@ async fn execute_one_tool(
 fn build_context(
     app: &AppHandle,
     deps: &AgentDeps,
-    identity: &str,
+    scope: &str,
     thread_id: &str,
     tool_call_id: &str,
     config: &crate::agent::config::ToolConfig,
@@ -1252,7 +1266,7 @@ fn build_context(
     let agent = &deps.agent;
     ToolContext {
         app: app.clone(),
-        identity: identity.to_string(),
+        scope: scope.to_string(),
         thread_id: thread_id.to_string(),
         tool_call_id: tool_call_id.to_string(),
         ssh_manager: deps.ssh_manager.clone(),
@@ -1279,7 +1293,7 @@ async fn maybe_generate_title(
     app: &AppHandle,
     deps: &AgentDeps,
     store: &Arc<ThreadStore>,
-    identity: &str,
+    scope: &str,
     thread_id: &str,
 ) {
     let Ok(Some(thread)) = store.get_thread(thread_id).await else {
@@ -1364,7 +1378,7 @@ async fn maybe_generate_title(
 
     if let Some(title) = title.filter(|t| !t.is_empty()) {
         if store.rename_thread(thread_id, &title).await.is_ok() {
-            emit(app, identity, AgentEvent::TitleUpdated {
+            emit(app, scope, AgentEvent::TitleUpdated {
                 thread_id: thread_id.to_string(),
                 title,
             });

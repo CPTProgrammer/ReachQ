@@ -1,7 +1,7 @@
 <script module lang="ts">
 	export interface Props {
-		/** SSH identity this detached window is bound to (from `?agent=`). */
-		identity: string;
+		/** Owner scope this detached window is bound to (from `?agent=`). */
+		scope: string;
 	}
 </script>
 
@@ -13,16 +13,15 @@
 		updatePanelState
 	} from '$lib/state/agent.svelte';
 	import AgentPanel from './AgentPanel.svelte';
-	import { agentComputeIdentity } from '$lib/ipc/agent';
 	import { sessionList } from '$lib/ipc/sessions';
 	import { getActiveThreadId, getThreads, threadDisplayTitle } from '$lib/state/agent-threads.svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { t } from '$lib/state/i18n.svelte';
 
-	let { identity }: Props = $props();
+	let { scope }: Props = $props();
 
-	/** Saved-session name per computed identity (exact link match). */
-	let sessionNames = $state(new Map<string, string>());
+	/** Saved-session name for session scopes (direct id lookup). */
+	let sessionName = $state<string | null>(null);
 	let threads = $derived(getThreads());
 	let activeThread = $derived(threads.find((x) => x.id === getActiveThreadId()));
 
@@ -33,42 +32,21 @@
 		return i > -1 && /^\d+$/.test(base.slice(i + 1)) ? base.slice(0, i) : base;
 	}
 
-	async function loadSessionNames(): Promise<void> {
+	async function loadSessionName(): Promise<void> {
+		if (!scope.startsWith('session:')) return;
+		const sessionId = scope.slice('session:'.length);
 		try {
 			const list = await sessionList();
-			const pairs = await Promise.all(
-				list.map(async (s) => {
-					try {
-						const id = await agentComputeIdentity({
-							username: s.username,
-							host: s.host,
-							port: s.port,
-							jumpChain: s.jump_chain,
-							proxy: s.proxy
-						});
-						return [id, s.name] as const;
-					} catch {
-						return null;
-					}
-				})
-			);
-			// FUTURE: instead of resolving identity -> session by searching here,
-			// bind the computed identity to the session record at creation/update
-			// time and look it up directly. Sessions sharing one link (the
-			// identity excludes credentials) collapse to the first match here.
-			const map = new Map<string, string>();
-			for (const p of pairs) {
-				if (p && !map.has(p[0])) map.set(p[0], p[1]);
-			}
-			sessionNames = map;
+			sessionName = list.find((s) => s.id === sessionId)?.name ?? null;
 		} catch {
-			/* no session names — fall back to user@host */
+			/* no session name — fall back to user@host */
 		}
 	}
 
-	/** Window title: `user@host · thread title`, session name replacing user@host. */
+	/** Window title: `host · thread title`, session name replacing the link. */
 	let windowTitle = $derived.by(() => {
-		const host = sessionNames.get(identity) ?? hostLabel(identity);
+		const link = scope.startsWith('link:') ? scope.slice('link:'.length) : scope;
+		const host = sessionName ?? hostLabel(link);
 		const th = activeThread;
 		const title = th ? threadDisplayTitle(th) : '';
 		return title ? `${host} · ${title}` : host;
@@ -103,10 +81,10 @@
 	onMount(() => {
 		// A detached window *is* the panel: force it open here. The opener
 		// already wrote this state; repeating it covers direct URL opens too.
-		updatePanelState(identity, { open: true, detached: true });
+		updatePanelState(scope, { open: true, detached: true });
 		// Closing this window docks the panel back (closed, unless the close
 		// came from the dock-back button — design 01 §1.2).
-		const cleanupCloseHook = initDetachedWindowCloseHook(identity);
+		const cleanupCloseHook = initDetachedWindowCloseHook(scope);
 		let unlistenResize: (() => void) | undefined;
 		let cancelled = false;
 		getCurrentWindow()
@@ -117,7 +95,7 @@
 			})
 			.catch(() => {});
 		void checkMaximized();
-		void loadSessionNames();
+		void loadSessionName();
 		return () => {
 			cancelled = true;
 			cleanupCloseHook();
@@ -137,7 +115,7 @@
 				class="window-btn dock-back-button"
 				title={t('agent.dock_back')}
 				aria-label={t('agent.dock_back')}
-				onclick={() => void dockBackPanel(identity)}
+				onclick={() => void dockBackPanel(scope)}
 			>
 				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
 					<path class="st0" d="M 3 6 L 3 17 A 4 4 0 0 0 7 21 L 18 21 M 17 7 L 11 13 M 11 8 L 11 13 M 11 13 L 16 13"/>
@@ -176,7 +154,7 @@
 	</header>
 
 	<div class="agent-window-body">
-		<AgentPanel {identity} detached />
+		<AgentPanel {scope} detached />
 	</div>
 </div>
 

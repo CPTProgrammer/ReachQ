@@ -1,6 +1,6 @@
-//! Threads list state (design 01 §2.1, §4): CRUD per identity, active
+//! Threads list state (design 01 §2.1, §4): CRUD per owner scope, active
 //! thread pointer, archive flows, and the settings-page "View all threads"
-//! listing across identities.
+//! listing across scopes.
 
 import { getAgentBackend, getThreadRuntime } from './agent.svelte';
 import type { ContentBlock, ThreadSummary } from '$lib/ipc/agent';
@@ -12,13 +12,15 @@ import {
 	hydrateDrafts
 } from '$lib/components/agent/composer-draft.svelte';
 
-/** Threads of the currently displayed identity (unarchived, recent first). */
+/** Threads of the currently displayed scope (unarchived, recent first). */
 let threads = $state<ThreadSummary[]>([]);
-/** All threads across identities including archived (settings view). */
+/** All threads across scopes including archived (settings view). */
 let allThreads = $state<ThreadSummary[]>([]);
 /** The thread currently open in the panel. */
 let activeThreadId = $state<string | null>(null);
 let loading = $state(false);
+/** Scope the panel list was last loaded with. */
+let currentScope: string | null = null;
 
 export function getThreads(): ThreadSummary[] {
 	return threads;
@@ -36,10 +38,11 @@ export function threadsLoading(): boolean {
 	return loading;
 }
 
-export async function loadThreads(identity: string): Promise<void> {
+export async function loadThreads(scope: string): Promise<void> {
 	loading = true;
 	try {
-		threads = await getAgentBackend().threadsList(identity);
+		threads = await getAgentBackend().threadsList(scope);
+		currentScope = scope;
 		hydrateDrafts(threads);
 	} finally {
 		loading = false;
@@ -50,13 +53,27 @@ export async function loadAllThreads(): Promise<void> {
 	allThreads = await getAgentBackend().threadsListAll();
 }
 
-export async function createThread(identity: string): Promise<ThreadSummary> {
+export async function createThread(scope: string): Promise<ThreadSummary> {
 	const prevId = activeThreadId;
-	const thread = await getAgentBackend().threadCreate(identity);
+	const thread = await getAgentBackend().threadCreate(scope);
 	threads = [thread, ...threads];
 	activeThreadId = thread.id;
 	if (prevId && prevId !== thread.id) void pruneIfEmpty(prevId);
 	return thread;
+}
+
+/** Re-anchor a thread to a different owner scope (settings "all threads"). */
+export async function reassignThread(threadId: string, ownerKey: string): Promise<void> {
+	await getAgentBackend().threadReassign(threadId, ownerKey);
+	allThreads = allThreads.map((t) => (t.id === threadId ? { ...t, ownerKey } : t));
+	if (ownerKey === currentScope) {
+		// Moved INTO the open panel's scope: reload for correct order/draft.
+		if (currentScope) await loadThreads(currentScope);
+	} else if (threads.some((t) => t.id === threadId)) {
+		// Moved OUT of the open panel's scope.
+		threads = threads.filter((t) => t.id !== threadId);
+		if (activeThreadId === threadId) activeThreadId = threads[0]?.id ?? null;
+	}
 }
 
 export function selectThread(threadId: string): void {

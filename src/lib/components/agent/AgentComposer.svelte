@@ -1,6 +1,8 @@
 <script module lang="ts">
 	export interface Props {
-		identity: string;
+		scope: string;
+		/** Active tab's connection: tool-execution hint in send options. */
+		connectionId?: string;
 		threadId: string | null;
 	}
 </script>
@@ -12,7 +14,7 @@
 		findModel,
 		getInstanceModels,
 		resolveSelection,
-		setIdentitySelection,
+		setScopeSelection,
 		type ComposerSelection
 	} from '$lib/state/agent-settings.svelte';
 	import { getThreads } from '$lib/state/agent-threads.svelte';
@@ -24,10 +26,10 @@
 	import { autogrowTextarea } from '$lib/utils/autogrow';
 	import ProviderIcon from './ProviderIcon.svelte';
 
-	let { identity, threadId }: Props = $props();
+	let { scope, connectionId, threadId }: Props = $props();
 
 	let runtime = $derived(threadId ? getThreadRuntime(threadId) : null);
-	let draftKey = $derived(threadId ?? `__identity:${identity}`);
+	let draftKey = $derived(threadId ?? `__scope:${scope}`);
 
 	// ── Model / thinking / effort selection (design 01 §3.6, 05 §5) ──────────
 
@@ -37,10 +39,10 @@
 	$effect(() => {
 		const groups = getInstanceModels();
 		const summary = threadId ? getThreads().find((x) => x.id === threadId) : undefined;
-		const key = `${identity}|${threadId ?? ''}|${groups.length}:${groups.map((g) => g.models?.length ?? 0).join(',')}`;
+		const key = `${scope}|${threadId ?? ''}|${groups.length}:${groups.map((g) => g.models?.length ?? 0).join(',')}`;
 		if (key === selKey) return;
 		selKey = key;
-		sel = resolveSelection(identity, summary?.model ?? null);
+		sel = resolveSelection(scope, summary?.model ?? null);
 	});
 
 	let selectedModel = $derived(sel ? findModel(sel.model) : null);
@@ -60,13 +62,13 @@
 		if (!sel || !modelMeta) return;
 		if (!modelMeta.supportsThinking || modelMeta.thinkingMandatory) return;
 		sel = { ...sel, thinking: !sel.thinking };
-		setIdentitySelection(identity, sel);
+		setScopeSelection(scope, sel);
 	}
 
 	function pickEffort(effort: string): void {
 		if (!sel) return;
 		sel = { ...sel, effort };
-		setIdentitySelection(identity, sel);
+		setScopeSelection(scope, sel);
 		effortOpen = false;
 	}
 
@@ -76,7 +78,7 @@
 			thinking: m.thinkingMandatory ? true : m.supportsThinking ? (sel?.thinking ?? false) : false,
 			effort: m.defaultEffort ?? (m.thinkingEfforts.includes('medium') ? 'medium' : (m.thinkingEfforts[0] ?? null))
 		};
-		setIdentitySelection(identity, sel);
+		setScopeSelection(scope, sel);
 		modelOpen = false;
 	}
 
@@ -109,7 +111,8 @@
 		return {
 			model: sel.model,
 			thinking: thinkingOn,
-			effort: thinkingOn ? (sel.effort ?? undefined) : undefined
+			effort: thinkingOn ? (sel.effort ?? undefined) : undefined,
+			connectionHint: connectionId
 		};
 	});
 
@@ -124,7 +127,7 @@
 		setDraft(draftKey, '');
 		void flushDraft(draftKey); // delete the persisted draft row now, not in 400ms
 		setFollowing(true); // sending always jumps the chat to the bottom
-		await agentSendMessage(identity, threadId, text, sendOpts);
+		await agentSendMessage(scope, threadId, text, sendOpts);
 	}
 
 	function onKeydown(e: KeyboardEvent): void {

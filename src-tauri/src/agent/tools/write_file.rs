@@ -142,7 +142,7 @@ pub(crate) async fn execute_prepared_write(
 
     // Keep the read cache hot with what we just wrote (design 03 §1.7).
     ctx.read_cache.lock().unwrap().insert(
-        (ctx.identity.clone(), plan.path.clone()),
+        (ctx.scope.clone(), plan.path.clone()),
         ReadCacheEntry {
             text: plan.new_text.clone(),
             encoding_label: plan.encoding_label.clone(),

@@ -165,7 +165,7 @@ impl AgentTool for ReadFileTool {
         // Cache hit: fingerprint equal and TTL fresh (design 03 §1.7).
         let cached = {
             let cache = ctx.read_cache.lock().unwrap();
-            cache.get(&(ctx.identity.clone(), path.clone())).and_then(|e| {
+            cache.get(&(ctx.scope.clone(), path.clone())).and_then(|e| {
                 if ttl_secs > 0
                     && e.fingerprint == fingerprint
                     && e.fetched_at.elapsed().as_secs() < ttl_secs
@@ -192,7 +192,7 @@ impl AgentTool for ReadFileTool {
                 ctx.read_cache
                     .lock()
                     .unwrap()
-                    .insert((ctx.identity.clone(), path.clone()), entry);
+                    .insert((ctx.scope.clone(), path.clone()), entry);
                 (decoded.text, label, decoded.line_ending)
             }
         };

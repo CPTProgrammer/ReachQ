@@ -98,8 +98,8 @@ export function agentConfigured(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Per-identity composer state: model / thinking / effort
-// (localStorage `reach-agent-model:{identity}`, design 05 §5)
+// Per-scope composer state: model / thinking / effort
+// (localStorage `reach-agent-model:{scope}`, design 05 §5)
 // ---------------------------------------------------------------------------
 
 export interface ComposerSelection {
@@ -110,15 +110,15 @@ export interface ComposerSelection {
 
 let composerSelections = $state<Record<string, ComposerSelection>>({});
 
-function modelKey(identity: string): string {
-	return `reach-agent-model:${identity}`;
+function modelKey(scope: string): string {
+	return `reach-agent-model:${scope}`;
 }
 
-/** Identity's last-used selection (new threads). */
-export function getIdentitySelection(identity: string): ComposerSelection | null {
-	if (composerSelections[identity]) return composerSelections[identity];
+/** Scope's last-used selection (new threads). */
+export function getScopeSelection(scope: string): ComposerSelection | null {
+	if (composerSelections[scope]) return composerSelections[scope];
 	try {
-		const raw = localStorage.getItem(modelKey(identity));
+		const raw = localStorage.getItem(modelKey(scope));
 		if (!raw) return null;
 		const parsed = JSON.parse(raw) as { model: string; thinking?: boolean; effort?: string };
 		if (!parsed.model) return null;
@@ -127,17 +127,17 @@ export function getIdentitySelection(identity: string): ComposerSelection | null
 			thinking: parsed.thinking ?? false,
 			effort: parsed.effort ?? null
 		};
-		composerSelections[identity] = sel;
+		composerSelections[scope] = sel;
 		return sel;
 	} catch {
 		return null;
 	}
 }
 
-export function setIdentitySelection(identity: string, sel: ComposerSelection): void {
-	composerSelections[identity] = sel;
+export function setScopeSelection(scope: string, sel: ComposerSelection): void {
+	composerSelections[scope] = sel;
 	try {
-		localStorage.setItem(modelKey(identity), JSON.stringify(sel));
+		localStorage.setItem(modelKey(scope), JSON.stringify(sel));
 	} catch {
 		/* non-fatal */
 	}
@@ -145,11 +145,11 @@ export function setIdentitySelection(identity: string, sel: ComposerSelection): 
 
 /**
  * Resolve the composer selection for a thread (design 05 §5 priority):
- * thread snapshot -> identity last-used -> global default (first model of
+ * thread snapshot -> scope last-used -> global default (first model of
  * the first configured instance). Stale snapshots fall back silently.
  */
 export function resolveSelection(
-	identity: string,
+	scope: string,
 	threadSnapshot: { model: string; thinking: boolean; effort?: string } | null | undefined
 ): ComposerSelection | null {
 	if (threadSnapshot?.model && findModel(threadSnapshot.model)) {
@@ -159,7 +159,7 @@ export function resolveSelection(
 			effort: threadSnapshot.effort ?? null
 		};
 	}
-	const recent = getIdentitySelection(identity);
+	const recent = getScopeSelection(scope);
 	if (recent && findModel(recent.model)) return recent;
 	for (const group of instanceModels) {
 		const first = group.models?.[0];

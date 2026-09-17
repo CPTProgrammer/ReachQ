@@ -84,7 +84,7 @@ pub struct AgentState {
     pub tool_configs: RwLock<Option<HashMap<String, config::ToolConfig>>>,
     /// instance_id -> (fetched_at, models). 10 min TTL (design 05 §4).
     pub models_cache: Mutex<HashMap<String, (Instant, Vec<providers::ModelMeta>)>>,
-    /// identity -> detected OS string (best-effort, once per session).
+    /// scope -> detected OS string (best-effort, once per app session).
     pub detected_os: Mutex<HashMap<String, String>>,
 }
 

@@ -39,7 +39,7 @@ async fn store(state: &AppState) -> Result<Arc<ThreadStore>, String> {
 pub async fn agent_send_message(
     app: AppHandle,
     state: State<'_, AppState>,
-    identity: String,
+    scope: String,
     thread_id: String,
     text: String,
     opts: SendOpts,
@@ -58,7 +58,7 @@ pub async fn agent_send_message(
 
     let deps = AgentDeps::from_state(state.inner());
     tauri::async_runtime::spawn(async move {
-        agent_loop::run_agent(app, deps, identity, thread_id, Some(text), opts).await;
+        agent_loop::run_agent(app, deps, scope, thread_id, Some(text), opts).await;
     });
     Ok("started".to_string())
 }
@@ -93,7 +93,7 @@ const SEND_NOW_STOP_TIMEOUT: Duration = Duration::from_secs(10);
 pub async fn agent_send_now(
     app: AppHandle,
     state: State<'_, AppState>,
-    identity: String,
+    scope: String,
     thread_id: String,
     text: String,
     opts: SendOpts,
@@ -125,7 +125,7 @@ pub async fn agent_send_now(
 
     let deps = AgentDeps::from_state(state.inner());
     tauri::async_runtime::spawn(async move {
-        agent_loop::run_agent(app, deps, identity, thread_id, initial, opts).await;
+        agent_loop::run_agent(app, deps, scope, thread_id, initial, opts).await;
     });
     Ok(())
 }
@@ -202,9 +202,9 @@ pub async fn agent_terminal_stop(
 #[tauri::command]
 pub async fn agent_threads_list(
     state: State<'_, AppState>,
-    identity: String,
+    scope: String,
 ) -> Result<Vec<ThreadSummary>, String> {
-    store(&state).await?.list_threads(&identity).await
+    store(&state).await?.list_threads(&scope).await
 }
 
 #[tauri::command]
@@ -217,9 +217,19 @@ pub async fn agent_threads_list_all(
 #[tauri::command]
 pub async fn agent_thread_create(
     state: State<'_, AppState>,
-    identity: String,
+    scope: String,
 ) -> Result<ThreadSummary, String> {
-    store(&state).await?.create_thread(&identity).await
+    store(&state).await?.create_thread(&scope).await
+}
+
+/// Re-anchor a thread to a different owner scope (settings "all threads").
+#[tauri::command]
+pub async fn agent_thread_reassign(
+    state: State<'_, AppState>,
+    thread_id: String,
+    owner_key: String,
+) -> Result<(), String> {
+    store(&state).await?.reassign_thread(&thread_id, &owner_key).await
 }
 
 #[tauri::command]
@@ -308,7 +318,7 @@ pub async fn agent_get_thread_state(
 pub async fn agent_edit_message(
     app: AppHandle,
     state: State<'_, AppState>,
-    identity: String,
+    scope: String,
     thread_id: String,
     message_id: String,
     new_content: String,
@@ -345,7 +355,7 @@ pub async fn agent_edit_message(
 
     let deps = AgentDeps::from_state(state.inner());
     tauri::async_runtime::spawn(async move {
-        agent_loop::run_agent(app, deps, identity, thread_id, None, opts).await;
+        agent_loop::run_agent(app, deps, scope, thread_id, None, opts).await;
     });
     Ok(snapshot)
 }
@@ -737,7 +747,7 @@ pub async fn agent_migrate_legacy_settings(state: State<'_, AppState>) -> Result
 // ---------------------------------------------------------------------------
 
 /// Emit helper for the frontend's initial subscription sanity check.
-/// (Unused in production; the loop emits on agent-event-{base64url(identity)}.)
+/// (Unused in production; the loop emits on agent-event-{base64url(scope)}.)
 #[tauri::command]
 pub async fn agent_ping() -> Result<String, String> {
     let _ = AgentEvent::channel("ping");
@@ -748,7 +758,7 @@ pub async fn agent_ping() -> Result<String, String> {
 // Identity
 // ---------------------------------------------------------------------------
 
-/// Compute the agent identity a saved-session link would connect with — the
+/// Compute the agent scope a saved-session link would connect with — the
 /// exact normalization `ssh_connect` applies (design 01 §1.1): a non-empty
 /// jump chain fingerprints the hops only (mirrors `connect_via_jump`), a
 /// direct link fingerprints the proxy (mirrors `connect`). Lets the

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getStats } from '$lib/state/monitoring.svelte';
-	import { identityForConnection, getPanelState, togglePanel } from '$lib/state/agent.svelte';
+	import { scopeForConnection, getPanelState, togglePanel } from '$lib/state/agent.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 
 	interface Props {
@@ -12,14 +12,14 @@
 
 	let stats = $derived(connectionId ? getStats(connectionId) : undefined);
 
-	// Agent panel toggle for the connection's identity (design 01 §1.3).
-	let identity = $derived(identityForConnection(connectionId));
+	// Agent panel toggle for the connection's owner scope (design 01 §1.3).
+	let scope = $derived(scopeForConnection(connectionId));
 	let panelOpen = $state(false);
 	$effect(() => {
-		const id = identity;
+		const s = scope;
 		// Read from an effect so `panelOpen` stays reactively in sync with the
-		// identity's panel state.
-		panelOpen = id ? getPanelState(id).open : false;
+		// scope's panel state.
+		panelOpen = s ? getPanelState(s).open : false;
 	});
 
 	let cpuColor = $derived.by(() => {
@@ -153,13 +153,13 @@
 {/if}
 
 {#snippet agentToggle()}
-	{#if identity}
+	{#if scope}
 		<div class="agent-toggle" class:push-right={!stats}>
 			<div class="agent-sep"></div>
 			<button
 				class="agent-btn"
 				class:active={panelOpen}
-				onclick={() => togglePanel(identity!)}
+				onclick={() => togglePanel(scope!)}
 				title={t('agent.toggle')}
 				aria-label={t('agent.toggle')}
 			>

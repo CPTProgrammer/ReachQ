@@ -1,6 +1,7 @@
 <script module lang="ts">
 	export interface Props {
-		identity: string;
+		/** Owner scope: thread list + new-thread ownership. */
+		scope: string;
 	}
 </script>
 
@@ -18,9 +19,9 @@
 	} from '$lib/state/agent-threads.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 
-	let { identity }: Props = $props();
+	let { scope }: Props = $props();
 
-	let panel = $derived(getPanelState(identity));
+	let panel = $derived(getPanelState(scope));
 	let threads = $derived(getThreads());
 	let activeThreadId = $derived(getActiveThreadId());
 
@@ -61,7 +62,7 @@
 		class="threads-strip"
 		title={t('agent.threads')}
 		aria-label={t('agent.threads')}
-		onclick={() => updatePanelState(identity, { threadsCollapsed: false })}
+		onclick={() => updatePanelState(scope, { threadsCollapsed: false })}
 	>
 		<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
 		<span class="strip-label">{t('agent.threads')}</span>
@@ -73,13 +74,13 @@
 		<div
 			class="threads-head"
 			title={t('agent.threads')}
-			onclick={() => updatePanelState(identity, { threadsCollapsed: true })}
+			onclick={() => updatePanelState(scope, { threadsCollapsed: true })}
 		>
 			<span class="threads-title">{t('agent.threads')}</span>
 			<svg class="collapse-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
 		</div>
 
-		<button type="button" class="new-btn" onclick={() => void createThread(identity)}>
+		<button type="button" class="new-btn" onclick={() => void createThread(scope)}>
 			<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
 			{t('agent.new_thread')}
 		</button>

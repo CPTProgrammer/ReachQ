@@ -8,7 +8,7 @@
 	import { sshConnect, sshDisconnect, sshDetectOs, type JumpHostConnectParams } from '$lib/ipc/ssh';
 	// Passwords are now stored encrypted in vault, not in memory cache
 	import { createTab, updateTabOs } from '$lib/state/tabs.svelte';
-	import { registerConnectionIdentity } from '$lib/state/agent.svelte';
+	import { registerConnectionScope } from '$lib/state/agent.svelte';
 	import { addToast } from '$lib/state/toasts.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import { getPendingHostKey, clearPendingHostKey } from '$lib/state/host-key.svelte';
@@ -348,9 +348,10 @@
 					password: session.proxy.password ?? undefined,
 				} : undefined,
 				colorInit: session.color_init ?? true,
+				sessionId: session.id,
 			};
 			const info = await sshConnect(connectParams);
-			registerConnectionIdentity(info.id, info.identity);
+			registerConnectionScope(info.id, info.agent_scope);
 
 			// Cancelled while the handshake was in flight: connectingId was
 			// cleared by cancelConnect, so this connection is unwanted — tear

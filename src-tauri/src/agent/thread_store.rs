@@ -1,6 +1,10 @@
 //! Threads/messages persistence in a standalone plaintext SQLite database
 //! (`data_dir/agent.db`), independent of the encrypted vault (design 02 §4).
 //!
+//! Threads are owned by a scope (`session:<uuid>` for saved sessions,
+//! `link:<identity>` for quick-connect links) and listed strictly by that
+//! key, so saved-session history survives connection-detail edits.
+//!
 //! Messages form a tree: each message points at its parent; siblings under
 //! the same parent are branches. A thread records the active leaf; the
 //! visible conversation is the path from the leaf up to the root.
@@ -31,7 +35,7 @@ pub struct ThreadStore {
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS agent_threads (
     id TEXT PRIMARY KEY,
-    identity TEXT NOT NULL,
+    owner_key TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT '',
     archived INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
@@ -40,7 +44,7 @@ CREATE TABLE IF NOT EXISTS agent_threads (
     last_usage TEXT,
     model TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_threads_identity ON agent_threads(identity, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_threads_owner ON agent_threads(owner_key, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS agent_messages (
     id TEXT PRIMARY KEY,
@@ -76,7 +80,7 @@ fn now_millis() -> i64 {
 
 /// Thread list columns: base fields + live message count + persisted draft.
 const THREAD_SELECT: &str = "\
-SELECT t.id, t.identity, t.title, t.archived, t.created_at, t.updated_at, t.last_usage, t.model, \
+SELECT t.id, t.owner_key, t.title, t.archived, t.created_at, t.updated_at, t.last_usage, t.model, \
        (SELECT COUNT(*) FROM agent_messages m WHERE m.thread_id = t.id), \
        COALESCE((SELECT d.text FROM agent_drafts d WHERE d.thread_id = t.id), '') \
 FROM agent_threads t";
@@ -90,6 +94,11 @@ impl ThreadStore {
             .await
             .map_err(|e| format!("open agent.db: {e}"))?;
         let conn = db.connect().map_err(|e| format!("connect agent.db: {e}"))?;
+        Self::init(conn).await
+    }
+
+    /// Shared setup: pragmas, schema, message sequence seed.
+    async fn init(conn: Connection) -> Result<Self, String> {
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
             .await
             .map_err(|e| format!("agent.db pragmas: {e}"))?;
@@ -117,19 +126,19 @@ impl ThreadStore {
     // Threads CRUD
     // ------------------------------------------------------------------
 
-    pub async fn create_thread(&self, identity: &str) -> Result<ThreadSummary, String> {
+    pub async fn create_thread(&self, owner_key: &str) -> Result<ThreadSummary, String> {
         let id = Uuid::new_v4().to_string();
         let now = now_millis();
         self.conn
             .execute(
-                "INSERT INTO agent_threads (id, identity, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
-                params![id.clone(), identity.to_string(), now],
+                "INSERT INTO agent_threads (id, owner_key, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
+                params![id.clone(), owner_key.to_string(), now],
             )
             .await
             .map_err(|e| format!("create thread: {e}"))?;
         Ok(ThreadSummary {
             id,
-            identity: identity.to_string(),
+            owner_key: owner_key.to_string(),
             title: String::new(),
             archived: false,
             created_at: now,
@@ -142,13 +151,13 @@ impl ThreadStore {
         })
     }
 
-    /// Threads for one identity, excluding archived, most recent first.
-    pub async fn list_threads(&self, identity: &str) -> Result<Vec<ThreadSummary>, String> {
+    /// Threads of one owner scope, excluding archived, most recent first.
+    pub async fn list_threads(&self, owner_key: &str) -> Result<Vec<ThreadSummary>, String> {
         let mut rows = self
             .conn
             .query(
-                &format!("{THREAD_SELECT} WHERE t.identity = ?1 AND t.archived = 0 ORDER BY t.updated_at DESC"),
-                params![identity.to_string()],
+                &format!("{THREAD_SELECT} WHERE t.owner_key = ?1 AND t.archived = 0 ORDER BY t.updated_at DESC"),
+                params![owner_key.to_string()],
             )
             .await
             .map_err(|e| format!("list threads: {e}"))?;
@@ -157,7 +166,20 @@ impl ThreadStore {
         Ok(threads)
     }
 
-    /// All threads across identities, including archived (settings page
+    /// Re-anchor a thread to a different owner scope (settings "all
+    /// threads" reassign action).
+    pub async fn reassign_thread(&self, id: &str, owner_key: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE agent_threads SET owner_key = ?2 WHERE id = ?1",
+                params![id.to_string(), owner_key.to_string()],
+            )
+            .await
+            .map_err(|e| format!("reassign thread: {e}"))?;
+        Ok(())
+    }
+
+    /// All threads across scopes, including archived (settings page
     /// "View all threads", design 04 §4.5).
     pub async fn list_all_threads(&self) -> Result<Vec<ThreadSummary>, String> {
         let mut rows = self
@@ -673,7 +695,7 @@ async fn collect_thread_rows(rows: &mut libsql::Rows) -> Result<Vec<ThreadSummar
         let model: Option<String> = row.get(7).ok().flatten();
         out.push(ThreadSummary {
             id: row.get(0).map_err(|e| e.to_string())?,
-            identity: row.get(1).map_err(|e| e.to_string())?,
+            owner_key: row.get(1).map_err(|e| e.to_string())?,
             title: row.get(2).map_err(|e| e.to_string())?,
             archived: row.get::<i64>(3).map_err(|e| e.to_string())? != 0,
             created_at: row.get(4).map_err(|e| e.to_string())?,
@@ -708,4 +730,47 @@ async fn collect_message_rows(rows: &mut libsql::Rows) -> Result<Vec<StoredMessa
         });
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// In-memory store: tests must not touch the filesystem.
+    async fn mem_store() -> ThreadStore {
+        let db = libsql::Builder::new_local(":memory:")
+            .build()
+            .await
+            .unwrap();
+        let conn = db.connect().unwrap();
+        ThreadStore::init(conn).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn create_list_reassign_by_owner() {
+        let store = mem_store().await;
+
+        let t1 = store.create_thread("session:s1").await.unwrap();
+        let _t2 = store
+            .create_thread("link:root@example.com:22")
+            .await
+            .unwrap();
+
+        // Strict owner matching: same identity, different scopes stay separate.
+        assert_eq!(store.list_threads("session:s1").await.unwrap().len(), 1);
+        assert_eq!(
+            store
+                .list_threads("link:root@example.com:22")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+
+        store.reassign_thread(&t1.id, "session:s2").await.unwrap();
+        assert_eq!(store.list_threads("session:s1").await.unwrap().len(), 0);
+        let moved = store.list_threads("session:s2").await.unwrap();
+        assert_eq!(moved.len(), 1);
+        assert_eq!(moved[0].owner_key, "session:s2");
+    }
 }

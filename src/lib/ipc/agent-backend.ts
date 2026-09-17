@@ -33,13 +33,13 @@ import {
 export interface AgentBackend {
 	// messaging
 	sendMessage(
-			identity: string,
+			scope: string,
 			threadId: string,
 			text: string,
 			opts: AgentSendOpts
 		): Promise<'started' | 'queued' | 'queued_full'>;
 		sendNow(
-			identity: string,
+			scope: string,
 			threadId: string,
 			text: string,
 			opts: AgentSendOpts
@@ -51,9 +51,10 @@ export interface AgentBackend {
 	terminalStop(toolCallId: string): Promise<void>;
 
 	// threads
-	threadsList(identity: string): Promise<ThreadSummary[]>;
+	threadsList(scope: string): Promise<ThreadSummary[]>;
 	threadsListAll(): Promise<ThreadSummary[]>;
-	threadCreate(identity: string): Promise<ThreadSummary>;
+	threadCreate(scope: string): Promise<ThreadSummary>;
+	threadReassign(threadId: string, ownerKey: string): Promise<void>;
 	threadRename(threadId: string, title: string): Promise<void>;
 	threadArchive(threadId: string, archived: boolean): Promise<void>;
 	threadDelete(threadId: string): Promise<void>;
@@ -61,7 +62,7 @@ export interface AgentBackend {
 	threadMessages(threadId: string): Promise<ThreadSnapshot>;
 	threadState(threadId: string): Promise<ThreadState>;
 	threadEditMessage(
-		identity: string,
+		scope: string,
 		threadId: string,
 		messageId: string,
 		newContent: string,
@@ -99,7 +100,7 @@ export interface AgentBackend {
 	migrateLegacySettings(): Promise<boolean>;
 
 	// event stream
-	onEvent(identity: string, cb: (e: AgentEvent) => void): UnlistenFn | Promise<UnlistenFn>;
+	onEvent(scope: string, cb: (e: AgentEvent) => void): UnlistenFn | Promise<UnlistenFn>;
 }
 
 export const tauriBackend: AgentBackend = {
@@ -114,6 +115,7 @@ export const tauriBackend: AgentBackend = {
 	threadsList: agentThreads.list,
 	threadsListAll: agentThreads.listAll,
 	threadCreate: agentThreads.create,
+	threadReassign: agentThreads.reassign,
 	threadRename: agentThreads.rename,
 	threadArchive: agentThreads.archive,
 	threadDelete: agentThreads.delete,

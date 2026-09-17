@@ -1,13 +1,21 @@
-//! SSH identity normalization (design 01 §1.1).
-//!
-//! Identity = "{username}@{host}:{port}[#via={chainhash8}]". The same link
-//! (saved session or quick connect) always produces the same identity, so
-//! threads and the agent panel are shared per link rather than per session.
+//! SSH identity normalization, used to name quick-connect link scopes
+//! (`link:<identity>`). Saved-session scopes (`session:<uuid>`) do not use
+//! this module. The same link always produces the same identity, so link
+//! scopes stay stable across reconnects and credential choices.
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::state::ProxyConfig;
+
+/// Owning scope for a connection: `session:<id>` when started from a saved
+/// session, else `link:<identity>`.
+pub fn agent_scope(session_id: Option<&str>, identity: String) -> String {
+    match session_id {
+        Some(id) => format!("session:{id}"),
+        None => format!("link:{identity}"),
+    }
+}
 
 /// One hop of a ProxyJump chain, reduced to the fields that identify the
 /// link (credentials deliberately excluded from the fingerprint).
@@ -16,16 +24,42 @@ pub struct ChainHop {
     pub host: String,
     pub port: u16,
     pub username: String,
-    pub auth_kind: String,
+    pub auth_kind: AuthKind,
 }
 
-fn auth_kind(auth: &crate::ssh::client::AuthParams) -> &'static str {
-    if auth.key.is_some() {
-        "key"
-    } else if auth.password.is_some() {
-        "password"
-    } else {
-        "agent"
+/// Auth category labels for the chain fingerprint. The serialized form is a
+/// stability contract: renaming variants changes link identities, orphaning
+/// `link:`-scoped thread history. All conversions funnel through this enum
+/// so the label set has a single source of truth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthKind {
+    Key,
+    Password,
+    Agent,
+}
+
+/// Runtime connect params can hold several methods at once (the auth cascade
+/// tries key → agent → password); classify by that precedence.
+impl From<&crate::ssh::client::AuthParams> for AuthKind {
+    fn from(auth: &crate::ssh::client::AuthParams) -> Self {
+        if auth.key.is_some() {
+            Self::Key
+        } else if auth.password.is_some() {
+            Self::Password
+        } else {
+            Self::Agent
+        }
+    }
+}
+
+impl From<&crate::state::AuthMethod> for AuthKind {
+    fn from(m: &crate::state::AuthMethod) -> Self {
+        match m {
+            crate::state::AuthMethod::Key { .. } => Self::Key,
+            crate::state::AuthMethod::Password { .. } => Self::Password,
+            crate::state::AuthMethod::Agent => Self::Agent,
+        }
     }
 }
 
@@ -35,23 +69,18 @@ impl From<&crate::ssh::client::JumpHostParams> for ChainHop {
             host: p.host.trim().to_lowercase(),
             port: p.port,
             username: p.username.trim().to_string(),
-            auth_kind: auth_kind(&p.auth).to_string(),
+            auth_kind: AuthKind::from(&p.auth),
         }
     }
 }
 
 impl From<&crate::state::JumpHostConfig> for ChainHop {
     fn from(p: &crate::state::JumpHostConfig) -> Self {
-        let kind = match &p.auth_method {
-            crate::state::AuthMethod::Key { .. } => "key",
-            crate::state::AuthMethod::Password { .. } => "password",
-            crate::state::AuthMethod::Agent => "agent",
-        };
         Self {
             host: p.host.trim().to_lowercase(),
             port: p.port,
             username: p.username.trim().to_string(),
-            auth_kind: kind.to_string(),
+            auth_kind: AuthKind::from(&p.auth_method),
         }
     }
 }
@@ -176,5 +205,23 @@ mod tests {
         let proxy2 = ProxyConfig { password: None, ..proxy };
         let b = compute_identity("root", "10.0.0.8", 22, None, Some(&proxy2));
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn auth_kind_labels_are_stable() {
+        // The labels feed the chain hash: renaming a variant changes link
+        // identities and orphans `link:`-scoped thread history.
+        let hop = |kind: AuthKind| ChainHop {
+            host: "h".into(),
+            port: 22,
+            username: "u".into(),
+            auth_kind: kind,
+        };
+        let json = serde_json::to_string(&hop(AuthKind::Key)).unwrap();
+        assert!(json.contains(r#""auth_kind":"key""#));
+        let json = serde_json::to_string(&hop(AuthKind::Password)).unwrap();
+        assert!(json.contains(r#""auth_kind":"password""#));
+        let json = serde_json::to_string(&hop(AuthKind::Agent)).unwrap();
+        assert!(json.contains(r#""auth_kind":"agent""#));
     }
 }

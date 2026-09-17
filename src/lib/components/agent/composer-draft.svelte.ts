@@ -21,10 +21,10 @@ let persisted: Record<string, string> = {};
 const dirty = new Set<string>();
 let timer: ReturnType<typeof setInterval> | null = null;
 
-/** Identity-level keys (`__identity:<id>`, composer disabled without a
+/** Scope-level keys (`__scope:<scope>`, composer disabled without a
  * thread) have no backend row; never persist them. */
 function isPersistable(key: string): boolean {
-	return !key.startsWith('__identity:');
+	return !key.startsWith('__scope:');
 }
 
 export function getDraft(key: string): string {

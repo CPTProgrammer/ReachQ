@@ -99,12 +99,12 @@ impl StreamPreviews {
         &mut self,
         app: &AppHandle,
         deps: &AgentDeps,
-        identity: &str,
+        scope: &str,
         thread_id: &str,
         calls: Vec<(String, String, String)>,
     ) {
         for (tool_call_id, name, args_json) in calls {
-            self.tick_call(app, deps, identity, thread_id, &tool_call_id, &name, &args_json)
+            self.tick_call(app, deps, scope, thread_id, &tool_call_id, &name, &args_json)
                 .await;
         }
     }
@@ -113,7 +113,7 @@ impl StreamPreviews {
         &mut self,
         app: &AppHandle,
         deps: &AgentDeps,
-        identity: &str,
+        scope: &str,
         thread_id: &str,
         tool_call_id: &str,
         name: &str,
@@ -158,7 +158,7 @@ impl StreamPreviews {
         };
 
         if state.source.is_none() {
-            state.source = Some(resolve_source(app, deps, identity, path, is_write).await);
+            state.source = Some(resolve_source(app, deps, scope, path, is_write).await);
         }
         let (old_text, is_new_file) = match state.source.as_ref() {
             Some(SourceText::Existing(text)) => (text.clone(), false),
@@ -235,7 +235,7 @@ impl StreamPreviews {
                 preview: preview.clone(),
             },
         );
-        emit(app, identity, AgentEvent::ToolCallPreview {
+        emit(app, scope, AgentEvent::ToolCallPreview {
             thread_id: thread_id.to_string(),
             tool_call_id: tool_call_id.to_string(),
             preview,
@@ -292,7 +292,7 @@ fn jiter_to_serde(value: &jiter::JsonValue) -> serde_json::Value {
 async fn resolve_source(
     app: &AppHandle,
     deps: &AgentDeps,
-    identity: &str,
+    scope: &str,
     path: &str,
     is_write: bool,
 ) -> SourceText {
@@ -301,17 +301,17 @@ async fn resolve_source(
         .read_cache
         .lock()
         .unwrap()
-        .get(&(identity.to_string(), path.to_string()))
+        .get(&(scope.to_string(), path.to_string()))
         .map(|e| e.text.clone());
     if let Some(text) = cached {
         return SourceText::Existing(text);
     }
 
-    let fs = match AgentRemoteFs::for_identity(
+    let fs = match AgentRemoteFs::for_scope(
         &deps.ssh_manager,
         &deps.sftp_backends,
         app.clone(),
-        identity,
+        scope,
         None,
     )
     .await

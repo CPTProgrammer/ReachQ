@@ -3,19 +3,19 @@
 	//! the mock backend's scenario player. No Tauri required.
 	import { onMount } from 'svelte';
 	import AgentPanel from '$lib/components/agent/AgentPanel.svelte';
-	import { MOCK_IDENTITY, mockBackend } from '$lib/ipc/agent-backend.mock';
+	import { MOCK_SCOPE, mockBackend } from '$lib/ipc/agent-backend.mock';
 	import { tauriBackend } from '$lib/ipc/agent-backend';
 	import {
 		setAgentBackend,
 		updatePanelState,
 		loadThread,
-		subscribeIdentity
+		subscribeScope
 	} from '$lib/state/agent.svelte';
 	import { loadThreads, selectThread } from '$lib/state/agent-threads.svelte';
 	import { loadModels, loadProviders } from '$lib/state/agent-settings.svelte';
 
 	// Install the mock at component init, NOT in onMount: child effects
-	// (AgentPanel's subscribeIdentity/loadThreads/...) run before this page's
+	// (AgentPanel's subscribeScope/loadThreads/...) run before this page's
 	// onMount, and they issue IPC as soon as the panel is open — the backend
 	// must already be the mock by then.
 	setAgentBackend(mockBackend);
@@ -31,7 +31,7 @@
 		error = null;
 		try {
 			const threadId = await mockBackend.playScenario(name);
-			await loadThreads(MOCK_IDENTITY);
+			await loadThreads(MOCK_SCOPE);
 			selectThread(threadId);
 			await loadThread(threadId);
 		} catch (e) {
@@ -42,11 +42,11 @@
 	}
 
 	onMount(() => {
-		updatePanelState(MOCK_IDENTITY, { open: true });
-		subscribeIdentity(MOCK_IDENTITY);
+		updatePanelState(MOCK_SCOPE, { open: true });
+		subscribeScope(MOCK_SCOPE);
 		void loadProviders();
 		void loadModels();
-		void loadThreads(MOCK_IDENTITY);
+		void loadThreads(MOCK_SCOPE);
 		void play(scenario);
 		return () => setAgentBackend(tauriBackend);
 	});
@@ -76,7 +76,7 @@
 	</aside>
 	<div class="panel-host">
 		<!-- No max-width cap here: the panel may fill the host (design 01 §4.1). -->
-		<AgentPanel identity={MOCK_IDENTITY} unrestrictedWidth />
+		<AgentPanel scope={MOCK_SCOPE} unrestrictedWidth />
 	</div>
 </div>
 
