@@ -82,4 +82,28 @@ describe("groupRenderUnits", () => {
 			"component:Paragraph",
 		]);
 	});
+
+	it("streaming: an html block growing at the document tail stays fresh", () => {
+		// Regression: the node object is reused in place while its content
+		// grows, so any cache keyed by node identity serves stale summaries.
+		const session = new MarkdownSession();
+		let nodes = session.update("<div");
+		expect(kinds(groupRenderUnits(nodes))).toEqual(["html:<div"]);
+
+		// "<div>" leaves a tag open: starts a run absorbing following blocks.
+		nodes = session.append(">");
+		expect(kinds(groupRenderUnits(nodes))).toEqual(["html:<div>"]);
+
+		nodes = session.append("\nhello");
+		expect(kinds(groupRenderUnits(nodes))).toEqual(["html:<div>\nhello"]);
+
+		nodes = session.append("\n</div>");
+		expect(kinds(groupRenderUnits(nodes))).toEqual(["html:<div>\nhello\n</div>"]);
+
+		nodes = session.append("\n\nafter");
+		expect(kinds(groupRenderUnits(nodes))).toEqual([
+			"html:<div>\nhello\n</div>",
+			"component:Paragraph",
+		]);
+	});
 });

@@ -14,6 +14,10 @@
 
 import { decodeHTMLStrict } from "entities";
 import type { Node } from "./markdown";
+import { renderRawBlock } from "./raw-html";
+
+// Public API moved to ./raw-html; re-exported here for existing consumers.
+export { renderRawBlock };
 
 // ---------------------------------------------------------------------------
 // Shared value helpers (used by both the string renderer and the components)
@@ -298,27 +302,6 @@ export function hasRawInline(nodes: AnyNode[]): boolean {
 	return false;
 }
 
-/** Raw passthrough for HTMLBlock/CommentBlock/ProcessingInstructionBlock. */
-export function renderRawBlock(node: AnyNode): string {
-	if (node.content !== undefined) return node.content;
-	// The block carries container markers (QuoteMark) as element children;
-	// the actual raw text lives in the synthetic Text children between them.
-	let out = "";
-	let afterQuoteMark = false;
-	for (const child of node.children) {
-		if (child.name === "QuoteMark") {
-			afterQuoteMark = true;
-			continue;
-		}
-		let content = child.content ?? "";
-		// The quote marker consumes one optional following space.
-		if (afterQuoteMark && content.startsWith(" ")) content = content.slice(1);
-		afterQuoteMark = false;
-		out += content;
-	}
-	return out;
-}
-
 // ---------------------------------------------------------------------------
 // String renderer (used for raw-HTML runs and raw-inline containers)
 // ---------------------------------------------------------------------------
@@ -493,61 +476,6 @@ export type RenderUnit =
 	| { key: number; node: AnyNode; html?: undefined }
 	| { key: number; html: string; node?: undefined };
 
-interface RawSummary {
-	html: string;
-	/** Closing tags that matched nothing within this fragment (in order). */
-	closers: string[];
-	/** Tags left open at the end of this fragment (innermost last). */
-	opens: string[];
-}
-
-const RAW_BLOCK_NAMES = new Set(["HTMLBlock", "CommentBlock", "ProcessingInstructionBlock"]);
-const rawCache = new WeakMap<AnyNode, RawSummary | null>();
-
-const VOID_TAGS = new Set([
-	"area", "base", "br", "col", "embed", "hr", "img", "input",
-	"link", "meta", "param", "source", "track", "wbr",
-]);
-
-const RAW_TAG_RE = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<![\s\S]*?>|<\?[\s\S]*?\?>|<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
-
-/**
- * Scans an HTML fragment for the tag events that matter across block
- * boundaries: closing tags the fragment could not pair locally, and the tags
- * it leaves open. A matched close also drops everything opened above it,
- * mirroring the browser parser's implicit closes.
- */
-function tagSummary(html: string): { closers: string[]; opens: string[] } {
-	const stack: string[] = [];
-	const closers: string[] = [];
-	RAW_TAG_RE.lastIndex = 0;
-	for (let m; (m = RAW_TAG_RE.exec(html));) {
-		const [, closingSlash, tagName, attrs] = m;
-		if (tagName === undefined) continue; // comment / declaration / PI / CDATA
-		const tag = tagName.toLowerCase();
-		if (closingSlash) {
-			const at = stack.lastIndexOf(tag);
-			if (at >= 0) stack.length = at;
-			else closers.push(tag);
-		} else if (!VOID_TAGS.has(tag) && !attrs.trimEnd().endsWith("/")) {
-			stack.push(tag);
-		}
-	}
-	return { closers, opens: stack };
-}
-
-/** Tag summary for raw blocks; null for normally-rendered (balanced) nodes. */
-function rawSummary(node: AnyNode): RawSummary | null {
-	if (!RAW_BLOCK_NAMES.has(node.name)) return null;
-	let cached = rawCache.get(node);
-	if (cached !== undefined) return cached;
-	const html = renderRawBlock(node);
-	const { closers, opens } = tagSummary(html);
-	cached = { html, closers, opens };
-	rawCache.set(node, cached);
-	return cached;
-}
-
 /**
  * Groups a block-level node list into render units. Balanced nodes become
  * component units (rendered as a Svelte component tree, keeping fine-grained
@@ -556,15 +484,15 @@ function rawSummary(node: AnyNode): RawSummary | null {
  * `{@html}` fragment. Closers apply to the run stack exactly as the browser
  * parser would (a matching close drops everything above it, unmatched closers
  * are ignored), so run boundaries match the DOM the browser would build.
- * The scan is O(number of blocks) with per-node caching, matching the
- * reconcile pass that produces the list.
+ * Raw summaries are materialized onto nodes by the reconciler (`Node.raw`),
+ * so this scan is a pure O(number of blocks) read with no per-node work.
  */
 export function groupRenderUnits(nodes: AnyNode[]): RenderUnit[] {
 	const units: RenderUnit[] = [];
 	let i = 0;
 	while (i < nodes.length) {
 		const node = nodes[i];
-		const summary = rawSummary(node);
+		const summary = node.raw ?? null;
 		if (summary === null) {
 			units.push({ key: node.id, node });
 			i++;
@@ -583,7 +511,7 @@ export function groupRenderUnits(nodes: AnyNode[]): RenderUnit[] {
 		i++;
 		while (stack.length > 0 && i < nodes.length) {
 			const member = nodes[i];
-			const memberSummary = rawSummary(member);
+			const memberSummary = member.raw ?? null;
 			htmlParts.push(memberSummary ? memberSummary.html : renderNode(member));
 			if (memberSummary) {
 				for (const tag of memberSummary.closers) {

@@ -10,6 +10,7 @@ import { type ChangedRange, TreeFragment, type SyntaxNode, type Tree } from '@le
 import { GFM, type GetNodeNames, type TypedSyntaxNode, type TypedTree, parser as baseParser } from './lezer/wrapper';
 import { TreeCursor } from '@lezer/common';
 import { type ChangeSet, createChangeSet } from './utils/change';
+import { summarizeRawBlock, type RawSummary } from './raw-html';
 import { headingBlockNames, inlineContentBlockNames, rawTextBlockNames } from './lezer/node-types';
 
 export const parser = baseParser.configure([GFM]);
@@ -37,6 +38,14 @@ export interface Node<N extends string> {
 
 	rawTree: TypedTree<N> | null;
 	children: Node<N>[];
+
+	/**
+	 * Raw HTML blocks only: source text plus tag-balance summary. Materialized
+	 * by reconcile at the moment the block's content (re)assigns, so it is
+	 * always in sync with `content`/`children` and grouping never rescans
+	 * unchanged text.
+	 */
+	raw?: RawSummary | null;
 }
 
 // export interface NodeSplice<N extends string> {
@@ -279,6 +288,7 @@ export class MarkdownSession {
 					);
 					normalizeInlineNode(node);
 				}
+				node.raw = summarizeRawBlock(node);
 			}
 			result.push(node);
 		}
@@ -309,6 +319,7 @@ export class MarkdownSession {
 		this.nodeMap.set(slot.tree, node);
 		if (isLeafSlot(slot)) {
 			node.content = newDoc.slice(slot.from, slot.to);
+			node.raw = summarizeRawBlock(node);
 			return node;
 		}
 
@@ -318,6 +329,7 @@ export class MarkdownSession {
 		}
 
 		normalizeInlineNode(node);
+		node.raw = summarizeRawBlock(node);
 
 		return node;
 	}
