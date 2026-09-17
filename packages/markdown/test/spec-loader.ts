@@ -16,7 +16,7 @@ function extractSpecTests(text: string) {
 	let index = 0;
 	const tests = text.replace(/\r\n?/g, "\n").replace(/^<!-- END TESTS -->(.|[\n])*/m, "");
 
-	for (const [, markdownSubmatch, htmlSubmatch, sectionSubmatch] of tests.matchAll(/^`{32} example\n([\s\S]*?)^\.\n([\s\S]*?)^`{32}$|^#{1,6} *(.*)$/gm)) {
+	for (const [, markdownSubmatch, htmlSubmatch, sectionSubmatch] of tests.matchAll(/^`{32} example[^\n]*\n([\s\S]*?)^\.\n([\s\S]*?)^`{32}$|^#{1,6} *(.*)$/gm)) {
 		if (sectionSubmatch) {
 			currentSection = sectionSubmatch;
 		} else {
