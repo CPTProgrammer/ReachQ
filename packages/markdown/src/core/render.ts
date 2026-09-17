@@ -278,7 +278,7 @@ export function tableParts(node: AnyNode): TableParts {
 
 /** Row cells normalized to the column count (truncated/padded per GFM). */
 export function rowCells(row: AnyNode, colCount: number): (AnyNode | null)[] {
-	const cells = row.children.filter((c) => c.name === "TableCell").slice(0, colCount);
+	const cells: (AnyNode | null)[] = row.children.filter((c) => c.name === "TableCell").slice(0, colCount);
 	while (cells.length < colCount) cells.push(null);
 	return cells;
 }
@@ -495,10 +495,10 @@ export type RenderUnit =
 
 interface RawSummary {
 	html: string;
-	/** Net tag-stack depth change. */
-	net: number;
-	/** Lowest relative depth reached while scanning (≤ 0). */
-	min: number;
+	/** Closing tags that matched nothing within this fragment (in order). */
+	closers: string[];
+	/** Tags left open at the end of this fragment (innermost last). */
+	opens: string[];
 }
 
 const RAW_BLOCK_NAMES = new Set(["HTMLBlock", "CommentBlock", "ProcessingInstructionBlock"]);
@@ -511,10 +511,15 @@ const VOID_TAGS = new Set([
 
 const RAW_TAG_RE = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<![\s\S]*?>|<\?[\s\S]*?\?>|<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
 
-/** Computes the tag-balance summary of an HTML fragment. */
-function tagSummary(html: string): { net: number; min: number } {
-	let min = 0;
+/**
+ * Scans an HTML fragment for the tag events that matter across block
+ * boundaries: closing tags the fragment could not pair locally, and the tags
+ * it leaves open. A matched close also drops everything opened above it,
+ * mirroring the browser parser's implicit closes.
+ */
+function tagSummary(html: string): { closers: string[]; opens: string[] } {
 	const stack: string[] = [];
+	const closers: string[] = [];
 	RAW_TAG_RE.lastIndex = 0;
 	for (let m; (m = RAW_TAG_RE.exec(html));) {
 		const [, closingSlash, tagName, attrs] = m;
@@ -523,12 +528,12 @@ function tagSummary(html: string): { net: number; min: number } {
 		if (closingSlash) {
 			const at = stack.lastIndexOf(tag);
 			if (at >= 0) stack.length = at;
+			else closers.push(tag);
 		} else if (!VOID_TAGS.has(tag) && !attrs.trimEnd().endsWith("/")) {
 			stack.push(tag);
 		}
-		if (stack.length < min) min = stack.length;
 	}
-	return { net: stack.length, min };
+	return { closers, opens: stack };
 }
 
 /** Tag summary for raw blocks; null for normally-rendered (balanced) nodes. */
@@ -537,8 +542,8 @@ function rawSummary(node: AnyNode): RawSummary | null {
 	let cached = rawCache.get(node);
 	if (cached !== undefined) return cached;
 	const html = renderRawBlock(node);
-	const { net, min } = tagSummary(html);
-	cached = { html, net, min };
+	const { closers, opens } = tagSummary(html);
+	cached = { html, closers, opens };
 	rawCache.set(node, cached);
 	return cached;
 }
@@ -546,10 +551,13 @@ function rawSummary(node: AnyNode): RawSummary | null {
 /**
  * Groups a block-level node list into render units. Balanced nodes become
  * component units (rendered as a Svelte component tree, keeping fine-grained
- * DOM updates); a raw HTML block with unbalanced tags starts an HTML run that
- * absorbs following blocks until the tags re-balance, rendered as one
- * `{@html}` fragment. The scan is O(number of blocks) with per-node caching,
- * matching the reconcile pass that produces the list.
+ * DOM updates); a raw HTML block that leaves tags open starts an HTML run
+ * that absorbs following blocks until the tag stack empties, rendered as one
+ * `{@html}` fragment. Closers apply to the run stack exactly as the browser
+ * parser would (a matching close drops everything above it, unmatched closers
+ * are ignored), so run boundaries match the DOM the browser would build.
+ * The scan is O(number of blocks) with per-node caching, matching the
+ * reconcile pass that produces the list.
  */
 export function groupRenderUnits(nodes: AnyNode[]): RenderUnit[] {
 	const units: RenderUnit[] = [];
@@ -562,24 +570,27 @@ export function groupRenderUnits(nodes: AnyNode[]): RenderUnit[] {
 			i++;
 			continue;
 		}
-		// Unmatched closing tags at depth 0 are dropped by the HTML parser.
-		let depth = Math.max(0, summary.net);
-		if (depth === 0) {
+		// A fragment that leaves nothing open is standalone; at this point the
+		// stack is empty, so its unmatched closers are dropped by the parser.
+		if (summary.opens.length === 0) {
 			units.push({ key: node.id, html: summary.html });
 			i++;
 			continue;
 		}
-		// Unbalanced raw HTML: absorb following blocks until tags re-balance.
+		// Unbalanced raw HTML: absorb following blocks until the stack empties.
 		const htmlParts = [summary.html];
+		const stack = [...summary.opens];
 		i++;
-		while (depth > 0 && i < nodes.length) {
+		while (stack.length > 0 && i < nodes.length) {
 			const member = nodes[i];
 			const memberSummary = rawSummary(member);
 			htmlParts.push(memberSummary ? memberSummary.html : renderNode(member));
 			if (memberSummary) {
-				depth = depth + memberSummary.min < 0
-					? memberSummary.net - memberSummary.min
-					: depth + memberSummary.net;
+				for (const tag of memberSummary.closers) {
+					const at = stack.lastIndexOf(tag);
+					if (at >= 0) stack.length = at;
+				}
+				stack.push(...memberSummary.opens);
 			}
 			i++;
 		}
