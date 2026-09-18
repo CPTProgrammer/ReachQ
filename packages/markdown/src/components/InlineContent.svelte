@@ -4,6 +4,7 @@
 	import { parser, type Node } from '../core/markdown';
 	import { hasRawInline, renderInlineToString } from '../core/render';
 	import MarkdownNode from './MarkdownNode.svelte';
+	import { sanitizeHtml } from '../sanitize';
 
 	/**
 	 * Renders the inline children of a container (paragraph, heading, table
@@ -18,7 +19,12 @@
 	let { nodes }: { nodes: MdNode[] } = $props();
 
 	const inTable = getContext("reach-md-in-table") === true;
-	const rawHtml = $derived(hasRawInline(nodes) ? renderInlineToString(nodes, inTable) : null);
+	const sanitize = getContext("reach-md-sanitize") !== false;
+	const rawHtml = $derived.by(() => {
+		if (!hasRawInline(nodes)) return null;
+		const html = renderInlineToString(nodes, inTable);
+		return sanitize ? sanitizeHtml(html) : html;
+	});
 </script>
 {#if rawHtml !== null}
 	{@html rawHtml}

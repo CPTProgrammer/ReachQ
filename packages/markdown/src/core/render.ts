@@ -103,6 +103,34 @@ export function normalizeUrl(raw: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// URL scheme policy (allowlist)
+// ---------------------------------------------------------------------------
+
+const SCHEME_RE = /^[\x00-\x20]*[a-zA-Z][a-zA-Z0-9+.-]*:/;
+const ALLOWED_SCHEME_RE = /^[\x00-\x20]*(?:https?|mailto|tel):/i;
+/** script-incapable raster formats only — svg is excluded by design. */
+const SAFE_DATA_IMAGE_RE = /^[\x00-\x20]*data:image\/(?:png|gif|jpeg|webp)[;,]/i;
+
+/**
+ * Neutralizes link destinations whose scheme is not explicitly allowed.
+ * Allowlist rather than blocklist: the rendered content is AI output inside
+ * a Tauri webview, where a missed scheme (javascript:, intent:, ssh:, blob:,
+ * whatever browsers add next) costs code execution while a false positive
+ * costs a dead link. Mirrors DOMPurify's ALLOWED_URI_REGEXP, which already
+ * enforces the same policy on the string render path.
+ *
+ * Applied to the normalized (unescaped + percent-encoded) URL, so entity and
+ * control-character obfuscation is already resolved; the leading-whitespace
+ * allowance in the regexes is pure defense in depth. Returns "" for rejected
+ * URLs, the input unchanged otherwise. Relative URLs have no scheme and pass.
+ */
+export function sanitizeUrl(url: string, isImage = false): string {
+	if (isImage && SAFE_DATA_IMAGE_RE.test(url)) return url;
+	if (SCHEME_RE.test(url) && !ALLOWED_SCHEME_RE.test(url)) return "";
+	return url;
+}
+
+// ---------------------------------------------------------------------------
 // Node value extraction
 // ---------------------------------------------------------------------------
 

@@ -8,9 +8,12 @@ import { specs } from "./spec-loader";
 /**
  * Renders markdown through the IncrementalMarkdown component and returns the
  * produced HTML (the contents of the component's root element).
+ * Sanitization is off: the specs describe cmark's raw-HTML passthrough, and
+ * the comparison must be byte-exact. Sanitization is covered separately in
+ * security.test.ts.
  */
 async function renderMarkdown(markdown: string): Promise<string> {
-	const { container } = render(IncrementalMarkdown, { props: { text: markdown } });
+	const { container } = render(IncrementalMarkdown, { props: { text: markdown, sanitize: false } });
 	await tick(); // let the $effect that feeds session.update(text) run
 	return container.querySelector(".streaming-markdown")!.innerHTML;
 }

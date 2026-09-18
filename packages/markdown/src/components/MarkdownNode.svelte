@@ -6,8 +6,9 @@
 		autolinkHref, bareAutolinkHref, codeBlockLanguage, codeBlockText, codeSpanText,
 		decodeEntity, hasDest, linkAttrs, orderedListStart, plainText, renderRawBlock, unescapeString,
 		tableParts, rowCells, taskChecked, taskChildren, textChildren, textContent,
-		filterDisallowedTags, type AnyNode,
+		filterDisallowedTags, sanitizeUrl, type AnyNode,
 	} from '../core/render';
+	import { sanitizeHtml } from '../sanitize';
 	import InlineContent from './InlineContent.svelte';
 	import MarkdownNodeList from './MarkdownNodeList.svelte';
 	import MarkdownNode from './MarkdownNode.svelte';
@@ -35,6 +36,9 @@
 	}
 
 	const inTable = getContext("reach-md-in-table") === true;
+	const sanitize = getContext("reach-md-sanitize") !== false;
+	/** URL scheme policy, off in sanitize=false (spec-conformance) mode. */
+	const hrefUrl = (url: string, isImage = false) => sanitize ? sanitizeUrl(url, isImage) : url;
 	// GFM resolves `\|` escapes even inside code spans in table cells. Node
 	// identity is stable per component instance, so the name check is init-only.
 	if (untrack(() => node.name === "Table")) setContext("reach-md-in-table", true);
@@ -49,7 +53,7 @@
 	{node.content?.[1]}
 {:else if node.name === "URL"}
 	<!-- GFM autolink extension: bare www./scheme/email URL -->
-	<a href={bareAutolinkHref(node.content ?? "")}>{node.content}</a>
+	<a href={hrefUrl(bareAutolinkHref(node.content ?? ""))}>{node.content}</a>
 {:else if node.name === "Paragraph"}
 	{#if node.children.length}
 		<p><InlineContent nodes={node.children} /></p>
@@ -107,17 +111,17 @@
 	</table>
 {:else if node.name === "Autolink"}
 	{@const url = node.children.find((c) => c.name === "URL")?.content ?? ""}
-	<a href={autolinkHref(url)}>{url}</a>
+	<a href={hrefUrl(autolinkHref(url))}>{url}</a>
 {:else if node.name === "HTMLBlock" || node.name === "CommentBlock" || node.name === "ProcessingInstructionBlock"}
 	<!-- reached only for balanced raw blocks (unbalanced ones join a run in MarkdownNodeList) -->
-	{@html renderRawBlock(node)}
+	{@html sanitize ? sanitizeHtml(renderRawBlock(node)) : renderRawBlock(node)}
 {:else if node.name === "HTMLTag" || node.name === "Comment" || node.name === "ProcessingInstruction"}
 	<!-- normally unreachable: containers with raw inline HTML render via InlineContent -->
-	{@html filterDisallowedTags(node.content ?? "")}
+	{@html sanitize ? sanitizeHtml(filterDisallowedTags(node.content ?? "")) : filterDisallowedTags(node.content ?? "")}
 {:else if node.name === "Link"}
 	{#if hasDest(node)}
 		{@const attrs = linkAttrs(node)}
-		<a href={attrs.url ?? ""} title={attrs.title || null}>{#each textChildren(node) as child (child.id)}<MarkdownNode node={child} />{/each}</a>
+		<a href={hrefUrl(attrs.url ?? "")} title={attrs.title || null}>{#each textChildren(node) as child (child.id)}<MarkdownNode node={child} />{/each}</a>
 	{:else}
 		<!-- no usable destination: render the brackets literally; the label renders as ordinary inline text (escapes/entities resolved) -->
 		{#each node.children as child (child.id)}
@@ -133,7 +137,7 @@
 {:else if node.name === "Image"}
 	{#if hasDest(node)}
 		{@const attrs = linkAttrs(node)}
-		<img src={attrs.url ?? ""} alt={imageAlt(node)} title={attrs.title || null} />
+		<img src={hrefUrl(attrs.url ?? "", true)} alt={imageAlt(node)} title={attrs.title || null} />
 	{:else}
 		{#each node.children as child (child.id)}
 			{#if child.name === "LinkLabel"}
