@@ -6,7 +6,7 @@
 		autolinkHref, bareAutolinkHref, codeBlockLanguage, codeBlockText, codeSpanText,
 		decodeEntity, hasDest, linkAttrs, orderedListStart, plainText, renderRawBlock, unescapeString,
 		tableParts, rowCells, taskChecked, taskChildren, textChildren, textContent,
-		type AnyNode,
+		filterDisallowedTags, type AnyNode,
 	} from '../core/render';
 	import InlineContent from './InlineContent.svelte';
 	import MarkdownNodeList from './MarkdownNodeList.svelte';
@@ -113,7 +113,7 @@
 	{@html renderRawBlock(node)}
 {:else if node.name === "HTMLTag" || node.name === "Comment" || node.name === "ProcessingInstruction"}
 	<!-- normally unreachable: containers with raw inline HTML render via InlineContent -->
-	{@html node.content}
+	{@html filterDisallowedTags(node.content ?? "")}
 {:else if node.name === "Link"}
 	{#if hasDest(node)}
 		{@const attrs = linkAttrs(node)}

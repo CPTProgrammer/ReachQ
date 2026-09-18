@@ -27,6 +27,27 @@ const VOID_TAGS = new Set([
 const RAW_TAG_RE = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<![\s\S]*?>|<\?[\s\S]*?\?>|<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
 
 /**
+ * GFM's disallowed-raw-HTML extension ("tagfilter", GFM spec §Disallowed
+ * Raw HTML): these tags are neutralized by escaping the leading `<`, turning
+ * them into visible text. Like cmark-gfm, the filter is applied at the
+ * output layer rather than during parsing.
+ */
+const DISALLOWED_TAGS = new Set([
+	"title", "textarea", "style", "xmp", "iframe",
+	"noembed", "noframes", "script", "plaintext",
+]);
+
+/**
+ * Escapes disallowed tags in a raw HTML fragment. RAW_TAG_RE consumes
+ * comments, CDATA sections, declarations and PIs whole, so a `<script`
+ * inside one of those is never touched.
+ */
+export function filterDisallowedTags(html: string): string {
+	return html.replace(RAW_TAG_RE, (match, _slash: string | undefined, tagName: string | undefined) =>
+		tagName !== undefined && DISALLOWED_TAGS.has(tagName.toLowerCase()) ? "&lt;" + match.slice(1) : match);
+}
+
+/**
  * Scans an HTML fragment for the tag events that matter across block
  * boundaries: closing tags the fragment could not pair locally, and the tags
  * it leaves open. A matched close also drops everything opened above it,
@@ -51,9 +72,10 @@ function tagSummary(html: string): { closers: string[]; opens: string[] } {
 	return { closers, opens: stack };
 }
 
-/** Raw passthrough for HTMLBlock/CommentBlock/ProcessingInstructionBlock. */
+/** Raw passthrough for HTMLBlock/CommentBlock/ProcessingInstructionBlock,
+ *  with the GFM tagfilter applied (see filterDisallowedTags). */
 export function renderRawBlock(node: Node<any>): string {
-	if (node.content !== undefined) return node.content;
+	if (node.content !== undefined) return filterDisallowedTags(node.content);
 	// The block carries container markers (QuoteMark) as element children;
 	// the actual raw text lives in the synthetic Text children between them.
 	let out = "";
@@ -69,7 +91,7 @@ export function renderRawBlock(node: Node<any>): string {
 		afterQuoteMark = false;
 		out += content;
 	}
-	return out;
+	return filterDisallowedTags(out);
 }
 
 /**

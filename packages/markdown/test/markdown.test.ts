@@ -150,6 +150,32 @@ const KNOWN_PARSER_GAPS: { spec: string; index: number }[] = [
 	...[644, 645].map((index) => ({ spec: "GFM spec", index })),
 ];
 
+/**
+ * HTML blocks containing tagfilter-disallowed tags (script/style/textarea).
+ * The spec fixtures describe core behavior with extensions OFF (raw
+ * passthrough); the renderer implements GFM's tagfilter and escapes them —
+ * GitHub would render them exactly as we do. Marked it.fails: disabling the
+ * filter flips them green and reminds us to delist. The filter itself is
+ * covered by GFM spec example 652.
+ */
+const TAGFILTER_DIVERGENCES: { spec: string; index: number }[] = [
+	...[172, 173, 174, 175, 178, 180].map((index) => ({ spec: "CommonMark spec", index })),
+	...[140, 141, 142, 145, 147].map((index) => ({ spec: "GFM spec", index })),
+];
+
+/**
+ * The renderer inserts each block/component unit as a separate `{@html}`
+ * fragment, so inline formatting tags left open at a block boundary are
+ * auto-closed at the fragment end. Parsing the same HTML as one document
+ * instead lets the HTML5 adoption-agency algorithm reopen them around the
+ * following blocks. Only observable with pathological unclosed inline HTML.
+ */
+const KNOWN_RENDER_DIVERGENCES: { spec: string; index: number }[] = [
+	// The tagfilter part of 652 is correct (see the unit tests); the residual
+	// diff is cmark's unclosed `<strong><em>` wrapping the blockquote.
+	{ spec: "GFM spec", index: 652 },
+];
+
 describe("html normalization", () => {
 	it("strips the newline after <br>", () => {
 		expect(normalizeHtml("<p>foo<br>\nbar</p>")).toBe("<p>foo<br>bar</p>");
@@ -204,7 +230,8 @@ afterAll(() => {
 	// console.log is mocked above; write straight to stdout.
 	process.stdout.write(
 		`\n[markdown spec] ${rawPass} passed raw, ${rescuedByRules} rescued by equivalence rules, ` +
-		`${total - rawPass - rescuedByRules} still failing (incl. ${KNOWN_PARSER_GAPS.length} known parser gaps)\n`
+		`${total - rawPass - rescuedByRules} still failing (incl. ${KNOWN_PARSER_GAPS.length} known parser gaps, ` +
+		`${TAGFILTER_DIVERGENCES.length} tagfilter + ${KNOWN_RENDER_DIVERGENCES.length} render divergences)\n`
 	);
 });
 
@@ -223,10 +250,13 @@ specNames.forEach((specName, specIndex) => {
 		for (const [section, sectionExamples] of bySection) {
 			describe(section || "(no section)", () => {
 				for (const example of sectionExamples) {
-					const isParserGap = KNOWN_PARSER_GAPS.some(
-						(gap) => gap.spec === specName && gap.index === example.index
-					);
-					(isParserGap ? it.fails : it)(`example ${example.index}`, async () => {
+					const accepted = (list: { spec: string; index: number }[]) =>
+						list.some((d) => d.spec === specName && d.index === example.index);
+					const isExpectedFail =
+						accepted(KNOWN_PARSER_GAPS) ||
+						accepted(TAGFILTER_DIVERGENCES) ||
+						accepted(KNOWN_RENDER_DIVERGENCES);
+					(isExpectedFail ? it.fails : it)(`example ${example.index}`, async () => {
 						// The specs use `→` as a readable stand-in for tab characters
 						// in both the markdown input and the expected HTML.
 						const expected = example.html.replaceAll("→", "\t");

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MarkdownSession } from "../src/core/markdown";
-import { groupRenderUnits, type RenderUnit } from "../src/core/render";
+import { filterDisallowedTags, groupRenderUnits, type RenderUnit } from "../src/core/render";
 
 /** Compact unit description: "component:Paragraph" or "html:<div>...". */
 function kinds(units: RenderUnit[]): string[] {
@@ -105,5 +105,32 @@ describe("groupRenderUnits", () => {
 			"html:<div>\nhello\n</div>",
 			"component:Paragraph",
 		]);
+	});
+});
+
+describe("filterDisallowedTags (GFM tagfilter)", () => {
+	it("escapes disallowed open and close tags, case-insensitively", () => {
+		expect(filterDisallowedTags("<xmp> is disallowed.  <XMP> too </xmp>"))
+			.toBe("&lt;xmp> is disallowed.  &lt;XMP> too &lt;/xmp>");
+	});
+
+	it("leaves allowed tags and merely similar names alone", () => {
+		expect(filterDisallowedTags("<strong> <stylesheet> <titlepage>"))
+			.toBe("<strong> <stylesheet> <titlepage>");
+	});
+
+	it("filters tags carrying attributes", () => {
+		expect(filterDisallowedTags('<script type="text/javascript">x</script>'))
+			.toBe('&lt;script type="text/javascript">x&lt;/script>');
+	});
+
+	it("does not reach into comments, declarations or CDATA", () => {
+		expect(filterDisallowedTags("<!-- <script> --> <![CDATA[<title>]]> <!DOCTYPE html>"))
+			.toBe("<!-- <script> --> <![CDATA[<title>]]> <!DOCTYPE html>");
+	});
+
+	it("applies to raw blocks via renderRawBlock", () => {
+		const units = groupRenderUnits(parse("<script>\nx = 1\n</script>"));
+		expect(kinds(units)).toEqual(["html:&lt;script>\nx = 1\n&lt;/script>"]);
 	});
 });

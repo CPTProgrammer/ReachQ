@@ -14,10 +14,10 @@
 
 import { decodeHTMLStrict } from "entities";
 import type { Node } from "./markdown";
-import { renderRawBlock } from "./raw-html";
+import { filterDisallowedTags, renderRawBlock } from "./raw-html";
 
 // Public API moved to ./raw-html; re-exported here for existing consumers.
-export { renderRawBlock };
+export { renderRawBlock, filterDisallowedTags };
 
 // ---------------------------------------------------------------------------
 // Shared value helpers (used by both the string renderer and the components)
@@ -453,7 +453,7 @@ export function renderNode(node: AnyNode, ctx?: RenderCtx): string {
 		case "HTMLTag":
 		case "Comment":
 		case "ProcessingInstruction":
-			return node.content ?? "";
+			return filterDisallowedTags(node.content ?? "");
 		case "Link":
 			return renderLink(node, ctx);
 		case "Image":
