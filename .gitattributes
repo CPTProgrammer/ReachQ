@@ -1,3 +1,8 @@
 # Enforce LF line endings for Cargo files to prevent cross-platform diff issues
 **/Cargo.toml text eol=lf
 **/Cargo.lock text eol=lf
+
+# Patch files must keep LF even on Windows (core.autocrlf=true would check
+# them out as CRLF): patch-package matches context lines verbatim and fails
+# to apply a CRLF patch against the LF files in node_modules.
+patches/**/*.patch text eol=lf

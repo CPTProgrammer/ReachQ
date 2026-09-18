@@ -19,7 +19,8 @@
   "dependencies": {
     "@lezer/common": "^1.5.1",
     "@lezer/markdown": "^1.6.3",
-    "entities": "^6.0.1"
+    "entities": "^6.0.1",
+    "unicode-case-folding": "^1.1.1"
   },
   "devDependencies": {
     "@testing-library/svelte": "^5.4.2",

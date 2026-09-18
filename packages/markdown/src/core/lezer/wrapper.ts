@@ -1,6 +1,6 @@
 import type { IterMode, NodeIterator, NodeType, PartialParse, SyntaxNode, SyntaxNodeRef, Tree } from "@lezer/common";
 import { type DefaultNodeName, strikethroughNodeNames, tableNodeNames, taskListNodeNames } from "./node-types";
-import { Autolink, type MarkdownConfig, type MarkdownExtension, type MarkdownParser, parser as rawParser, Strikethrough as rawStrikethrough, Table as rawTable, TaskList as rawTaskList } from "@lezer/markdown";
+import { Autolink, type MarkdownConfig, type MarkdownExtension, type MarkdownParser, parser as rawParser, setLinkLabels, setRefLabelNormalizer, Strikethrough as rawStrikethrough, Table as rawTable, TaskList as rawTaskList } from "@lezer/markdown";
 
 export type SpecName<S extends string | { readonly name: string }> =
 	string extends S ? never : S extends string ? S :
@@ -81,6 +81,14 @@ export function asTypedParser<N extends string = DefaultNodeName>(p: MarkdownPar
 }
 
 export const parser = asTypedParser(rawParser);
+
+/**
+ * REACH PATCH hooks: register the reference label gate consulted by the
+ * parser's `]` handler, and inject the label normalizer the gate uses.
+ * Module-global in the patched parser, so the labels must be (re)set
+ * immediately before every synchronous parse call.
+ */
+export { setLinkLabels, setRefLabelNormalizer };
 
 export function withNodeNames<Ext extends MarkdownConfig, const Names extends readonly string[]>(
 	extension: Ext,

@@ -158,9 +158,14 @@ export function linkAttrs(node: AnyNode): { url: string | null; title: string | 
 	return { url, title };
 }
 
-/** Whether the link/image has an inline `(...)` destination part. */
-export function hasInlineDest(node: AnyNode): boolean {
-	return node.children.some((c) => c.name === "LinkMark" && c.content === "(");
+/**
+ * Whether the link/image has a usable destination: an inline `(...)` part, or
+ * a reference resolved by the session (materialized as a URL child).
+ */
+export function hasDest(node: AnyNode): boolean {
+	return node.children.some((c) =>
+		(c.name === "LinkMark" && c.content === "(") ||
+		(c.name === "URL" && c.content !== undefined));
 }
 
 /** Children that form the link text / image description (marks excluded). */
@@ -197,7 +202,7 @@ export function plainText(node: AnyNode): string {
 			return "";
 		default: {
 			if (node.name === "Link" || node.name === "Image") {
-				const children = hasInlineDest(node) ? textChildren(node) : node.children;
+				const children = hasDest(node) ? textChildren(node) : node.children;
 				let out = "";
 				for (const child of children) {
 					if (child.name === "LinkMark" && child.content !== "![") continue;
@@ -319,7 +324,7 @@ function renderChildren(node: AnyNode, ctx?: RenderCtx): string {
 }
 
 function renderLink(node: AnyNode, ctx?: RenderCtx): string {
-	if (!hasInlineDest(node)) return renderFailedLink(node, ctx);
+	if (!hasDest(node)) return renderFailedLink(node, ctx);
 	const { url, title } = linkAttrs(node);
 	const href = url ?? ""; // `[foo]()` — empty destination
 	const titleAttr = title ? ` title="${escapeXml(title)}"` : "";
@@ -329,7 +334,7 @@ function renderLink(node: AnyNode, ctx?: RenderCtx): string {
 }
 
 function renderImage(node: AnyNode, ctx?: RenderCtx): string {
-	if (!hasInlineDest(node)) return renderFailedLink(node, ctx);
+	if (!hasDest(node)) return renderFailedLink(node, ctx);
 	const { url, title } = linkAttrs(node);
 	const src = url ?? "";
 	let alt = "";
@@ -342,7 +347,10 @@ function renderImage(node: AnyNode, ctx?: RenderCtx): string {
 function renderFailedLink(node: AnyNode, ctx?: RenderCtx): string {
 	let out = "";
 	for (const child of node.children) {
-		if (child.name === "LinkMark" || child.name === "LinkLabel") out += escapeXml(child.content ?? "");
+		// The label is opaque source text in the tree, but a failed link renders
+		// as ordinary inline text: escapes/entities inside it are resolved.
+		if (child.name === "LinkLabel") out += escapeXml(unescapeString(child.content ?? ""));
+		else if (child.name === "LinkMark") out += escapeXml(child.content ?? "");
 		else out += renderNode(child, ctx);
 	}
 	return out;

@@ -4,7 +4,7 @@
 	import { parser, type Node } from '../core/markdown';
 	import {
 		autolinkHref, bareAutolinkHref, codeBlockLanguage, codeBlockText, codeSpanText,
-		decodeEntity, hasInlineDest, linkAttrs, orderedListStart, plainText, renderRawBlock,
+		decodeEntity, hasDest, linkAttrs, orderedListStart, plainText, renderRawBlock, unescapeString,
 		tableParts, rowCells, taskChecked, taskChildren, textChildren, textContent,
 		type AnyNode,
 	} from '../core/render';
@@ -115,13 +115,15 @@
 	<!-- normally unreachable: containers with raw inline HTML render via InlineContent -->
 	{@html node.content}
 {:else if node.name === "Link"}
-	{#if hasInlineDest(node)}
+	{#if hasDest(node)}
 		{@const attrs = linkAttrs(node)}
 		<a href={attrs.url ?? ""} title={attrs.title || null}>{#each textChildren(node) as child (child.id)}<MarkdownNode node={child} />{/each}</a>
 	{:else}
-		<!-- no usable destination: render the brackets literally -->
+		<!-- no usable destination: render the brackets literally; the label renders as ordinary inline text (escapes/entities resolved) -->
 		{#each node.children as child (child.id)}
-			{#if child.name === "LinkMark" || child.name === "LinkLabel"}
+			{#if child.name === "LinkLabel"}
+				{unescapeString(child.content ?? "")}
+			{:else if child.name === "LinkMark"}
 				{child.content}
 			{:else}
 				<MarkdownNode node={child} />
@@ -129,12 +131,14 @@
 		{/each}
 	{/if}
 {:else if node.name === "Image"}
-	{#if hasInlineDest(node)}
+	{#if hasDest(node)}
 		{@const attrs = linkAttrs(node)}
 		<img src={attrs.url ?? ""} alt={imageAlt(node)} title={attrs.title || null} />
 	{:else}
 		{#each node.children as child (child.id)}
-			{#if child.name === "LinkMark" || child.name === "LinkLabel"}
+			{#if child.name === "LinkLabel"}
+				{unescapeString(child.content ?? "")}
+			{:else if child.name === "LinkMark"}
 				{child.content}
 			{:else}
 				<MarkdownNode node={child} />

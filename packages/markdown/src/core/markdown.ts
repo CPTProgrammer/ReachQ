@@ -7,11 +7,12 @@
 //! compare by ===).
 
 import { type ChangedRange, TreeFragment, type SyntaxNode, type Tree } from '@lezer/common';
-import { GFM, type GetNodeNames, type TypedSyntaxNode, type TypedTree, parser as baseParser } from './lezer/wrapper';
+import { GFM, type GetNodeNames, type TypedSyntaxNode, type TypedTree, parser as baseParser, setLinkLabels } from './lezer/wrapper';
 import { TreeCursor } from '@lezer/common';
 import { type ChangeSet, createChangeSet } from './utils/change';
 import { summarizeRawBlock, type RawSummary } from './raw-html';
 import { headingBlockNames, inlineContentBlockNames, rawTextBlockNames } from './lezer/node-types';
+import { ReferenceResolver, WATCHED_NODE_NAMES, type NodeEvent } from './references';
 
 export const parser = baseParser.configure([GFM]);
 
@@ -38,6 +39,14 @@ export interface Node<N extends string> {
 
 	rawTree: TypedTree<N> | null;
 	children: Node<N>[];
+
+	/**
+	 * Injected by the ReferenceResolver, not produced by the parser (currently
+	 * only URL/LinkTitle children of a resolved reference link). Excluded from
+	 * reconcile's slot matching and from watcher events; dropped silently when
+	 * the parent's children are re-reconciled.
+	 */
+	synthetic?: true;
 
 	/**
 	 * Raw HTML blocks only: source text plus tag-balance summary. Materialized
@@ -209,6 +218,11 @@ export class MarkdownSession {
 	private nextId: number = 0;
 	private nodes: Node<DefaultParserNames>[] = [];
 
+	/** Reference resolution; see references.ts. Events are collected during
+	 * reconcile and flushed synchronously before update() returns. */
+	private resolver = new ReferenceResolver();
+	private events: NodeEvent[] = [];
+
 	/** Stable identity across appends — components depend on this, not on `doc`. */
 	readonly slice: Slice = (from, to) => this.doc.slice(from, to);
 
@@ -220,13 +234,60 @@ export class MarkdownSession {
 
 	update(input: string, changedRanges?: ChangedRange[]) {
 		const changes = changedRanges ?? [computeChangedRange(this.doc, input)];
+		const changeSet = createChangeSet(changes);
 		let fragments = this.tree && TreeFragment.addTree(this.tree, []);
 		if (fragments) fragments = TreeFragment.applyChanges(fragments, changes);
 		this.doc = input;
-		this.tree = parser.parse(this.doc, fragments);
 
-		this.nodes = this.reconcileNodes(this.doc, this.tree, this.nodes, 0, 0, createChangeSet(changes));
+		// The parser's reference gate is module-global (see wrapper); parsing is
+		// synchronous, so setting it immediately before parse is race-free even
+		// with multiple live sessions.
+		setLinkLabels(this.resolver.gateLabels);
+		this.tree = parser.parse(this.doc, fragments);
+		this.events = [];
+		this.nodes = this.reconcileNodes(this.doc, this.tree, this.nodes, 0, 0, changeSet);
+		let labelsChanged = this.resolver.flush(this.events, changeSet);
+
+		// The label gate the tree was parsed with is stale: reference
+		// definitions appeared/disappeared. Re-feed the gate and reparse only
+		// the bracket-containing inline containers (identity changes invalidate
+		// exactly those fragments; block parsing is label-independent, so the
+		// definition table is stable and this converges in one extra pass).
+		for (let pass = 0; labelsChanged && pass < 2; pass++) {
+			setLinkLabels(this.resolver.gateLabels);
+			const identityChanges = this.bracketContainerRanges();
+			let frags = TreeFragment.addTree(this.tree, []);
+			if (identityChanges.length) frags = TreeFragment.applyChanges(frags, identityChanges);
+			this.tree = parser.parse(this.doc, frags);
+			this.events = [];
+			const identity = createChangeSet([]);
+			this.nodes = this.reconcileNodes(this.doc, this.tree, this.nodes, 0, 0, identity);
+			labelsChanged = this.resolver.flush(this.events, identity);
+		}
 		return this.nodes;
+	}
+
+	/**
+	 * Absolute ranges of inline containers whose text contains `[`, as
+	 * zero-delta changed ranges — forces the next parse to re-run inline
+	 * parsing for exactly these blocks while every other fragment is reused.
+	 */
+	private bracketContainerRanges(): ChangedRange[] {
+		const out: ChangedRange[] = [];
+		const walk = (nodes: Node<DefaultParserNames>[], base: number) => {
+			for (const node of nodes) {
+				const from = base + node.from, to = base + node.to;
+				if (inlineSet.has(node.name)) {
+					if (to > from && this.doc.slice(from, to).includes("[")) {
+						out.push({ fromA: from, toA: to, fromB: from, toB: to });
+					}
+					continue;
+				}
+				if (node.children.length) walk(node.children, from);
+			}
+		};
+		walk(this.nodes, 0);
+		return out;
 	}
 
 	private reconcileNodes(
@@ -236,6 +297,9 @@ export class MarkdownSession {
 	) {
 		let nodeIndex = 0;
 		const result: Node<DefaultParserNames>[] = [];
+		// Old nodes no slot matched: dropped from the document. Their subtrees
+		// are scanned for watched nodes (remove events) after the slot loop.
+		const dropped: Node<DefaultParserNames>[] = [];
 
 		const seek = (slot: Slot<DefaultParserNames>): Node<DefaultParserNames> | null => {
 			const mapped = slot.tree ? this.nodeMap.get(slot.tree) : undefined;
@@ -244,6 +308,7 @@ export class MarkdownSession {
 				const oldAbsFrom = oldParentFrom + node.from;
 				const oldAbsTo = oldParentFrom + node.to;
 				if (node === mapped || (
+					!node.synthetic &&
 					node.name === name && isLeafSlot(slot) === (node.content !== undefined) &&
 					changeSet.mapPos(oldAbsFrom) === slot.from &&
 					changeSet.mapPos(oldAbsTo) === slot.to
@@ -256,14 +321,18 @@ export class MarkdownSession {
 				if (!(newAbsFrom === null || newAbsFrom < slot.to || changeSet.intersectsOld(oldAbsFrom, oldAbsTo))) {
 					return null;
 				}
+				// No match and the search can't stop here: this node is gone.
+				dropped.push(node);
 			}
 			return null;
-		}
+		};
 
 		for (const slot of childSlots(parentTree, newParentFrom, inline)) {
 			const node = seek(slot);
 			if (!node) {
-				result.push(this.buildSlot(slot, newDoc, newParentFrom, inline));
+				const built = this.buildSlot(slot, newDoc, newParentFrom, inline);
+				this.emitAdded(built, slot.from);
+				result.push(built);
 				continue;
 			}
 
@@ -287,13 +356,35 @@ export class MarkdownSession {
 						inline || inlineSet.has(node.name) || rawTextSet.has(node.name)
 					);
 					normalizeInlineNode(node);
+					// Children were reassigned: a watched node's reference label or
+					// definition parts may have changed (and synthetic children were
+					// dropped), so it must be re-registered/re-resolved.
+					if (WATCHED_NODE_NAMES.has(node.name)) {
+						this.events.push({ type: "modify", node, abs: slot.from });
+					}
 				}
 				node.raw = summarizeRawBlock(node);
 			}
 			result.push(node);
 		}
 
+		for (; nodeIndex < nodes.length; nodeIndex++) dropped.push(nodes[nodeIndex]);
+		for (const node of dropped) this.emitRemoved(node);
+
 		return result;
+	}
+
+	/** Emits add events for watched nodes in a freshly built subtree. */
+	private emitAdded(node: Node<DefaultParserNames>, absFrom: number) {
+		if (WATCHED_NODE_NAMES.has(node.name)) this.events.push({ type: "add", node, abs: absFrom });
+		for (const child of node.children) this.emitAdded(child, absFrom + child.from);
+	}
+
+	/** Emits remove events for watched nodes in a dropped subtree. */
+	private emitRemoved(node: Node<DefaultParserNames>) {
+		if (node.synthetic) return;
+		if (WATCHED_NODE_NAMES.has(node.name)) this.events.push({ type: "remove", node, abs: -1 });
+		for (const child of node.children) this.emitRemoved(child);
 	}
 
 	private buildSlot(slot: Slot<DefaultParserNames>, newDoc: string, parentFrom: number, parentInline: boolean): Node<DefaultParserNames> {
