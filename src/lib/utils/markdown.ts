@@ -10,6 +10,30 @@ import { t } from '$lib/state/i18n.svelte';
 // unbreakable run), so we restore it with explicit <wbr> opportunities.
 const CJK_CLOSING_PUNCT = /([、。，．；：？！）］｝〉》」』〕〗〙〛”…・])/g;
 
+const CJK_SEGMENT_RE = /[^、。，．；：？！）］｝〉》」』〕〗〙〛”…・]*[、。，．；：？！）］｝〉》」』〕〗〙〛”…・]?/g;
+
+/**
+ * Splits `text` after each CJK closing punctuation char (the punctuation
+ * stays at the end of its segment). The component-based markdown renderer
+ * (components/agent/markdown) renders the segments with `<wbr>` between them.
+ */
+export function cjkWbrSegments(text: string): string[] {
+	const parts = text.match(CJK_SEGMENT_RE);
+	return parts ? parts.filter((s) => s.length > 0) : [text];
+}
+
+/**
+ * Inserts `<wbr>` after CJK closing punctuation in the text nodes of an HTML
+ * fragment. Tags pass through untouched — text in these fragments is always
+ * entity-escaped by the renderer, so a literal `<` only ever starts a tag.
+ */
+export function cjkWbrHtml(html: string): string {
+	return html
+		.split(/(<[^>]+>)/g)
+		.map((part) => (part.startsWith('<') ? part : part.replace(CJK_CLOSING_PUNCT, '$1<wbr>')))
+		.join('');
+}
+
 function escapeHtml(s: string): string {
 	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -26,12 +50,7 @@ function inline(src: string): string {
 		'<a href="$2" target="_blank" rel="noreferrer">$1</a>'
 	);
 	s = s.replace(/\u0000([^\u0000]+)\u0000/g, '<code class="md-inline">$1</code>');
-	// Text nodes only — never splice <wbr> into a tag (e.g. link hrefs).
-	s = s
-		.split(/(<[^>]+>)/g)
-		.map((part) => (part.startsWith('<') ? part : part.replace(CJK_CLOSING_PUNCT, '$1<wbr>')))
-		.join('');
-	return s;
+	return cjkWbrHtml(s);
 }
 
 export function renderMarkdown(src: string): string {

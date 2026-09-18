@@ -34,6 +34,11 @@ export default defineConfig({
 		]
 	},
 	server: {
+		// The @reach/markdown workspace symlink resolves to its real location
+		// under packages/, which SvelteKit's explicit fs.allow list excludes.
+		fs: {
+			allow: ['packages']
+		},
 		port: 1420,
 		strictPort: true,
 		host: host || false,

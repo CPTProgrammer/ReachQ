@@ -6,12 +6,14 @@
 
 import { getAgentBackend } from './agent-backend.svelte';
 import { appendDraft } from './agent-drafts.svelte';
+import { mdAppendDelta, mdSyncSnapshot } from './agent-markdown.svelte';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { applyThreadTitle } from './agent-threads.svelte';
 import type {
 	AgentEvent,
 	AgentSendOpts,
+	ContentBlock,
 	DiffPreview,
 	PathMessage,
 	StoredMessage,
@@ -368,6 +370,8 @@ export function applySnapshot(
 	running: boolean
 ) {
 	const rt = ensureThreadRuntime(threadId);
+	// Attach markdown sessions before the messages enter the reactive graph.
+	mdSyncSnapshot(snapshot.messages);
 	rt.messages = snapshot.messages;
 	rt.loadedEpoch = streamEpoch;
 	rt.running = running;
@@ -532,7 +536,12 @@ function handleEvent(e: AgentEvent): void {
 						: { type: 'thinking', text: '' };
 				msg.content.push(block);
 			}
-			(block as { text: string }).text += e.delta;
+			if (blockType === 'text') {
+				// The session owns the text: append, then read it back out.
+				mdAppendDelta(block as Extract<ContentBlock, { type: 'text' }>, e.delta);
+			} else {
+				(block as { text: string }).text += e.delta;
+			}
 			break;
 		}
 		case 'tool_call': {

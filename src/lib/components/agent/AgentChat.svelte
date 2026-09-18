@@ -19,7 +19,8 @@
 	import { getFollowing, setFollowing } from '$lib/state/agent-chat-follow.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import ToolCallCard from './ToolCallCard.svelte';
-	import { renderMarkdown } from '$lib/utils/markdown';
+	import AgentMarkdown from './markdown/AgentMarkdown.svelte';
+	import { getMdNodes } from '$lib/state/agent-markdown.svelte';
 	import { appendDraft } from '$lib/state/agent-drafts.svelte';
 	import { formatDuration, formatSpeed, formatTokens } from '$lib/utils/formatters';
 	import { messageText } from '$lib/utils/agent';
@@ -381,7 +382,7 @@
 							{#each msg.content as block, bi (bi)}
 								{#if block.type === 'text'}
 									{#if block.text}
-										<div class="md">{@html renderMarkdown(block.text)}</div>
+										<div class="md"><AgentMarkdown nodes={getMdNodes(block) ?? []} /></div>
 									{/if}
 								{:else if block.type === 'thinking'}
 									<div class="thinking">
