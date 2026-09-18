@@ -27,27 +27,28 @@ const BLOCK_ELEMENTS = new Set([
 	"HEADER", "FOOTER", "H1", "H2", "H3", "H4", "H5", "H6",
 ]);
 
-function normalizeHtml(html: string, stripComments = false): string {
+function normalizeHtml(html: string): string {
 	// cmark's output conventionally ends with a single newline. Strip it
 	// before parsing — otherwise DOMParser would suck it into an unclosed
 	// trailing inline element (e.g. a raw `<a href="...">` example) and it
 	// would survive serialization as phantom content.
 	const doc = new DOMParser().parseFromString(html.replace(/\n$/, ""), "text/html");
 
-	if (stripComments) {
-		// Svelte 5 emits <!----> anchor comments around every block. Only strip
-		// them on the component side — comments in spec HTML are real content.
-		const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_COMMENT);
-		const comments: Comment[] = [];
-		for (let node = walker.nextNode() as Comment | null; node; node = walker.nextNode() as Comment | null) {
-			comments.push(node);
-		}
-		for (const node of comments) node.remove();
-		// Svelte splits consecutive expressions into separate text nodes around
-		// anchor comments. Merge them back — otherwise a lone "\n" softbreak
-		// node between two expressions would look like insignificant whitespace.
-		doc.body.normalize();
+	// Svelte 5 emits <!----> anchor comments around every block. An empty
+	// comment is indistinguishable from a real *empty* content comment (the
+	// specs' `<!-->` / `<!--->` serialize to `<!---->` too), so empty comments
+	// are stripped from BOTH sides; non-empty comments are real content (raw
+	// HTML passthrough) and must survive to the comparison.
+	const commentWalker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_COMMENT);
+	const comments: Comment[] = [];
+	for (let node = commentWalker.nextNode() as Comment | null; node; node = commentWalker.nextNode() as Comment | null) {
+		comments.push(node);
 	}
+	for (const node of comments) if (node.data === "") node.remove();
+	// Svelte splits consecutive expressions into separate text nodes around
+	// anchor comments. Merge them back — otherwise a lone "\n" softbreak
+	// node between two expressions would look like insignificant whitespace.
+	doc.body.normalize();
 
 	const preserved = (node: Node): boolean => {
 		for (let el = node.parentElement; el; el = el.parentElement) {
@@ -136,11 +137,17 @@ function applyEquivalences(html: string): string {
  *   exist only as virtual tab-stop expansion and are absent from CodeText.
  * - Tabs 10: lezer does not treat a tab after an ATX marker as a space, so
  *   `#\tFoo` parses as a Paragraph instead of a heading.
+ * - Raw HTML 627/628 (GFM 644/645): lezer's inline comment pattern
+ *   (`^!--[^>](?:-[^-]|[^-])*?-->`) rejects the abrupt empty comment `<!-->`
+ *   and any comment whose text contains `--`; CommonMark 0.30+ allows both.
+ *   The unrecognized markup stays paragraph Text and renders escaped.
  * Marked it.fails so an upstream fix flips them red and reminds us to delist.
  */
 const KNOWN_PARSER_GAPS: { spec: string; index: number }[] = [
 	...[5, 6, 7, 10].map((index) => ({ spec: "CommonMark spec", index })),
 	...[5, 6, 7, 10].map((index) => ({ spec: "GFM spec", index })),
+	...[627, 628].map((index) => ({ spec: "CommonMark spec", index })),
+	...[644, 645].map((index) => ({ spec: "GFM spec", index })),
 ];
 
 describe("html normalization", () => {
@@ -225,7 +232,7 @@ specNames.forEach((specName, specIndex) => {
 						const expected = example.html.replaceAll("→", "\t");
 						const actual = await renderMarkdown(example.markdown.replaceAll("→", "\t"));
 
-						const rawActual = normalizeHtml(actual, true);
+						const rawActual = normalizeHtml(actual);
 						const rawExpected = normalizeHtml(expected);
 						let finalActual = rawActual, finalExpected = rawExpected;
 						if (rawActual === rawExpected) {
