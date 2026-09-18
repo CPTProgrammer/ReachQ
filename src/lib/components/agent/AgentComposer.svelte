@@ -353,7 +353,7 @@
 				{:else if mode === 'stop'}
 					<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="0" y="0" width="24" height="24"/></svg>
 				{:else}
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h12"/><path d="M4 10h12"/><path d="M4 15h7"/><path d="M17 14v7"/><path d="M13.5 17.5h7"/></svg>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12"/><path d="M6 12h12"/><path d="M6 17h7"/><path d="M19 16v7"/><path d="M15.5 19.5h7"/></svg>
 				{/if}
 			</button>
 		</div>

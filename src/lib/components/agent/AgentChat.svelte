@@ -765,6 +765,7 @@
 		font-size: 0.65rem;
 		color: var(--color-text-secondary);
 		border-bottom: 1px solid var(--color-border);
+		user-select: none;
 	}
 
 	.md :global(.md-copy) {
