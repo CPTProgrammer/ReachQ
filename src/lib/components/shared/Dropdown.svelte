@@ -82,6 +82,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="dropdown" bind:this={dropdownEl} onkeydown={onKeydown}>
 	<button
+		type="button"
 		class="dropdown-trigger"
 		class:open={isOpen}
 		class:has-value={!!selected}
@@ -111,7 +112,7 @@
 					role="option"
 					aria-selected={option.value === selected}
 				>
-					<button class="dropdown-item-btn" onclick={() => selectOption(option)}>
+					<button type="button" class="dropdown-item-btn" onclick={() => selectOption(option)}>
 						<span>{option.label}</span>
 						{#if option.value === selected}
 							<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
