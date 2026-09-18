@@ -176,6 +176,20 @@ const KNOWN_RENDER_DIVERGENCES: { spec: string; index: number }[] = [
 	{ spec: "GFM spec", index: 652 },
 ];
 
+/**
+ * Bare-URL/email autolinks, and `< ... >` candidates containing spaces. The
+ * classic Autolinks sections describe extension-OFF behavior: cmark-gfm's
+ * spec runner enables the autolink extension only for examples fenced as
+ * "example autolink", a distinction this suite's spec-loader does not make.
+ * With the extension on — as on github.com — all of these DO get linked
+ * (cmark-gfm's url_match and email postprocess have no preceding-character
+ * check), which is exactly what the renderer produces.
+ */
+const EXTENDED_AUTOLINK_DIVERGENCES: { spec: string; index: number }[] = [
+	...[610, 613, 614].map((index) => ({ spec: "CommonMark spec", index })),
+	...[616, 619, 620].map((index) => ({ spec: "GFM spec", index })),
+];
+
 describe("html normalization", () => {
 	it("strips the newline after <br>", () => {
 		expect(normalizeHtml("<p>foo<br>\nbar</p>")).toBe("<p>foo<br>bar</p>");
@@ -231,7 +245,7 @@ afterAll(() => {
 	process.stdout.write(
 		`\n[markdown spec] ${rawPass} passed raw, ${rescuedByRules} rescued by equivalence rules, ` +
 		`${total - rawPass - rescuedByRules} still failing (incl. ${KNOWN_PARSER_GAPS.length} known parser gaps, ` +
-		`${TAGFILTER_DIVERGENCES.length} tagfilter + ${KNOWN_RENDER_DIVERGENCES.length} render divergences)\n`
+		`${TAGFILTER_DIVERGENCES.length} tagfilter + ${EXTENDED_AUTOLINK_DIVERGENCES.length} autolink + ${KNOWN_RENDER_DIVERGENCES.length} render divergences)\n`
 	);
 });
 
@@ -255,6 +269,7 @@ specNames.forEach((specName, specIndex) => {
 					const isExpectedFail =
 						accepted(KNOWN_PARSER_GAPS) ||
 						accepted(TAGFILTER_DIVERGENCES) ||
+						accepted(EXTENDED_AUTOLINK_DIVERGENCES) ||
 						accepted(KNOWN_RENDER_DIVERGENCES);
 					(isExpectedFail ? it.fails : it)(`example ${example.index}`, async () => {
 						// The specs use `→` as a readable stand-in for tab characters
