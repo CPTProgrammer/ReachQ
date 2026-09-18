@@ -134,3 +134,38 @@ const EFFORT_DISPLAY_NAMES: Record<string, string> = {
 export function formatEffort(effort: string): string {
 	return EFFORT_DISPLAY_NAMES[effort] ?? effort.charAt(0).toUpperCase() + effort.slice(1);
 }
+
+/** `131072` -> `128K`, `1048576` -> `1M`. */
+export function formatContextLength(n: number): string {
+	if (n >= 1 << 20) return `${Math.round(n / (1 << 20))}M`;
+	if (n >= 1 << 10) return `${Math.round(n / (1 << 10))}K`;
+	return String(n);
+}
+
+export function formatTokens(n: number): string {
+	return n.toLocaleString('en-US');
+}
+
+/**
+ * `320` -> `"0.32s"`, `4200` -> `"4.2s"`, `42000` -> `"42s"`,
+ * `125000` -> `"2m 5s"`, `3780000` -> `"1h 3m"`.
+ */
+export function formatDuration(ms: number): string {
+	if (ms < 1000) return `${(ms / 1000).toFixed(2)}s`;
+	if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
+	if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+	const totalSec = Math.round(ms / 1000);
+	if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`;
+	return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`;
+}
+
+/**
+ * Output throughput, excluding time-to-first-token when known:
+ * `340` tokens in `4200`ms with `300`ms TTFT -> `"87"` (`"45.3"` below 100).
+ */
+export function formatSpeed(completionTokens: number, durationMs: number, ttftMs?: number): string {
+	const decodeMs = ttftMs != null && ttftMs < durationMs ? durationMs - ttftMs : durationMs;
+	if (decodeMs <= 0) return '0';
+	const tps = completionTokens / (decodeMs / 1000);
+	return tps >= 100 ? String(Math.round(tps)) : tps.toFixed(1);
+}

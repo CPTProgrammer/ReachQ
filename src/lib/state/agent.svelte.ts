@@ -4,11 +4,8 @@
 //! subscription per scope, and the live per-thread message state
 //! reconciled from backend events. Tool card state lives in `toolCalls`.
 
-import {
-	tauriBackend,
-	type AgentBackend
-} from '$lib/ipc/agent-backend';
-import { appendDraft } from '$lib/components/agent/composer-draft.svelte';
+import { getAgentBackend } from './agent-backend.svelte';
+import { appendDraft } from './agent-drafts.svelte';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { applyThreadTitle } from './agent-threads.svelte';
@@ -23,21 +20,6 @@ import type {
 	ToolCallView,
 	Usage
 } from '$lib/ipc/agent';
-
-// ---------------------------------------------------------------------------
-// Backend seam (mock only under /preview, design 01 §4.1)
-// ---------------------------------------------------------------------------
-
-let backend: AgentBackend = tauriBackend;
-
-export function getAgentBackend(): AgentBackend {
-	return backend;
-}
-
-/** Swap the backend (preview pages only; restore on destroy). */
-export function setAgentBackend(b: AgentBackend): void {
-	backend = b;
-}
 
 // ---------------------------------------------------------------------------
 // Panel state per owner scope (localStorage `reach-agent-panel:{scope}`)
@@ -459,7 +441,7 @@ export function subscribeScope(scope: string): void {
 		unlisten?.();
 	};
 	subscriptions[scope] = wrapper;
-	const res = backend.onEvent(scope, handleEvent);
+	const res = getAgentBackend().onEvent(scope, handleEvent);
 	if (res instanceof Promise) {
 		res.then((u) => {
 			if (cancelled) u();
@@ -791,7 +773,7 @@ export async function agentSendMessage(
 ): Promise<void> {
 	const rt = ensureThreadRuntime(threadId);
 	rt.error = null;
-	const status = await backend.sendMessage(scope, threadId, text, opts);
+	const status = await getAgentBackend().sendMessage(scope, threadId, text, opts);
 	if (status === 'queued') {
 		rt.queued = { text };
 	} else if (status === 'queued_full') {
@@ -807,8 +789,8 @@ export async function agentCancelRun(threadId: string): Promise<void> {
 	// action) instead of being discarded.
 	if (rt.queued) appendDraft(threadId, rt.queued.text);
 	rt.queued = null;
-	await backend.dequeue(threadId).catch(() => {});
-	await backend.cancel(threadId);
+	await getAgentBackend().dequeue(threadId).catch(() => {});
+	await getAgentBackend().cancel(threadId);
 	rt.running = false;
 }
 
@@ -826,7 +808,7 @@ export async function agentSendNow(
 	rt.error = null;
 	rt.queued = null;
 	try {
-		await backend.sendNow(scope, threadId, text, opts);
+		await getAgentBackend().sendNow(scope, threadId, text, opts);
 		rt.running = true;
 	} catch (e) {
 		rt.queued = { text };
@@ -837,15 +819,15 @@ export async function agentSendNow(
 /** Discard the queued message (backend queue + UI bar). */
 export async function agentDequeueMessage(threadId: string): Promise<void> {
 	ensureThreadRuntime(threadId).queued = null;
-	await backend.dequeue(threadId).catch(() => {});
+	await getAgentBackend().dequeue(threadId).catch(() => {});
 }
 
 export async function agentApproveCall(toolCallId: string, approved: boolean): Promise<void> {
-	await backend.approve(toolCallId, approved);
+	await getAgentBackend().approve(toolCallId, approved);
 }
 
 export async function agentStopTerminal(toolCallId: string): Promise<void> {
-	await backend.terminalStop(toolCallId);
+	await getAgentBackend().terminalStop(toolCallId);
 }
 
 export async function agentResizeTerminal(
@@ -853,7 +835,7 @@ export async function agentResizeTerminal(
 	cols: number,
 	rows: number
 ): Promise<void> {
-	await backend.terminalResize(toolCallId, cols, rows);
+	await getAgentBackend().terminalResize(toolCallId, cols, rows);
 }
 
 /** Edit a user message and fork a new branch (design 01 §2.4). */
@@ -866,7 +848,7 @@ export async function agentEditAndFork(
 ): Promise<void> {
 	const rt = ensureThreadRuntime(threadId);
 	rt.error = null;
-	const snapshot = await backend.threadEditMessage(scope, threadId, messageId, newContent, opts);
+	const snapshot = await getAgentBackend().threadEditMessage(scope, threadId, messageId, newContent, opts);
 	// The fork switched the active branch backend-side; the snapshot carries
 	// the new path with correct branch info. Run events that already arrived
 	// only added placeholders, which the next delta lazily re-creates.
@@ -879,7 +861,7 @@ export async function agentSwitchBranch(
 	atMessageId: string,
 	direction: 'prev' | 'next'
 ): Promise<void> {
-	const snapshot = await backend.threadSetActiveBranch(threadId, atMessageId, direction);
+	const snapshot = await getAgentBackend().threadSetActiveBranch(threadId, atMessageId, direction);
 	const rt = ensureThreadRuntime(threadId);
 	applySnapshot(threadId, snapshot, rt.running);
 }
@@ -891,7 +873,7 @@ export async function loadThread(threadId: string): Promise<ThreadSnapshot | nul
 	// applying a persisted snapshot over it would only churn the view
 	// (remounting xterm cards) and could even overwrite newer live state.
 	if (rt?.loaded && rt.loadedEpoch === streamEpoch) return null;
-	const state = await backend.threadState(threadId);
+	const state = await getAgentBackend().threadState(threadId);
 	applySnapshot(threadId, state, state.running);
 	return state;
 }

@@ -19,10 +19,9 @@
 	} from '$lib/state/agent-settings.svelte';
 	import { getThreads } from '$lib/state/agent-threads.svelte';
 	import { t } from '$lib/state/i18n.svelte';
-	import { flushDraft, getDraft, setDraft } from './composer-draft.svelte';
-	import { setFollowing } from './chat-follow.svelte';
-	import { formatContextLength } from './utils';
-	import { formatEffort } from '$lib/utils/formatters';
+	import { flushDraft, getDraft, setDraft } from '$lib/state/agent-drafts.svelte';
+	import { setFollowing } from '$lib/state/agent-chat-follow.svelte';
+	import { formatContextLength, formatEffort } from '$lib/utils/formatters';
 	import { autogrowTextarea } from '$lib/utils/autogrow';
 	import ProviderIcon from './ProviderIcon.svelte';
 

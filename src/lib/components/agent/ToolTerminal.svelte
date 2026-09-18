@@ -18,7 +18,7 @@
 	import { agentResizeTerminal, onTerminalOutput } from '$lib/state/agent.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
 	import { getTerminalTheme } from '$lib/data/terminal-themes';
-	import { decodeBase64 } from './utils';
+	import { decodeBase64 } from '$lib/utils/agent';
 
 	/** The card grows with its content between these row bounds; past the cap
 	 *  the xterm viewport scrolls internally. */

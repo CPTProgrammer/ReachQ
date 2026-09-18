@@ -5,8 +5,8 @@
 	import AgentPanel from '$lib/components/agent/AgentPanel.svelte';
 	import { MOCK_SCOPE, mockBackend } from '$lib/ipc/agent-backend.mock';
 	import { tauriBackend } from '$lib/ipc/agent-backend';
+	import { setAgentBackend } from '$lib/state/agent-backend.svelte';
 	import {
-		setAgentBackend,
 		updatePanelState,
 		loadThread,
 		subscribeScope

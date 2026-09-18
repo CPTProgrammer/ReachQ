@@ -5,7 +5,7 @@
 	import Input from '$lib/components/shared/Input.svelte';
 	import Toggle from '$lib/components/shared/Toggle.svelte';
 	import ProviderIcon from '$lib/components/agent/ProviderIcon.svelte';
-	import { getAgentBackend } from '$lib/state/agent.svelte';
+	import { getAgentBackend } from '$lib/state/agent-backend.svelte';
 	import {
 		findModel,
 		getInstanceModels,

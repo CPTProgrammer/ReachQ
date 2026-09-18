@@ -2,7 +2,8 @@
 //! thread pointer, archive flows, and the settings-page "View all threads"
 //! listing across scopes.
 
-import { getAgentBackend, getThreadRuntime } from './agent.svelte';
+import { getThreadRuntime } from './agent.svelte';
+import { getAgentBackend } from './agent-backend.svelte';
 import type { ContentBlock, ThreadSummary } from '$lib/ipc/agent';
 import { t } from '$lib/state/i18n.svelte';
 import {
@@ -10,7 +11,7 @@ import {
 	flushDrafts,
 	getDraft,
 	hydrateDrafts
-} from '$lib/components/agent/composer-draft.svelte';
+} from './agent-drafts.svelte';
 
 /** Threads of the currently displayed scope (unarchived, recent first). */
 let threads = $state<ThreadSummary[]>([]);

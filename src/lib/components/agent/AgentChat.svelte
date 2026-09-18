@@ -16,12 +16,14 @@
 		agentSwitchBranch,
 		getThreadRuntime
 	} from '$lib/state/agent.svelte';
-	import { getFollowing, setFollowing } from './chat-follow.svelte';
+	import { getFollowing, setFollowing } from '$lib/state/agent-chat-follow.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import ToolCallCard from './ToolCallCard.svelte';
-	import { renderMarkdown } from './markdown';
-	import { appendDraft } from './composer-draft.svelte';
-	import { formatDuration, formatSpeed, formatTokens, messageText, resolveSendOpts } from './utils';
+	import { renderMarkdown } from '$lib/utils/markdown';
+	import { appendDraft } from '$lib/state/agent-drafts.svelte';
+	import { formatDuration, formatSpeed, formatTokens } from '$lib/utils/formatters';
+	import { messageText } from '$lib/utils/agent';
+	import { resolveSendOpts } from '$lib/state/agent-settings.svelte';
 	import { autogrowTextarea } from '$lib/utils/autogrow';
 
 	let { scope, connectionId, threadId }: Props = $props();

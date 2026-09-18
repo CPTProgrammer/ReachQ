@@ -2,8 +2,10 @@
 //! list, per-identity composer state (model / thinking / effort), title
 //! model, and tool configs shared with the settings page.
 
-import { getAgentBackend } from './agent.svelte';
+import { getAgentBackend } from './agent-backend.svelte';
+import { getThreads } from './agent-threads.svelte';
 import type {
+	AgentSendOpts,
 	InstanceModels,
 	ModelMeta,
 	ProviderInstance,
@@ -172,4 +174,34 @@ export function resolveSelection(
 		}
 	}
 	return null;
+}
+
+/**
+ * Effective send options for a thread (design 01 §3.6 / 05 §5):
+ * thread snapshot -> scope last-used -> global default, with the
+ * thinking flag coerced against model capabilities.
+ */
+export function resolveSendOpts(
+	scope: string,
+	threadId: string | null,
+	connectionId?: string
+): AgentSendOpts | null {
+	const summary = threadId ? getThreads().find((t) => t.id === threadId) : undefined;
+	const sel =
+		resolveSelection(scope, summary?.model ?? null) ??
+		getScopeSelection(scope) ??
+		(summary?.model
+			? { model: summary.model.model, thinking: summary.model.thinking, effort: summary.model.effort ?? null }
+			: null);
+	if (!sel) return null;
+	const meta = findModel(sel.model)?.model;
+	const thinking = meta
+		? meta.thinkingMandatory || (meta.supportsThinking && sel.thinking)
+		: sel.thinking;
+	return {
+		model: sel.model,
+		thinking,
+		effort: thinking ? (sel.effort ?? undefined) : undefined,
+		connectionHint: connectionId
+	};
 }

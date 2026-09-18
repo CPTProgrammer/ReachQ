@@ -18,8 +18,8 @@
 	import { t } from '$lib/state/i18n.svelte';
 	import PatchView from './PatchView.svelte';
 	import ToolTerminal from './ToolTerminal.svelte';
-	import { renderMarkdown } from './markdown';
-	import { argString, copyText, extractDiff, prettyJson, safeParse } from './utils';
+	import { renderMarkdown } from '$lib/utils/markdown';
+	import { argString, copyText, extractDiff, prettyJson, safeParse } from '$lib/utils/agent';
 	import { parseInlineCode } from '$lib/utils/formatters';
 
 	let { call }: Props = $props();

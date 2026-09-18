@@ -9,7 +9,7 @@
 //! - `hydrateDrafts` seeds the cache from thread summaries on load; keys
 //!   already cached are never overwritten (they may hold un-flushed input).
 
-import { getAgentBackend } from '$lib/state/agent.svelte';
+import { getAgentBackend } from './agent-backend.svelte';
 import type { ThreadSummary } from '$lib/ipc/agent';
 
 const FLUSH_INTERVAL_MS = 400;
