@@ -34,6 +34,11 @@ export interface AgentPanelState {
 	threadsWidth: number;
 	threadsCollapsed: boolean;
 	detached: boolean;
+	/** Detached window's last normal (non-maximized) size in logical px. */
+	detachedWidth?: number;
+	detachedHeight?: number;
+	/** Whether the detached window was last maximized. */
+	detachedMaximized?: boolean;
 }
 
 const PANEL_DEFAULTS: AgentPanelState = {
@@ -81,6 +86,16 @@ export function updatePanelState(scope: string, patch: Partial<AgentPanelState>)
 
 export function togglePanel(scope: string): void {
 	const p = getPanelState(scope);
+	// A detached panel toggles its own window: close it when open, reopen the
+	// pop-out when closed. Closing keeps `detached` (see
+	// initDetachedWindowCloseHook), so the toggle never silently reverts to
+	// the docked panel. This also self-heals stale state (crash / app quit
+	// killed the window without running its close hook).
+	if (p.detached) {
+		if (p.open) void closeDetachedPanel(scope);
+		else void popOutPanel(scope);
+		return;
+	}
 	updatePanelState(scope, { open: !p.open });
 }
 
@@ -115,8 +130,12 @@ export async function popOutPanel(scope: string): Promise<void> {
 		const win = new WebviewWindow(label, {
 			url: `/?agent=${encodeURIComponent(scope)}`,
 			title: `Agent — ${scope.startsWith('link:') ? scope.slice(5) : scope}`,
-			width: panel.panelWidth,
-			height: Math.max(window.innerHeight, 480),
+			// The detached window keeps its own remembered size, applied at
+			// creation so there is no post-creation resize jump. First pop-out
+			// falls back to the docked panel width and the main window height.
+			width: panel.detachedWidth ?? panel.panelWidth,
+			height: panel.detachedHeight ?? Math.max(window.innerHeight, 480),
+			maximized: panel.detachedMaximized ?? false,
 			minWidth: 360,
 			minHeight: 400,
 			// Undecorated: AgentWindow renders a custom title bar styled after
@@ -154,6 +173,25 @@ export async function dockBackPanel(scope: string): Promise<void> {
 	}
 }
 
+/**
+ * Close a scope's detached window (toggle-off path). The window's close hook
+ * persists `open: false` while keeping `detached`; a stale state whose window
+ * is already gone (crash / app quit) is just marked closed.
+ */
+async function closeDetachedPanel(scope: string): Promise<void> {
+	try {
+		const win = await WebviewWindow.getByLabel(agentWindowLabel(scope));
+		if (win) {
+			await win.close();
+		} else {
+			updatePanelState(scope, { open: false });
+		}
+	} catch (err) {
+		console.error('Failed to close detached agent window:', err);
+		updatePanelState(scope, { open: false });
+	}
+}
+
 let storageSyncInitialized = false;
 
 /**
@@ -185,18 +223,21 @@ export function initPanelStorageSync(): void {
 
 /**
  * Detached-window close hook (design 01 §1.2): closing the pop-out window
- * docks the panel back in the closed state — persists
- * `{detached: false, open: false}` to localStorage, which the main window
- * picks up via `initPanelStorageSync`. When the close comes from
- * `dockBackPanel`, the latch keeps the panel open instead. Returns a
- * cleanup fn.
+ * marks the panel closed but keeps the detached preference — persists
+ * `{open: false}` to localStorage, which the main window picks up via
+ * `initPanelStorageSync`, so the next toggle / connect reopens the pop-out
+ * window instead of the docked panel. When the close comes from
+ * `dockBackPanel`, the latch keeps the panel open instead (and `detached:
+ * false` was already written by dockBackPanel itself). Returns a cleanup fn.
  */
 export function initDetachedWindowCloseHook(scope: string): () => void {
 	const persistClosed = () => {
 		try {
 			const key = panelKey(scope);
 			const stored = JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<AgentPanelState>;
-			localStorage.setItem(key, JSON.stringify({ ...stored, detached: false, open: dockBackRequested }));
+			// `detached` is intentionally preserved: a plain close only closes the
+			// window; dock-back is the explicit "move it back" gesture.
+			localStorage.setItem(key, JSON.stringify({ ...stored, open: dockBackRequested }));
 		} catch {
 			/* non-fatal */
 		}
@@ -229,8 +270,27 @@ export function initDetachedWindowCloseHook(scope: string): () => void {
 
 let connections = $state<Record<string, string>>({});
 
+/** Scopes whose detached window was already restored this app run. */
+const restoredDetachedScopes = new Set<string>();
+
+/**
+ * Reopen the scope's detached window when its connection registers (mirroring
+ * the docked panel's auto-open on connect). Quitting the app kills detached
+ * windows via `exit(0)` without running their close hook, so
+ * `{detached: true, open: true}` survives in localStorage as the memory of
+ * which panels were popped out. Once per scope per run, so tab switches and
+ * reconnects don't steal focus.
+ */
+function restoreDetachedPanel(scope: string): void {
+	if (restoredDetachedScopes.has(scope)) return;
+	restoredDetachedScopes.add(scope);
+	const panel = getPanelState(scope);
+	if (panel.detached && panel.open) void popOutPanel(scope);
+}
+
 export function registerConnectionScope(connectionId: string, scope: string): void {
 	connections[connectionId] = scope;
+	restoreDetachedPanel(scope);
 }
 
 /** Owner scope of a connection ("session:<uuid>" | "link:<identity>"). */

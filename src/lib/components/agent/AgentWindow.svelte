@@ -82,13 +82,44 @@
 		// A detached window *is* the panel: force it open here. The opener
 		// already wrote this state; repeating it covers direct URL opens too.
 		updatePanelState(scope, { open: true, detached: true });
-		// Closing this window docks the panel back (closed, unless the close
-		// came from the dock-back button — design 01 §1.2).
+		// Closing this window marks the panel closed but keeps the detached
+		// preference (unless the close came from the dock-back button —
+		// design 01 §1.2).
 		const cleanupCloseHook = initDetachedWindowCloseHook(scope);
 		let unlistenResize: (() => void) | undefined;
 		let cancelled = false;
+		let persistTimer: ReturnType<typeof setTimeout> | undefined;
+
+		// Persist the window's own size for the next pop-out. Debounced; while
+		// maximized only the flag is updated so the remembered normal size is
+		// not clobbered by the maximized bounds.
+		const persistWindowSize = () => {
+			clearTimeout(persistTimer);
+			persistTimer = setTimeout(() => {
+				if (cancelled) return;
+				void getCurrentWindow()
+					.isMaximized()
+					.then((max) => {
+						if (cancelled) return;
+						if (max) {
+							updatePanelState(scope, { detachedMaximized: true });
+						} else {
+							updatePanelState(scope, {
+								detachedWidth: window.innerWidth,
+								detachedHeight: window.innerHeight,
+								detachedMaximized: false
+							});
+						}
+					})
+					.catch(() => {});
+			}, 300);
+		};
+
 		getCurrentWindow()
-			.onResized(() => void checkMaximized())
+			.onResized(() => {
+				void checkMaximized();
+				persistWindowSize();
+			})
 			.then((fn) => {
 				if (cancelled) fn();
 				else unlistenResize = fn;
@@ -98,6 +129,7 @@
 		void loadSessionName();
 		return () => {
 			cancelled = true;
+			clearTimeout(persistTimer);
 			cleanupCloseHook();
 			unlistenResize?.();
 		};
