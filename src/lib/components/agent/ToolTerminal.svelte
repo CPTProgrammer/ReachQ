@@ -36,12 +36,20 @@
 	let sizeRaf: number | undefined;
 	let notifiedCols = 0;
 	let notifiedRows = 0;
+	// Captured once from the prop (which never changes for a mounted card)
+	// instead of read on every call: notifyPty also runs from the effect
+	// teardown below, and reading a prop during branch destruction re-enters
+	// the parent getters mid-destroy, which makes Svelte re-execute an
+	// ancestor's dirty derived against stale `old_values` — silently rewiring
+	// its subscriptions away from the newly selected thread's runtime (the
+	// chat then stayed empty until switching threads away and back).
+	let ptyCallId = '';
 
 	function notifyPty(cols: number, rows: number): void {
 		if (cols === notifiedCols && rows === notifiedRows) return;
 		notifiedCols = cols;
 		notifiedRows = rows;
-		agentResizeTerminal(toolCallId, cols, rows).catch(() => {});
+		agentResizeTerminal(ptyCallId, cols, rows).catch(() => {});
 	}
 
 	/** Size the grid to its content: columns from the card width, rows from
@@ -86,6 +94,7 @@
 		// dispose the xterm and lose its content. `toolCallId` never changes
 		// for a mounted card; settings changes are applied live below.
 		const id = untrack(() => toolCallId);
+		ptyCallId = id;
 		const fb = untrack(() => fallbackText);
 		const s = untrack(getSettings);
 		const t = new Terminal({
