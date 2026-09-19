@@ -596,8 +596,8 @@
 		background: var(--color-bg-secondary);
 		color: var(--color-text-primary);
 		font-family: var(--font-sans);
-		font-size: 0.8rem;
-		line-height: 1.45;
+		font-size: 0.88rem;
+		line-height: 1.55;
 		text-align: left;
 		white-space: pre-wrap;
 		word-break: break-word;
@@ -624,8 +624,8 @@
 		background: var(--color-bg-secondary);
 		color: var(--color-text-primary);
 		font-family: var(--font-sans);
-		font-size: 0.8rem;
-		line-height: 1.45;
+		font-size: 0.88rem;
+		line-height: 1.55;
 		resize: none;
 		outline: none;
 		overflow-y: hidden;
@@ -685,8 +685,8 @@
 	}
 
 	.md {
-		font-size: 0.8rem;
-		line-height: 1.55;
+		font-size: 0.88rem;
+		line-height: 1.65;
 		color: var(--color-text-primary);
 		word-break: break-word;
 		user-select: text;
@@ -700,12 +700,39 @@
 		margin-bottom: 0;
 	}
 
-	.md :global(h1),
-	.md :global(h2),
-	.md :global(h3),
+	.md :global(h1) {
+		margin: 16px 0 11px;
+		font-size: 1.2rem;
+		line-height: 1.3;
+	}
+
+	.md :global(h2) {
+		margin: 14px 0 10px;
+		font-size: 1.1rem;
+		line-height: 1.3;
+	}
+
+	.md :global(h3) {
+		margin: 12px 0 9px;
+		font-size: 1rem;
+		line-height: 1.3;
+	}
+
 	.md :global(h4) {
-		margin: 10px 0 6px;
+		margin: 10px 0 8px;
+		font-size: 0.95rem;
+		line-height: 1.3;
+	}
+
+	.md :global(h5) {
+		margin: 10px 0 8px;
 		font-size: 0.9rem;
+		line-height: 1.3;
+	}
+
+	.md :global(h6) {
+		margin: 10px 0 8px;
+		font-size: 0.88rem;
 		line-height: 1.3;
 	}
 
@@ -713,6 +740,9 @@
 	.md :global(ol) {
 		margin: 4px 0 8px;
 		padding-left: 20px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 	}
 
 	/* Preflight resets list-style to none; restore markers for markdown lists. */
@@ -746,7 +776,7 @@
 		border-radius: 4px;
 		background: var(--color-border);
 		font-family: var(--font-content-mono);
-		font-size: 0.72rem;
+		font-size: 0.8rem;
 	}
 
 	.md :global(.md-code) {
@@ -762,7 +792,7 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 3px 8px;
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		color: var(--color-text-secondary);
 		border-bottom: 1px solid var(--color-border);
 		user-select: none;
@@ -791,8 +821,21 @@
 
 	.md :global(pre code) {
 		font-family: var(--font-content-mono);
-		font-size: 0.72rem;
+		font-size: 0.8rem;
 		line-height: 1.5;
+	}
+
+	.md :global(table) {
+		border-collapse: collapse;
+		border: 1px solid var(--color-border);
+		width: 100%;
+		margin: 10px;
+	}
+
+	.md :global(th),
+	.md :global(td) {
+		padding: 8px 10px;
+		border: 1px solid var(--color-border);
 	}
 
 	/* ── thinking ── */
