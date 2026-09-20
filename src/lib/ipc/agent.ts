@@ -296,6 +296,8 @@ export const agentThreads = {
 	create: (scope: string) => invoke<ThreadSummary>('agent_thread_create', { scope }),
 	reassign: (threadId: string, ownerKey: string) =>
 		invoke<void>('agent_thread_reassign', { threadId, ownerKey }),
+	reassignScope: (fromKey: string, toKey: string) =>
+		invoke<void>('agent_thread_reassign_scope', { fromKey, toKey }),
 	rename: (threadId: string, title: string) =>
 		invoke<void>('agent_thread_rename', { threadId, title }),
 	archive: (threadId: string, archived: boolean) =>

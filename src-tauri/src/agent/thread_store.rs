@@ -179,6 +179,20 @@ impl ThreadStore {
         Ok(())
     }
 
+    /// Re-anchor every thread of one owner scope to another (settings "all
+    /// threads" batch move). Returns how many threads moved.
+    pub async fn reassign_scope(&self, from_key: &str, to_key: &str) -> Result<u64, String> {
+        let moved = self
+            .conn
+            .execute(
+                "UPDATE agent_threads SET owner_key = ?2 WHERE owner_key = ?1",
+                params![from_key.to_string(), to_key.to_string()],
+            )
+            .await
+            .map_err(|e| format!("reassign scope: {e}"))?;
+        Ok(moved)
+    }
+
     /// All threads across scopes, including archived (settings page
     /// "View all threads", design 04 §4.5).
     pub async fn list_all_threads(&self) -> Result<Vec<ThreadSummary>, String> {
@@ -772,5 +786,33 @@ mod tests {
         let moved = store.list_threads("session:s2").await.unwrap();
         assert_eq!(moved.len(), 1);
         assert_eq!(moved[0].owner_key, "session:s2");
+    }
+
+    #[tokio::test]
+    async fn reassign_scope_moves_all_threads() {
+        let store = mem_store().await;
+
+        let t1 = store.create_thread("session:s1").await.unwrap();
+        let t2 = store.create_thread("session:s1").await.unwrap();
+        let t3 = store.create_thread("session:s2").await.unwrap();
+
+        let moved = store
+            .reassign_scope("session:s1", "session:s2")
+            .await
+            .unwrap();
+        assert_eq!(moved, 2);
+        assert_eq!(store.list_threads("session:s1").await.unwrap().len(), 0);
+        let s2 = store.list_threads("session:s2").await.unwrap();
+        assert_eq!(s2.len(), 3);
+        for id in [&t1.id, &t2.id, &t3.id] {
+            assert!(s2.iter().any(|t| &t.id == id));
+        }
+
+        // Unknown source scope moves nothing.
+        let moved = store
+            .reassign_scope("session:nope", "session:s2")
+            .await
+            .unwrap();
+        assert_eq!(moved, 0);
     }
 }

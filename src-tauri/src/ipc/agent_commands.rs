@@ -232,6 +232,17 @@ pub async fn agent_thread_reassign(
     store(&state).await?.reassign_thread(&thread_id, &owner_key).await
 }
 
+/// Re-anchor all threads of one owner scope to another (settings batch move).
+#[tauri::command]
+pub async fn agent_thread_reassign_scope(
+    state: State<'_, AppState>,
+    from_key: String,
+    to_key: String,
+) -> Result<(), String> {
+    store(&state).await?.reassign_scope(&from_key, &to_key).await?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn agent_thread_rename(
     state: State<'_, AppState>,

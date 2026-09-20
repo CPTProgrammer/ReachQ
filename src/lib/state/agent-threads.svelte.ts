@@ -77,6 +77,19 @@ export async function reassignThread(threadId: string, ownerKey: string): Promis
 	}
 }
 
+/** Re-anchor every thread of one owner scope to another (settings batch move). */
+export async function reassignScope(fromKey: string, toKey: string): Promise<void> {
+	await getAgentBackend().threadReassignScope(fromKey, toKey);
+	allThreads = allThreads.map((t) => (t.ownerKey === fromKey ? { ...t, ownerKey: toKey } : t));
+	if (currentScope === fromKey || currentScope === toKey) {
+		// The open panel is the source (now empty) or the target (grew): reload.
+		if (currentScope) await loadThreads(currentScope);
+		if (activeThreadId && !threads.some((t) => t.id === activeThreadId)) {
+			activeThreadId = threads[0]?.id ?? null;
+		}
+	}
+}
+
 export function selectThread(threadId: string): void {
 	const prevId = activeThreadId;
 	if (prevId === threadId) return;

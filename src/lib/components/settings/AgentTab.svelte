@@ -24,6 +24,7 @@
 		deleteThread,
 		getAllThreads,
 		loadAllThreads,
+		reassignScope,
 		reassignThread,
 		relativeTime,
 		renameThread,
@@ -367,6 +368,10 @@
 
 	function openThreadsView() {
 		view = 'threads';
+		migrateOpen = false;
+		migrateFrom = '';
+		migrateTo = '';
+		migrateLinkIdentity = null;
 		void loadAllThreads().catch(() => {});
 		void sessionList().then((list) => (sessions = list)).catch(() => {});
 	}
@@ -443,6 +448,105 @@
 		confirmDeleteThreadId = null;
 		await deleteThread(id).catch(() => {});
 	}
+
+	// --- Batch migrate by owner scope ---
+
+	let migrateOpen = $state(false);
+	let migrateFrom = $state('');
+	let migrateTo = $state('');
+	let migrateLinkIdentity = $state<string | null>(null);
+	let migrateBusy = $state(false);
+
+	function toggleMigrateBar() {
+		migrateOpen = !migrateOpen;
+		migrateFrom = '';
+		migrateTo = '';
+		migrateLinkIdentity = null;
+	}
+
+	/** Display parts of an owner scope: small type hint + the name/identity. */
+	function scopeOptionParts(ownerKey: string): { hint: string; label: string } {
+		if (ownerKey.startsWith('session:')) {
+			const id = ownerKey.slice('session:'.length);
+			return {
+				hint: t('agent.thread_scope_session'),
+				label: sessions.find((s) => s.id === id)?.name ?? t('agent.thread_owner_deleted_session')
+			};
+		}
+		if (ownerKey.startsWith('link:')) {
+			return { hint: t('agent.thread_scope_link'), label: ownerKey.slice('link:'.length) };
+		}
+		return { hint: '', label: ownerKey };
+	}
+
+	/** Distinct scopes present in the list, most-recently-active first. */
+	const migrateFromOptions = $derived.by(() => {
+		const seen = new Set<string>();
+		const options: { hint: string; label: string; value: string }[] = [];
+		for (const thread of sortedThreads) {
+			if (seen.has(thread.ownerKey)) continue;
+			seen.add(thread.ownerKey);
+			options.push({ ...scopeOptionParts(thread.ownerKey), value: thread.ownerKey });
+		}
+		return options;
+	});
+
+	/** Targets for the chosen source: the source session's quick-connect link
+	 * first (when resolvable), then every session except the source itself. */
+	const migrateToOptions = $derived.by(() => {
+		const options: { hint: string; label: string; value: string }[] = [];
+		if (migrateLinkIdentity) {
+			options.push({
+				hint: t('agent.thread_migrate_to_link'),
+				label: migrateLinkIdentity,
+				value: `link:${migrateLinkIdentity}`
+			});
+		}
+		for (const s of sessions) {
+			const value = `session:${s.id}`;
+			if (value === migrateFrom) continue;
+			options.push({ hint: t('agent.thread_scope_session'), label: s.name, value });
+		}
+		return options;
+	});
+
+	async function onMigrateFromChange(value: string) {
+		migrateFrom = value;
+		migrateTo = '';
+		migrateLinkIdentity = null;
+		const s = value.startsWith('session:')
+			? sessions.find((x) => x.id === value.slice('session:'.length))
+			: undefined;
+		if (!s) return;
+		try {
+			const identity = await agentComputeIdentity({
+				username: s.username,
+				host: s.host,
+				port: s.port,
+				jumpChain: s.jump_chain,
+				proxy: s.proxy
+			});
+			// The user may have picked another source while this was in flight.
+			if (migrateFrom === value) migrateLinkIdentity = identity;
+		} catch {
+			/* identity unavailable — no link target for this source */
+		}
+	}
+
+	async function commitMigrate() {
+		if (!migrateFrom || !migrateTo || migrateFrom === migrateTo || migrateBusy) return;
+		migrateBusy = true;
+		try {
+			await reassignScope(migrateFrom, migrateTo);
+			migrateFrom = '';
+			migrateTo = '';
+			migrateLinkIdentity = null;
+		} catch {
+			/* keep the selections so the user can retry */
+		} finally {
+			migrateBusy = false;
+		}
+	}
 </script>
 
 {#if view === 'threads'}
@@ -456,7 +560,50 @@
 				{t('agent.back')}
 			</button>
 			<span class="setting-label">{t('agent.all_threads')}</span>
+			{#if sortedThreads.length > 0}
+				<div class="migrate-toggle">
+					<Button variant="secondary" size="sm" onclick={toggleMigrateBar}>
+						{t('agent.thread_migrate')}
+					</Button>
+				</div>
+			{/if}
 		</div>
+
+		{#if migrateOpen}
+			<div class="migrate-bar">
+				<div class="migrate-dropdown">
+					<Dropdown
+						options={migrateFromOptions}
+						selected={migrateFrom}
+						placeholder={t('agent.thread_migrate_from')}
+						disabled={migrateBusy}
+						compact
+						onchange={(v) => void onMigrateFromChange(v)}
+					/>
+				</div>
+				<svg class="migrate-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M5 12h14M13 6l6 6-6 6" />
+				</svg>
+				<div class="migrate-dropdown">
+					<Dropdown
+						options={migrateToOptions}
+						selected={migrateTo}
+						placeholder={t('agent.thread_migrate_to')}
+						disabled={!migrateFrom || migrateBusy}
+						compact
+						onchange={(v) => (migrateTo = v)}
+					/>
+				</div>
+				<Button
+					variant="primary"
+					size="sm"
+					disabled={!migrateFrom || !migrateTo || migrateFrom === migrateTo || migrateBusy}
+					onclick={() => void commitMigrate()}
+				>
+					{t('common.confirm')}
+				</Button>
+			</div>
+		{/if}
 
 		<div class="thread-list">
 			{#if sortedThreads.length === 0}
@@ -1628,6 +1775,39 @@
 	.back-btn:hover {
 		color: var(--color-text-primary);
 		background-color: rgba(255, 255, 255, 0.06);
+	}
+
+	.migrate-toggle {
+		margin-left: auto;
+	}
+
+	.migrate-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 0;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.migrate-dropdown {
+		flex: 1;
+		min-width: 0;
+		/* Denser list items: identities are long, smaller rows show more. */
+		--dropdown-item-padding: 6px 10px;
+		--dropdown-item-font-size: 0.6875rem;
+	}
+
+	/* Constrain the shared Dropdown so its sizer can't widen the bar to fit
+	 * long identities; the trigger and list items ellipsize inside. */
+	.migrate-dropdown :global(.dropdown) {
+		width: 100%;
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	.migrate-arrow {
+		flex-shrink: 0;
+		color: var(--color-text-secondary);
 	}
 
 	.thread-list {

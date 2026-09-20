@@ -2,6 +2,8 @@
 	interface DropdownOption {
 		label: string;
 		value: string;
+		/** Small secondary line above the label in the list (e.g. a type tag). */
+		hint?: string;
 	}
 
 	interface Props {
@@ -9,6 +11,8 @@
 		selected?: string;
 		placeholder?: string;
 		disabled?: boolean;
+		/** Smaller trigger (padding + font); the list is unaffected. */
+		compact?: boolean;
 		onchange?: (value: string) => void;
 	}
 
@@ -17,6 +21,7 @@
 		selected = $bindable(''),
 		placeholder = 'Select...',
 		disabled = false,
+		compact = false,
 		onchange
 	}: Props = $props();
 
@@ -80,7 +85,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="dropdown" bind:this={dropdownEl} onkeydown={onKeydown}>
+<div class="dropdown" class:compact bind:this={dropdownEl} onkeydown={onKeydown}>
 	<button
 		type="button"
 		class="dropdown-trigger"
@@ -100,6 +105,9 @@
 	<div class="dropdown-sizer" aria-hidden="true">
 		{#each options as option (option.value)}
 			<span>{option.label}</span>
+			{#if option.hint}
+				<span>{option.hint}</span>
+			{/if}
 		{/each}
 	</div>
 
@@ -113,7 +121,12 @@
 					aria-selected={option.value === selected}
 				>
 					<button type="button" class="dropdown-item-btn" onclick={() => selectOption(option)}>
-						<span>{option.label}</span>
+						<span class="item-text">
+							{#if option.hint}
+								<span class="item-hint">{option.hint}</span>
+							{/if}
+							<span class="item-label">{option.label}</span>
+						</span>
 						{#if option.value === selected}
 							<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
 								<path d="M2 7L5.5 10.5L12 3.5" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
@@ -163,6 +176,11 @@
 	.dropdown-trigger:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	.dropdown.compact .dropdown-trigger {
+		padding: 6px 10px;
+		font-size: 0.8125rem;
 	}
 
 	.dropdown-text {
@@ -216,12 +234,14 @@
 		margin: 0;
 	}
 
+	/* Callers can tune list density via inherited custom properties:
+	 * --dropdown-item-padding, --dropdown-item-font-size. */
 	.dropdown-item-btn {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		width: 100%;
-		padding: 8px 10px;
+		padding: var(--dropdown-item-padding, 8px 10px);
 		font-family: var(--font-sans);
 		font-size: 0.875rem;
 		color: var(--color-text-primary);
@@ -235,6 +255,34 @@
 
 	.dropdown-item-btn:hover {
 		background-color: rgba(255, 255, 255, 0.06);
+	}
+
+	.item-text {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		text-align: left;
+	}
+
+	.item-label {
+		font-size: var(--dropdown-item-font-size, 0.875rem);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.item-hint {
+		font-size: 0.6875rem;
+		color: var(--color-text-secondary);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.dropdown-item.selected .item-hint {
+		color: var(--color-accent);
 	}
 
 	.dropdown-item.selected .dropdown-item-btn {

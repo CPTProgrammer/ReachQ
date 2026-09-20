@@ -1211,6 +1211,12 @@ class MockAgentBackend implements AgentBackend {
 			this.requireThread(threadId).summary.ownerKey = ownerKey;
 		}
 
+		async threadReassignScope(fromKey: string, toKey: string): Promise<void> {
+			for (const t of this.threads.values()) {
+				if (t.summary.ownerKey === fromKey) t.summary.ownerKey = toKey;
+			}
+		}
+
 		async threadRename(threadId: string, title: string): Promise<void> {
 			this.requireThread(threadId).summary.title = title;
 		}
