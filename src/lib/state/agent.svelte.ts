@@ -326,6 +326,11 @@ export interface ThreadRuntime {
 	/** Payloads captured from approval_needed, keyed by tool_call id. Kept at
 	 *  terminal status so rejected write/edit cards keep their diff. */
 	approvalPayloads: Record<string, unknown>;
+	/** Tool-card expand state, keyed by tool_call id. Seeded with the
+	 *  creation-time default and updated on user toggles; survives remounts
+	 *  (thread switch, snapshot re-application) with the runtime. In-memory
+	 *  only — never persisted. */
+	cardExpanded: Record<string, boolean>;
 	/** Last usage seen (drives the context ring). */
 	lastUsage: Usage | null;
 	/** Last error, cleared on next send. */
@@ -355,6 +360,7 @@ function ensureThreadRuntime(threadId: string): ThreadRuntime {
 			previews: {},
 			argsPatched: {},
 			approvalPayloads: {},
+			cardExpanded: {},
 			lastUsage: null,
 			error: null,
 			loaded: false,
@@ -401,6 +407,18 @@ export function getApprovalPayload(toolCallId: string): unknown {
 		if (toolCallId in rt.approvalPayloads) return rt.approvalPayloads[toolCallId];
 	}
 	return undefined;
+}
+
+/** Expand state recorded for a tool card; undefined = creation default applies. */
+export function getCardExpanded(threadId: string, toolCallId: string): boolean | undefined {
+	return runtimes[threadId]?.cardExpanded[toolCallId];
+}
+
+/** Record a tool card's expand state so later remounts (thread switch,
+ *  snapshot re-application) restore it. Called from event handlers and
+ *  post-mount effects only — it writes through ensureThreadRuntime. */
+export function setCardExpanded(threadId: string, toolCallId: string, expanded: boolean): void {
+	ensureThreadRuntime(threadId).cardExpanded[toolCallId] = expanded;
 }
 
 /**

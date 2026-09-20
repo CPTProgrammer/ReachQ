@@ -1,7 +1,8 @@
 <script module lang="ts">
 	export interface Props {
 		toolCallId: string;
-		/** Whether the card's detail section is expanded. */
+		/** Whether the card's detail section is expanded. The xterm exists only
+		 *  while this is true: created on expand, disposed on collapse. */
 		expanded: boolean;
 		/** Settled-call output restored from the persisted tool result when no
 		 *  live output buffer exists (app restart, eviction). Plain text, no
@@ -191,29 +192,24 @@
 		}
 	});
 
-	// Collapse -> shrink the remote PTY to 100 cols; expand -> fit content.
-	$effect(() => {
-		if (!term) return;
-		if (expanded) {
-			updateSize();
-		} else {
-			notifyPty(100, 24);
-		}
-	});
+	// ── Collapse → shrink the remote PTY to 100 cols; expand → fit content ──
+	// Handled by the creation effect: mounting the container (expand) fits the
+	// content; teardown (collapse) notifies 100×24 before disposing.
 </script>
 
-<div class="tool-terminal" class:collapsed={!expanded}>
-	<div bind:this={containerEl} class="tool-terminal-container"></div>
+<div class="tool-terminal">
+	<!-- The container exists only while expanded: mounting it runs the
+	     creation effect above (xterm + buffer replay), leaving disposes it.
+	     Settled cards therefore cost nothing until the user expands them. -->
+	{#if expanded}
+		<div bind:this={containerEl} class="tool-terminal-container"></div>
+	{/if}
 </div>
 
 <style>
 	.tool-terminal {
 		background: var(--color-bg-primary);
 		overflow: hidden;
-	}
-
-	.tool-terminal.collapsed {
-		height: 0;
 	}
 
 	.tool-terminal-container {

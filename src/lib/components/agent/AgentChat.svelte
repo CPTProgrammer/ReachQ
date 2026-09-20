@@ -420,7 +420,7 @@
 										{/if}
 									</div>
 								{:else if block.type === 'tool_call'}
-									<ToolCallCard call={toolCallView(msg, block)} />
+									<ToolCallCard call={toolCallView(msg, block)} threadId={msg.threadId} />
 								{/if}
 							{/each}
 							{#if msg.content.length === 0}

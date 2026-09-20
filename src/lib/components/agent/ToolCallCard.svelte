@@ -3,7 +3,17 @@
 
 	export interface Props {
 		call: ToolCallView;
+		/** Owning thread: the expand-state record lives on its runtime. */
+		threadId: string;
 	}
+
+	/** Statuses where a call has settled (terminal states; mirrors `ended`). */
+	const SETTLED_STATUSES: ReadonlySet<string> = new Set([
+		'success',
+		'failed',
+		'rejected',
+		'cancelled'
+	]);
 </script>
 
 <script lang="ts">
@@ -11,8 +21,10 @@
 		agentApproveCall,
 		agentStopTerminal,
 		getApprovalPayload,
+		getCardExpanded,
 		getPatchedArgs,
-		getToolPreview
+		getToolPreview,
+		setCardExpanded
 	} from '$lib/state/agent.svelte';
 	import { untrack } from 'svelte';
 	import { t } from '$lib/state/i18n.svelte';
@@ -22,15 +34,32 @@
 	import { argString, copyText, extractDiff, prettyJson, safeParse } from '$lib/utils/agent';
 	import { parseInlineCode } from '$lib/utils/formatters';
 
-	let { call }: Props = $props();
+	let { call, threadId }: Props = $props();
 
 	// Default-expanded tools (design 01 §2.3 table); captured once at creation.
+	// Exception: a terminal card already settled at mount arrived via a
+	// snapshot rather than a live-watched run — it starts collapsed so its
+	// xterm is only created on the first expand (long histories carry many).
+	// A state recorded on the thread runtime (seeded at creation, then updated
+	// on toggles) wins over the default.
 	let expanded = $state(
-		untrack(
-			() =>
-				call.name === 'write_file' || call.name === 'edit_file' || call.name === 'terminal'
-		)
+		untrack(() => {
+			const recorded = getCardExpanded(threadId, call.id);
+			if (recorded !== undefined) return recorded;
+			if (call.name === 'terminal') return !SETTLED_STATUSES.has(call.status);
+			return call.name === 'write_file' || call.name === 'edit_file';
+		})
 	);
+
+	// Seed the record with the creation-time decision: without it, a
+	// live-created card (expanded) would come back collapsed after a thread
+	// switch once the call has settled. Post-mount effect — setCardExpanded
+	// writes to $state and must not run inside the template/initializer.
+	$effect(() => {
+		if (getCardExpanded(threadId, call.id) === undefined) {
+			setCardExpanded(threadId, call.id, untrack(() => expanded));
+		}
+	});
 	let showRaw = $state(false);
 	let copied = $state(false);
 
@@ -42,12 +71,7 @@
 	let command = $derived(argString(args, ['command', 'cmd']));
 	let url = $derived(argString(args, ['url']));
 
-	let ended = $derived(
-		call.status === 'success' ||
-			call.status === 'failed' ||
-			call.status === 'rejected' ||
-			call.status === 'cancelled'
-	);
+	let ended = $derived(SETTLED_STATUSES.has(call.status));
 
 	/** Map a structured backend warning to its localized text. */
 	function warningText(warning: ApprovalWarning): string {
@@ -159,6 +183,11 @@
 		return expanded && call.result != null;
 	});
 
+	function toggleExpanded(): void {
+		expanded = !expanded;
+		setCardExpanded(threadId, call.id, expanded);
+	}
+
 	function copyCommand(): void {
 		if (!command) return;
 		copyText(command).then((ok) => {
@@ -215,7 +244,7 @@
 				class:active={expanded}
 				title={expanded ? 'Collapse' : 'Expand'}
 				aria-label={expanded ? 'Collapse' : 'Expand'}
-				onclick={() => (expanded = !expanded)}
+				onclick={toggleExpanded}
 			>
 				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 					{#if expanded}<path d="m6 15 6-6 6 6" />{:else}<path d="m6 9 6 6 6-6" />{/if}
