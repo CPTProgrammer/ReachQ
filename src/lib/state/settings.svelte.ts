@@ -20,7 +20,7 @@ const STORAGE_KEY = 'reach-settings';
 const defaults: Settings = {
 	theme: 'dark',
 	fontSize: 14,
-	fontFamily: 'monospace',
+	fontFamily: 'JetBrains Mono',
 	terminalTheme: 'Default',
 	defaultShell: '/bin/bash',
 	openLastSession: false,

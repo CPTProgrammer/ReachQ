@@ -7,7 +7,14 @@
 	const settings = getSettings();
 	let currentFont = $derived(settings.fontFamily || 'monospace');
 	let currentSize = $derived(settings.fontSize || 14);
-	let previewStyle = $derived(`font-family: '${currentFont}', monospace; font-size: ${currentSize}px`);
+
+	// Mixed Latin/CJK sample: CJK glyphs should render exactly 2x the Latin cell width
+	const PREVIEW_TEXT = `user@server:~$ ls -la
+total 42
+drwxr-xr-x  2 root root 4096 Mar 20 08:00 .
+0123456789 ABCDEF abcdef
+[ Hello World! ]
+[ 你好，世界！ ]`;
 
 	type ThemeValue = 'dark' | 'light' | 'system';
 
@@ -37,6 +44,7 @@
 
 	const COMMON_FONTS = [
 		{ name: 'System Default', value: 'monospace' },
+		{ name: 'JetBrains Mono', value: 'JetBrains Mono' },
 		{ name: 'SF Mono', value: 'SF Mono' },
 		{ name: 'Cascadia Code', value: 'Cascadia Code' },
 		{ name: 'Consolas', value: 'Consolas' },
@@ -210,16 +218,14 @@
 		</div>
 	</div>
 
-	{#key `${pvFont}-${currentSize}`}
-		<div class="font-preview-box">
-			<span class="preview-label">{t('settings.font_preview_label', { font: pvFont, size: String(currentSize) })}</span>
-			<iframe
-				title="Font Preview"
-				class="preview-iframe"
-				srcdoc={`<!DOCTYPE html><html><head><style>*{margin:0;padding:0;background:#0a0a0a;color:#f5f5f7;}html,body{overflow:hidden;width:100%;height:100%;}body{overflow:auto}body::-webkit-scrollbar{width: 6px;}body::-webkit-scrollbar-track {background: transparent;}body::-webkit-scrollbar-thumb {background-color: rgba(255, 255, 255, 0.15);border-radius: 3px;}body::-webkit-scrollbar-thumb:hover {background-color: rgba(255, 255, 255, 0.25);}pre{overflow:hidden;}</style></head><body><pre style="font-family:'${pvFont}',monospace;font-size:${currentSize}px;padding:12px;line-height:1.5;white-space:pre;">user@server:~$ ls -la\ntotal 42\ndrwxr-xr-x  2 root root 4096 Mar 20 08:00 .\n0123456789 ABCDEF abcdef\n[ Hello World! ]\n[ 你好，世界！ ]</pre></body></html>`}
-			></iframe>
-		</div>
-	{/key}
+	<div class="font-preview-box">
+		<span class="preview-label">{t('settings.font_preview_label', { font: pvFont, size: String(currentSize) })}</span>
+		<pre
+			class="font-preview"
+			style:font-family="'{pvFont}', monospace"
+			style:font-size="{currentSize}px"
+		>{PREVIEW_TEXT}</pre>
+	</div>
 
 	<div class="setting-section">
 		<span class="section-label">{t('settings.terminal_theme')}</span>
@@ -431,14 +437,22 @@
 	.preview-label {
 		display: block; font-size: 0.625rem; font-weight: 600;
 		text-transform: uppercase; letter-spacing: 0.05em;
-		color: var(--color-text-secondary); padding: 8px 12px 0;
+		color: var(--color-text-secondary); padding: 5px 12px 3px;
 		font-family: var(--font-sans);
 	}
 
-	.preview-iframe {
-		width: 100%; height: 160px; border: none; display: block;
-		border-radius: 0 0 8px 8px; overflow: hidden;
+	.font-preview {
+		width: 100%; height: 160px; margin: 0; padding: 12px;
+		display: block; overflow: auto;
+		background: #0a0a0a; color: #f5f5f7;
+		line-height: 1.5; white-space: pre;
+		border-radius: 0 0 8px 8px;
 	}
+
+	.font-preview::-webkit-scrollbar { width: 6px; }
+	.font-preview::-webkit-scrollbar-track { background: transparent; }
+	.font-preview::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, 0.15); border-radius: 3px; }
+	.font-preview::-webkit-scrollbar-thumb:hover { background-color: rgba(255, 255, 255, 0.25); }
 
 	/* Terminal theme cards */
 	.terminal-theme-cards {
