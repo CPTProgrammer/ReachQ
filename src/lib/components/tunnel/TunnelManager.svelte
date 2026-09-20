@@ -276,7 +276,7 @@
 		justify-content: space-between;
 		padding: 8px 10px;
 		border-bottom: 1px solid var(--color-border);
-		background-color: rgba(255, 255, 255, 0.02);
+		background-color: color-mix(in srgb, var(--color-contrast) 2%, transparent);
 	}
 
 	.form-title {
@@ -301,7 +301,7 @@
 	}
 
 	.form-close:hover {
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -315,7 +315,7 @@
 	.type-selector {
 		display: flex;
 		gap: 4px;
-		background-color: rgba(255, 255, 255, 0.03);
+		background-color: color-mix(in srgb, var(--color-contrast) 3%, transparent);
 		border-radius: var(--radius-btn);
 		padding: 3px;
 	}
@@ -400,7 +400,7 @@
 	}
 
 	.delete-btn:hover {
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-danger);
 	}
 

@@ -434,7 +434,7 @@
 	}
 
 	.bar-btn:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 	}
 
 	.bar-btn:hover:not(:disabled):not(.icon-only) {
@@ -615,7 +615,7 @@
 	}
 
 	.menu-item:hover {
-		background: rgba(255, 255, 255, 0.06);
+		background: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.menu-check {

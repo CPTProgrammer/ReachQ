@@ -112,7 +112,7 @@
 	}
 
 	.session-card:hover {
-		background-color: rgba(255, 255, 255, 0.04);
+		background-color: color-mix(in srgb, var(--color-contrast) 4%, transparent);
 	}
 
 	.card-main {
@@ -196,7 +196,7 @@
 	}
 
 	.action-btn:hover {
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 

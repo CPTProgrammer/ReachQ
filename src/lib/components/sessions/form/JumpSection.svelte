@@ -101,7 +101,7 @@
 		padding: 10px;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-btn);
-		background-color: rgba(255, 255, 255, 0.02);
+		background-color: color-mix(in srgb, var(--color-contrast) 2%, transparent);
 	}
 
 	.jump-hop-header {

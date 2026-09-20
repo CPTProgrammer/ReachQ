@@ -911,7 +911,7 @@
 	}
 
 	.save-session-btn:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -978,7 +978,7 @@
 	}
 
 	.search-clear:hover {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -988,7 +988,7 @@
 		align-items: center;
 		gap: 6px;
 		padding: 6px 8px;
-		background: rgba(255, 255, 255, 0.02);
+		background: color-mix(in srgb, var(--color-contrast) 2%, transparent);
 		border-radius: 6px;
 		border: 1px solid var(--color-border);
 	}
@@ -1076,7 +1076,7 @@
 	}
 
 	.folder-toggle:hover {
-		background-color: rgba(255, 255, 255, 0.04);
+		background-color: color-mix(in srgb, var(--color-contrast) 4%, transparent);
 	}
 
 	.folder-chevron {
@@ -1240,12 +1240,12 @@
 	}
 
 	.delete-cancel-btn {
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-secondary);
 	}
 
 	.delete-cancel-btn:hover {
-		background-color: rgba(255, 255, 255, 0.12);
+		background-color: color-mix(in srgb, var(--color-contrast) 12%, transparent);
 	}
 
 	.spinner {
@@ -1400,7 +1400,7 @@
 	}
 
 	.prompt-cancel:hover:not(:disabled) {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.prompt-connect {
@@ -1468,7 +1468,7 @@
 	}
 
 	.reset-btn:hover:not(:disabled) {
-		background-color: rgba(255, 255, 255, 0.05);
+		background-color: color-mix(in srgb, var(--color-contrast) 5%, transparent);
 	}
 
 	.reset-btn:disabled {

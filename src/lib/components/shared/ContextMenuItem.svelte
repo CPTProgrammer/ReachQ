@@ -38,7 +38,7 @@
 	}
 
 	.context-item:hover {
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 	}
 
 	.context-item.danger {

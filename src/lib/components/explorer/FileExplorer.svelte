@@ -1065,7 +1065,7 @@
 	}
 
 	.tool-btn:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -1134,7 +1134,7 @@
 	}
 
 	.explorer-search-clear:hover {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 	}
 
 	.breadcrumb-bar {
@@ -1194,7 +1194,7 @@
 	}
 
 	.breadcrumb-segment:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -1244,7 +1244,7 @@
 		overflow-y: auto;
 		position: relative;
 		scrollbar-width: thin;
-		scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+		scrollbar-color: color-mix(in srgb, var(--color-contrast) 15%, transparent) transparent;
 		transition: border-color 0.15s ease;
 		display: flex;
 		flex-direction: column;
@@ -1259,7 +1259,7 @@
 	}
 
 	.file-list::-webkit-scrollbar-thumb {
-		background-color: rgba(255, 255, 255, 0.15);
+		background-color: color-mix(in srgb, var(--color-contrast) 15%, transparent);
 		border-radius: 3px;
 	}
 
@@ -1351,7 +1351,7 @@
 	.transfer-bar-track {
 		width: 100%;
 		height: 2px;
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		border-radius: 1px;
 		overflow: hidden;
 	}
@@ -1466,7 +1466,7 @@
 	}
 
 	.preview-close:hover {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -1557,7 +1557,7 @@
 	}
 
 	.delete-confirm-btn.cancel:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		color: var(--color-text-primary);
 	}
 

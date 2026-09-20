@@ -167,7 +167,7 @@
 
 	.toolbar-btn:hover:not(:disabled) {
 		color: var(--color-text-primary);
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.toolbar-btn:disabled {
@@ -217,7 +217,7 @@
 		padding: 8px;
 		border: 1px solid var(--color-border);
 		border-radius: 6px;
-		background: rgba(255, 255, 255, 0.02);
+		background: color-mix(in srgb, var(--color-contrast) 2%, transparent);
 	}
 
 	.entry-row {
@@ -259,7 +259,7 @@
 		font-size: 0.5625rem;
 		font-family: var(--font-mono, monospace);
 		color: var(--color-text-secondary);
-		background: rgba(255, 255, 255, 0.04);
+		background: color-mix(in srgb, var(--color-contrast) 4%, transparent);
 		border: 1px solid var(--color-border);
 		border-radius: 3px;
 	}
@@ -292,7 +292,7 @@
 	}
 
 	.install-btn.installed {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		color: var(--color-text-secondary);
 	}
 </style>

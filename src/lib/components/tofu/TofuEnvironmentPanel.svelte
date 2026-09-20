@@ -351,7 +351,7 @@
 		font-size: 0.75rem;
 		font-weight: 600;
 		color: var(--color-accent);
-		background: rgba(255, 255, 255, 0.06);
+		background: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		border: 1px solid var(--color-accent);
 		border-radius: var(--radius-btn);
 		user-select: none;

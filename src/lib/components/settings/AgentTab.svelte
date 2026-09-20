@@ -1406,7 +1406,7 @@
 
 	.icon-btn:hover {
 		color: var(--color-text-primary);
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 	}
 
 	.icon-btn.danger:hover {
@@ -1463,7 +1463,7 @@
 	}
 
 	.confirm-btn:hover {
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 	}
 
 	.confirm-btn.danger {
@@ -1721,7 +1721,7 @@
 	}
 
 	.dropdown-item-btn:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.dropdown-item-btn.selected {
@@ -1774,7 +1774,7 @@
 
 	.back-btn:hover {
 		color: var(--color-text-primary);
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.migrate-toggle {
@@ -1841,7 +1841,7 @@
 	}
 
 	.thread-item:not(.confirming):hover {
-		background-color: rgba(255, 255, 255, 0.04);
+		background-color: color-mix(in srgb, var(--color-contrast) 4%, transparent);
 	}
 
 	.thread-item.confirming {

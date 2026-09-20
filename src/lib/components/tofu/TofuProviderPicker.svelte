@@ -182,7 +182,7 @@
 	}
 
 	.close-btn:hover {
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -240,7 +240,7 @@
 	}
 
 	.pill:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -273,7 +273,7 @@
 
 	.provider-card:hover:not(:disabled) {
 		border-color: var(--color-accent);
-		background-color: rgba(255, 255, 255, 0.03);
+		background-color: color-mix(in srgb, var(--color-contrast) 3%, transparent);
 	}
 
 	.provider-card.disabled {

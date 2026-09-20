@@ -139,12 +139,12 @@
 	}
 
 	.page-btn:hover {
-		background-color: var(--color-bg-secondary);
+		background-color: color-mix(in srgb, var(--color-contrast) 3%, transparent);
 		color: var(--color-text-primary);
 	}
 
 	.page-btn.active {
-		background-color: var(--color-bg-elevated, var(--color-bg-secondary));
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -264,7 +264,7 @@
 	}
 
 	.tab-close:hover {
-		background-color: rgba(255, 255, 255, 0.1);
+		background-color: color-mix(in srgb, var(--color-contrast) 10%, transparent);
 		color: var(--color-text-primary);
 	}
 

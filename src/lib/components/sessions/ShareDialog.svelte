@@ -217,7 +217,7 @@
 	}
 
 	.close-btn:hover {
-		background: rgba(255, 255, 255, 0.1);
+		background: color-mix(in srgb, var(--color-contrast) 10%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -239,7 +239,7 @@
 	}
 
 	.my-info {
-		background: rgba(255, 255, 255, 0.03);
+		background: color-mix(in srgb, var(--color-contrast) 3%, transparent);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		padding: 12px;
@@ -295,7 +295,7 @@
 	}
 
 	.copy-btn:hover {
-		background: rgba(255, 255, 255, 0.1);
+		background: color-mix(in srgb, var(--color-contrast) 10%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -375,7 +375,7 @@
 	}
 
 	.secondary-btn:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.05);
+		background: color-mix(in srgb, var(--color-contrast) 5%, transparent);
 	}
 
 	.success-content {

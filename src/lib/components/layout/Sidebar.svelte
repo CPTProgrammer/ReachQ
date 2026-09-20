@@ -212,12 +212,12 @@
 	}
 
 	.nav-btn:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		color: var(--color-text-primary);
 	}
 
 	.nav-btn.active {
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -304,7 +304,7 @@
 	}
 
 	.toggle-btn:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		color: var(--color-text-primary);
 	}
 

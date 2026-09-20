@@ -187,7 +187,7 @@
 		max-height: 200px;
 		overflow-y: auto;
 		border-radius: 8px;
-		background: rgba(255, 255, 255, 0.03);
+		background: color-mix(in srgb, var(--color-contrast) 3%, transparent);
 		border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
 	}
 
@@ -211,7 +211,7 @@
 	}
 
 	.release-notes-content::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.1);
+		background: color-mix(in srgb, var(--color-contrast) 10%, transparent);
 		border-radius: 3px;
 	}
 
@@ -222,7 +222,7 @@
 	.progress-track {
 		height: 6px;
 		border-radius: 3px;
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		overflow: hidden;
 	}
 
@@ -327,7 +327,7 @@
 	}
 
 	.btn-ghost:hover {
-		background: rgba(255, 255, 255, 0.06);
+		background: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		color: var(--color-text-primary, #f5f5f7);
 	}
 

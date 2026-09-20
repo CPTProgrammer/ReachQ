@@ -93,11 +93,11 @@
 	}
 
 	.file-node:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.file-node:active {
-		background-color: rgba(255, 255, 255, 0.08);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 	}
 
 	.file-icon {
@@ -151,7 +151,7 @@
 	}
 
 	.download-btn:hover {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-accent, #0a84ff);
 	}
 </style>

@@ -93,8 +93,7 @@
 		border: 1px solid var(--color-border);
 	}
 	.btn-secondary:hover:not(:disabled) {
-		background-color: rgba(255, 255, 255, 0.08);
-		background-color: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 	}
 
 	/* Ghost */
@@ -103,8 +102,7 @@
 		color: var(--color-text-primary);
 	}
 	.btn-ghost:hover:not(:disabled) {
-		background-color: rgba(255, 255, 255, 0.06);
-		background-color: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	/* Danger */

@@ -440,7 +440,7 @@
 	}
 
 	.icon-btn:hover {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 

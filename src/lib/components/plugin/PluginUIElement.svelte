@@ -178,7 +178,7 @@
 	}
 
 	.ui-btn:hover {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 	}
 
 	.ui-btn.primary {
@@ -252,7 +252,7 @@
 		display: inline-block;
 		width: 32px;
 		height: 18px;
-		background: rgba(255, 255, 255, 0.1);
+		background: color-mix(in srgb, var(--color-contrast) 10%, transparent);
 		border-radius: 9px;
 		flex-shrink: 0;
 		transition: background-color var(--duration-default) var(--ease-default);

@@ -413,7 +413,7 @@
 	}
 
 	.tab-close-btn:hover {
-		background-color: rgba(255, 255, 255, 0.1);
+		background-color: color-mix(in srgb, var(--color-contrast) 10%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -438,7 +438,7 @@
 	}
 
 	.window-btn:hover {
-		background: rgba(255, 255, 255, 0.06);
+		background: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		color: var(--color-text-primary);
 	}
 

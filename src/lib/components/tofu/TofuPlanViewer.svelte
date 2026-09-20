@@ -424,7 +424,7 @@
 	}
 
 	.resource-header:hover {
-		background: rgba(255, 255, 255, 0.02);
+		background: color-mix(in srgb, var(--color-contrast) 2%, transparent);
 	}
 
 	.resource-header-left {
@@ -476,7 +476,7 @@
 	}
 
 	.action-badge.action-noop {
-		background: rgba(255, 255, 255, 0.04);
+		background: color-mix(in srgb, var(--color-contrast) 4%, transparent);
 		color: var(--color-text-secondary);
 	}
 

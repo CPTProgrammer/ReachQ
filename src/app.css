@@ -17,6 +17,8 @@
   --color-warning: #ffd60a;
   --color-danger: #ff453a;
 
+  --color-contrast: #ffffff;
+
   /* Radii */
   --radius-btn: 8px;
   --radius-card: 12px;
@@ -81,8 +83,8 @@ body {
 
 .light {
   --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f5f5f7;
-  --color-bg-elevated: #ffffff;
+  --color-bg-secondary: #f3f3f5;
+  --color-bg-elevated: #fbfbfd;
   --color-border: rgba(0, 0, 0, 0.06);
   --color-text-primary: #1d1d1f;
   --color-text-secondary: #86868b;
@@ -91,6 +93,7 @@ body {
   --color-success: #34c759;
   --color-warning: #ff9f0a;
   --color-danger: #ff3b30;
+  --color-contrast: #000000;
   --shadow-subtle: 0 2px 8px rgba(0, 0, 0, 0.08);
   --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.12);
 }

@@ -115,7 +115,7 @@
 	}
 
 	.clear-btn:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.transfer-list {
@@ -176,7 +176,7 @@
 	}
 
 	.dismiss-btn:hover {
-		background-color: rgba(255, 255, 255, 0.1);
+		background-color: color-mix(in srgb, var(--color-contrast) 10%, transparent);
 	}
 
 	.transfer-detail {
@@ -204,7 +204,7 @@
 
 	.bar-track {
 		height: 2px;
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		border-radius: 1px;
 		margin-top: 4px;
 		overflow: hidden;

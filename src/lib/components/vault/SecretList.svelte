@@ -522,7 +522,7 @@
 		width: 100%;
 		padding: 10px 12px;
 		text-align: left;
-		background-color: rgba(255, 255, 255, 0.02);
+		background-color: color-mix(in srgb, var(--color-contrast) 2%, transparent);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		cursor: pointer;
@@ -530,7 +530,7 @@
 	}
 
 	.secret-item:hover {
-		background-color: rgba(255, 255, 255, 0.05);
+		background-color: color-mix(in srgb, var(--color-contrast) 5%, transparent);
 		border-color: var(--color-accent);
 	}
 
@@ -540,7 +540,7 @@
 		justify-content: center;
 		width: 32px;
 		height: 32px;
-		background-color: rgba(255, 255, 255, 0.04);
+		background-color: color-mix(in srgb, var(--color-contrast) 4%, transparent);
 		border-radius: 6px;
 		color: var(--color-text-secondary);
 		flex-shrink: 0;
@@ -698,7 +698,7 @@
 		font-size: 0.75rem;
 		font-weight: 500;
 		color: var(--color-text-primary);
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 		border: 1px solid var(--color-border);
 		border-radius: 6px;
 		cursor: pointer;
@@ -706,7 +706,7 @@
 	}
 
 	.action-btn:hover:not(:disabled) {
-		background-color: rgba(255, 255, 255, 0.1);
+		background-color: color-mix(in srgb, var(--color-contrast) 10%, transparent);
 		border-color: var(--color-text-secondary);
 	}
 

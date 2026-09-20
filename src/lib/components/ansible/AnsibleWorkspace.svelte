@@ -283,7 +283,7 @@
 
 	.panel-expand-btn:hover {
 		color: var(--color-accent);
-		background: rgba(255, 255, 255, 0.04);
+		background: color-mix(in srgb, var(--color-contrast) 4%, transparent);
 	}
 
 	.panel-header {
@@ -312,7 +312,7 @@
 
 	.panel-collapse-btn:hover {
 		color: var(--color-accent);
-		background: rgba(255, 255, 255, 0.06);
+		background: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.project-name {
@@ -374,12 +374,12 @@
 	}
 
 	.file-item:hover {
-		background: rgba(255, 255, 255, 0.04);
+		background: color-mix(in srgb, var(--color-contrast) 4%, transparent);
 		color: var(--color-text-primary);
 	}
 
 	.file-item.active {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-accent);
 	}
 
@@ -569,7 +569,7 @@
 
 	.close-viewer-btn:hover {
 		color: var(--color-text-primary);
-		background: rgba(255, 255, 255, 0.06);
+		background: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.file-viewer-content {

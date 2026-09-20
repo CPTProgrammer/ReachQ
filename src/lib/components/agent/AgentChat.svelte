@@ -676,7 +676,7 @@
 	}
 
 	.edit-btn:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -827,7 +827,7 @@
 	}
 
 	.md :global(.md-copy:hover) {
-		background: rgba(255, 255, 255, 0.06);
+		background: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.md :global(pre) {
@@ -1051,7 +1051,7 @@
 	}
 
 	.branch-nav button:hover {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -1111,7 +1111,7 @@
 	}
 
 	.icon-btn:hover {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 		color: var(--color-text-primary);
 	}
 
@@ -1128,6 +1128,6 @@
 	}
 
 	.send-now:hover {
-		background: rgba(255, 255, 255, 0.08);
+		background: color-mix(in srgb, var(--color-contrast) 8%, transparent);
 	}
 </style>

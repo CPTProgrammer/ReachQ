@@ -67,7 +67,7 @@
 		flex-direction: column;
 		gap: 10px;
 		padding: 10px;
-		background: rgba(255, 255, 255, 0.02);
+		background: color-mix(in srgb, var(--color-contrast) 2%, transparent);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 	}
@@ -99,7 +99,7 @@
 	}
 
 	.proxy-type-btn:not(.active):hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
 	}
 
 	.proxy-hint {

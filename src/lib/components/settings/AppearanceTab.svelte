@@ -304,7 +304,7 @@ drwxr-xr-x  2 root root 4096 Mar 20 08:00 .
 		font-family: var(--font-sans);
 	}
 
-	.theme-card:hover { background-color: rgba(255, 255, 255, 0.04); }
+	.theme-card:hover { background-color: color-mix(in srgb, var(--color-contrast) 4%, transparent); }
 	.theme-card.active { border-color: var(--color-accent); background-color: rgba(10, 132, 255, 0.08); }
 
 	.theme-preview {
@@ -418,7 +418,7 @@ drwxr-xr-x  2 root root 4096 Mar 20 08:00 .
 		font-size: 0.8125rem; cursor: pointer; text-align: left;
 		transition: background-color 0.1s ease;
 	}
-	.font-option:hover { background-color: rgba(255, 255, 255, 0.06); }
+	.font-option:hover { background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent); }
 	.font-option.active { background-color: rgba(10, 132, 255, 0.12); color: var(--color-accent); }
 
 	.font-loading {
@@ -477,7 +477,7 @@ drwxr-xr-x  2 root root 4096 Mar 20 08:00 .
 	}
 
 	.terminal-theme-card:hover {
-		background-color: rgba(255, 255, 255, 0.04);
+		background-color: color-mix(in srgb, var(--color-contrast) 4%, transparent);
 	}
 
 	.terminal-theme-card.active {

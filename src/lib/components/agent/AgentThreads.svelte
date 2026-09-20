@@ -258,7 +258,7 @@
 	}
 
 	.thread-item:hover {
-		background: rgba(255, 255, 255, 0.05);
+		background: color-mix(in srgb, var(--color-contrast) 5%, transparent);
 	}
 
 	.thread-item.active {
@@ -325,7 +325,7 @@
 	}
 
 	.icon-btn:hover {
-		background: rgba(255, 255, 255, 0.1);
+		background: color-mix(in srgb, var(--color-contrast) 10%, transparent);
 		color: var(--color-text-primary);
 	}
 
