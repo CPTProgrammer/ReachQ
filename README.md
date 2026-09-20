@@ -67,20 +67,43 @@ Reach is what happens when you build an SSH client from scratch with a native UI
 - [x] Smart detection of indentation size and style (spaces vs tabs).
 - [x] Full multi-cursor editing support with CJK-aware rectangular selection.
 
+### File Transfer
+
+- [x] **SFTP protocol backend** — Probes the server's SFTP subsystem on connect and caches the session, so file operations no longer depend on the shell. Hosts without SFTP support (e.g. Dropbear) automatically fall back to the original shell exec approach, re-probing on every operation.
+- [x] **Transfer performance** — Pipelined transfers: 8 concurrent 255 KiB requests keep the SSH channel window full, replacing the request-response round-trip pattern. Uploads now stream from disk instead of loading the whole file into memory.
+- [x] Renaming to an existing destination now raises an error on both backends.
+- [x] The file panel's "CD here" now only types the cd command into the terminal without executing it, leaving the user to confirm and press Enter.
+
+### Sessions
+
+- [x] **Host OS detection** — Added Windows host detection and icon. Failed probes now show "Unknown" instead of always falling back to Linux. OS probe timeout reduced from 300s to 10s.
+- [x] Session editor can clear cached OS detection results.
+- [x] Fixed the connection confirmation dialog: clicking the overlay no longer closes it accidentally, and when cancelled during handshake, late-arriving connections are dropped instead of opening a tab anyway.
+
 ### UI
 
 - [x] Added Chinese language support with comprehensive UI i18n.
 - [x] Various UI refinements.
 - [x] Splash screen no longer forces extra 800ms delay. Window can be dragged during splash.
+- [x] Settings dialog's left and right panes scroll independently.
+- [x] Default monospace font changed to JetBrains Mono; fixed font preview and dropdown interaction. Content-area monospace font now follows the font setting, with fixed CJK fallback.
+- [x] Text and icons on accent-colored backgrounds now use theme-aware contrast colors, fixing readability in light themes.
+- [x] Closing the main window now quits the app (prevents hidden editor windows from keeping the process alive).
 - [x] *Dev: Refactored components for better code reuse and reduced duplication.*
 
 ### AI
 
-- [x] Custom Base URL support.
-- [ ] Support more AI settings (e.g. reasoning toggle, reasoning effort, etc.).
-- [ ] Fix terminal output reading on Windows.
-- [ ] Replace LLM command execution with tool calling, add more available tools.
-- [ ] Update AI UI to support streaming output, full Markdown, better interaction experience, etc.
+The old OpenRouter chat panel has been removed entirely and replaced with a full Agent system (the AI page in Settings is renamed Agent accordingly):
+
+- [x] **Providers & models** — Built-in DeepSeek, Kimi, and OpenRouter presets. Add multiple instances with custom Base URLs. The input box can toggle thinking and reasoning effort per model.
+- [x] **Tool calling** — The model operates remote hosts through tools: run terminal commands (executed over SSH, with raw output shown live as terminal cards), read/write/edit files, browse directories (SFTP-based), and fetch web pages.
+- [x] **Permission approval** — Each tool can be toggled individually and configured to require approval. Sensitive paths automatically escalate approval. Diffs are shown for confirmation before writing/modifying files. Built-in terminal safety rules that cannot be disabled block dangerous commands like `rm -rf /`.
+- [x] **Conversation management** — Conversations persist in a local database, with message edit forking, draft saving, and automatic title generation. Conversations are grouped by their session/connection, so history survives session config changes (proxy, jump host, port). Browse all conversations and migrate them in bulk from Settings.
+- [x] **Markdown renderer** — Standalone `@reach/markdown` workspace package: incremental parsing on a patched @lezer/markdown, per-node component tree rendering for streaming partial updates, CommonMark/GFM spec compliance (with spec test suite), built-in XSS filtering and CJK punctuation line-breaking.
+
+### Development
+
+- [x] Added a dev-only component preview route (/preview) with an icon overview and an Agent panel wired to a mock backend, allowing debugging without a real API.
 
 ### Misc
 
@@ -110,7 +133,7 @@ Reach is what happens when you build an SSH client from scratch with a native UI
 ### Extras
 
 - **Serial Console** · Talk to routers, switches, and embedded devices over COM/TTY.
-- **AI Assistant** · Optional AI integration for command suggestions and troubleshooting (bring your own API key).
+- **AI Agent** · Optional AI integration with multi-provider support. The model can run commands and read/write files directly on remote hosts through approval-gated tools (bring your own API key).
 - **Encrypted Vault** · Store secrets, credentials, and SSH keys in an encrypted vault with cloud sync support.
 - **Lua Plugins** · Extend Reach with sandboxed Lua scripts. Access SSH, storage, and UI hooks through the host API.
 - **Auto-Updates** · The app checks for updates on startup and periodically while running. No manual downloads.
@@ -157,7 +180,10 @@ graph LR
 
   root --> src["📁 src · Svelte frontend"]
   root --> tauri["📁 src-tauri · Rust backend"]
+  root --> pkgs["📁 packages · Workspace packages"]
   root --> gh["📁 .github/workflows · CI/CD"]
+
+  pkgs --> md["📄 markdown · @reach/markdown renderer"]
 
   src --> routes["📄 routes"]
   src --> lib["📁 lib"]
@@ -173,13 +199,14 @@ graph LR
   components --> sessions["📄 sessions · Connection manager"]
   components --> tunnel["📄 tunnel · Port forwarding UI"]
   components --> vault["📄 vault · Encrypted secrets"]
-  components --> ai["📄 ai · AI assistant panel"]
+  components --> agent["📄 agent · AI Agent panel"]
   components --> ansible["📄 ansible · Ansible automation"]
   components --> tofu["📄 tofu · OpenTofu IaC"]
   components --> settings["📄 settings · App preferences"]
   components --> shared["📄 shared · Button, Modal, Toast"]
 
   tauri --> taurisrc["📁 src"]
+  taurisrc --> agentbe["📄 agent · AI Agent runtime & tools"]
   taurisrc --> ssh["📄 ssh · SSH client via russh"]
   taurisrc --> sftp["📄 sftp · File transfers"]
   taurisrc --> tvault["📄 vault · Encrypted storage, crypto"]

@@ -59,7 +59,7 @@ Reach 是从零开始打造的 SSH 客户端：原生 UI，真正的加密，以
   - 连接前弹出未知 SSH 主机密钥供用户验证 (TOFU)，防止中间人攻击
   - *开发：重构了 SSH 后端逻辑，增加代码复用，减少重复代码*
 - [x] 修复终端在相关界面设置切换后刷新缓冲区的问题
-- [x] 按住 Ctrl（macOS 为 Cmd）点击终端中的 URL可以在系统默认浏览器中打开链接
+- [x] 按住 Ctrl（macOS 为 Cmd）点击终端中的 URL 可以在系统默认浏览器中打开链接
 
 ### 编辑器
 
@@ -67,20 +67,43 @@ Reach 是从零开始打造的 SSH 客户端：原生 UI，真正的加密，以
 - [X] 智能检测文件缩进大小和缩进方式
 - [X] 完整的多光标编辑支持、CJK 等宽字符友好的矩形选择
 
+### 文件传输
+
+- [x] **SFTP 协议后端** — 连接时探测服务器的 SFTP 子系统并缓存会话，文件操作不再依赖 shell；不支持 SFTP 的主机（如 Dropbear）自动回退到原 shell exec 方式，并在每次操作时重新探测
+- [x] **传输性能** — 传输管线化：同时发出 8 个 255 KiB 请求填满 SSH 通道窗口，取代一问一答式收发；上传改为从磁盘流式读取，不再把整个文件加载进内存
+- [x] 两种后端下重命名到已存在的目标都会报错
+- [x] 文件面板的 "CD 到此" 改为只在终端输入 cd 命令而不自动执行，由用户确认后自行回车
+
+### 会话
+
+- [x] **主机系统识别** — 新增 Windows 主机检测与图标；探测失败时显示"未知"，不再一律回退为 Linux；系统探测超时从 300 秒降为 10 秒
+- [x] 会话编辑器可清除已缓存的系统检测结果
+- [x] 修复连接确认弹窗：点击遮罩不再误关；握手期间取消后，迟到的连接会被直接断开而不是照常打开标签页
+
 ### 界面
 
 - [x] 新增中文语言，并补充了更全的界面 i18n
 - [x] 优化了一些界面细节
 - [x] 预加载界面不再强制多显示 800ms，并且可以在预加载界面拖拽窗口
+- [x] 设置弹窗的左右两栏可独立滚动
+- [x] 等宽字体默认改为 JetBrains Mono，修复字体预览与下拉框交互；内容区等宽字体跟随字体设置并修复 CJK 回退
+- [x] 主题色背景上的文字与图标改用跟随主题的对比色，修复亮色主题下的可读性
+- [x] 关闭主窗口即退出应用（避免隐藏的编辑器窗口让进程残留）
 - [x] *开发：重构部分组件，增加代码复用，减少重复代码*
 
 ### AI
 
-- [x] 支持自定义 Base URL
-- [ ] 支持更多 AI 设置（如是否开启推理、推理强度等）
-- [ ] 修复 Windows 下读取终端输出问题
-- [ ] 将 LLM 运行命令的方式换为 Tool Call，增加更多可用工具
-- [ ] 更新 AI 界面，以支持流式输出、完整 Markdown、更优的交互体验等
+旧的 OpenRouter 聊天面板已整体移除，替换为完整的 Agent 系统（设置中的 AI 页相应更名为 Agent）：
+
+- [x] **服务商与模型** — 内置 DeepSeek、Kimi、OpenRouter 预设，可添加多个实例并自定义 Base URL；输入框可按模型切换思考开关与推理强度
+- [x] **工具调用** — 模型通过工具操作远程主机：执行终端命令（通过 SSH 运行，原始输出实时展示为终端卡片）、读取/写入/编辑文件、浏览目录（基于 SFTP）、抓取网页
+- [x] **权限审批** — 每个工具可单独开关并配置是否需要批准；命中敏感路径自动升级审批；写入/修改文件前展示 diff 供确认；内置不可关闭的终端安全规则（拦截 `rm -rf /` 等危险命令）
+- [x] **对话管理** — 对话持久化在本地数据库，支持消息编辑分叉、草稿保存、自动生成标题；对话按所属会话/连接归类，修改会话配置（代理、跳板、端口）后历史不丢失，可在设置中浏览全部对话并批量迁移
+- [x] **Markdown 渲染器** — 独立的 `@reach/markdown` workspace 包：基于打过补丁的 @lezer/markdown 做增量解析，逐节点组件树渲染以支持流式局部更新，对齐 CommonMark/GFM 规范（附规范测试集），内置 XSS 过滤和 CJK 标点换行优化
+
+### 开发
+
+- [x] 新增仅开发环境的组件预览路由（/preview），包含图标总览和接入 mock 后端的 Agent 面板，无需真实 API 即可调试
 
 ### 其他
 
@@ -110,7 +133,7 @@ Reach 是从零开始打造的 SSH 客户端：原生 UI，真正的加密，以
 ### 其他功能
 
 - **串口控制台** · 通过 COM/TTY 与路由器、交换机和嵌入式设备通信。
-- **AI 助手** · 可选的 AI 集成，提供命令建议和故障排除（需自备 API Key）。
+- **AI Agent** · 可选的 AI 集成：多服务商支持，模型可通过审批制的工具直接在远程主机上执行命令、读写文件（需自备 API Key）。
 - **加密保险库** · 将密钥、凭据和 SSH Key 存储在加密保险库中，支持云端同步。
 - **Lua 插件** · 用沙箱化的 Lua 脚本扩展 Reach。通过 Host API 访问 SSH、存储和 UI Hook。
 - **自动更新** · 应用在启动时及运行期间定期检查更新，无需手动下载。
@@ -157,7 +180,10 @@ graph LR
 
   root --> src["📁 src · Svelte 前端"]
   root --> tauri["📁 src-tauri · Rust 后端"]
+  root --> pkgs["📁 packages · 工作区包"]
   root --> gh["📁 .github/workflows · CI/CD"]
+
+  pkgs --> md["📄 markdown · @reach/markdown 渲染器"]
 
   src --> routes["📄 routes"]
   src --> lib["📁 lib"]
@@ -173,13 +199,14 @@ graph LR
   components --> sessions["📄 sessions · 连接管理"]
   components --> tunnel["📄 tunnel · 端口转发界面"]
   components --> vault["📄 vault · 加密密钥"]
-  components --> ai["📄 ai · AI 助手面板"]
+  components --> agent["📄 agent · AI Agent 面板"]
   components --> ansible["📄 ansible · Ansible 自动化"]
   components --> tofu["📄 tofu · OpenTofu IaC"]
   components --> settings["📄 settings · 应用设置"]
   components --> shared["📄 shared · Button, Modal, Toast"]
 
   tauri --> taurisrc["📁 src"]
+  taurisrc --> agentbe["📄 agent · AI Agent 运行时与工具"]
   taurisrc --> ssh["📄 ssh · SSH 客户端 (russh)"]
   taurisrc --> sftp["📄 sftp · 文件传输"]
   taurisrc --> tvault["📄 vault · 加密存储、密码学"]
