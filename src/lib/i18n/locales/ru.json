@@ -229,7 +229,6 @@
   "agent.back": "Назад",
   "agent.thread_move": "Переместить в…",
   "agent.thread_move_to": "Переместить этот диалог в:",
-  "agent.thread_move_to_link": "Быстрое подключение (по ссылке)",
   "agent.thread_owner_deleted_session": "Удалённая сессия",
   "agent.thread_migrate": "Пакетный перенос",
   "agent.thread_migrate_from": "Источник",

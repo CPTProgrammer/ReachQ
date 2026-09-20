@@ -238,7 +238,6 @@
   "agent.back": "Back",
   "agent.thread_move": "Move to…",
   "agent.thread_move_to": "Move this thread to:",
-  "agent.thread_move_to_link": "Quick-connect link",
   "agent.thread_owner_deleted_session": "Deleted session",
   "agent.thread_migrate": "Batch migrate",
   "agent.thread_migrate_from": "Source",

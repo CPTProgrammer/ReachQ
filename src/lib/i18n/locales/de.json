@@ -238,7 +238,6 @@
   "agent.back": "Zurück",
   "agent.thread_move": "Verschieben nach…",
   "agent.thread_move_to": "Diese Unterhaltung verschieben nach:",
-  "agent.thread_move_to_link": "Schnellverbindungs-Link",
   "agent.thread_owner_deleted_session": "Gelöschte Sitzung",
   "agent.thread_migrate": "Stapelmigration",
   "agent.thread_migrate_from": "Quelle",

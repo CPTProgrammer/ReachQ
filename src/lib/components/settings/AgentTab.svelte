@@ -360,6 +360,8 @@
 	let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
 	let confirmDeleteThreadId = $state<string | null>(null);
 	let reassignThreadId = $state<string | null>(null);
+	let reassignLinkIdentity = $state<string | null>(null);
+	let reassignTarget = $state('');
 	let sessions = $state<SessionConfig[]>([]);
 
 	const sortedThreads = $derived(
@@ -397,14 +399,27 @@
 		return sessions.find((s) => s.id === id);
 	}
 
-	async function commitReassign(threadId: string, ownerKey: string) {
+	function closeReassign() {
 		reassignThreadId = null;
-		await reassignThread(threadId, ownerKey).catch(() => {});
+		reassignLinkIdentity = null;
+		reassignTarget = '';
 	}
 
-	/** Move a session-owned thread to the quick-connect link its session
-	 * currently resolves to. */
-	async function moveThreadToLink(thread: ThreadSummary) {
+	async function commitReassign(thread: ThreadSummary) {
+		if (!reassignTarget) return;
+		const target = reassignTarget;
+		closeReassign();
+		await reassignThread(thread.id, target).catch(() => {});
+	}
+
+	/** Open the per-thread move dropdown, resolving the owning session's
+	 * quick-connect link identity in the background so it can appear as a
+	 * target option. */
+	async function openReassign(thread: ThreadSummary) {
+		confirmDeleteThreadId = null;
+		reassignThreadId = thread.id;
+		reassignLinkIdentity = null;
+		reassignTarget = '';
 		const s = owningSession(thread);
 		if (!s) return;
 		try {
@@ -415,9 +430,10 @@
 				jumpChain: s.jump_chain,
 				proxy: s.proxy
 			});
-			await commitReassign(thread.id, `link:${identity}`);
+			// The user may have closed or switched the bar while this was in flight.
+			if (reassignThreadId === thread.id) reassignLinkIdentity = identity;
 		} catch {
-			/* identity computation failed — leave the thread where it is */
+			/* identity unavailable — no link target for this thread */
 		}
 	}
 
@@ -491,24 +507,30 @@
 		return options;
 	});
 
-	/** Targets for the chosen source: the source session's quick-connect link
-	 * first (when resolvable), then every session except the source itself. */
-	const migrateToOptions = $derived.by(() => {
+	/** Targets for a source scope: the source session's quick-connect link
+	 * first (when resolvable), then every session except the source itself.
+	 * Shared by the batch migrate bar and the per-thread move dropdown. */
+	function targetOptions(
+		fromKey: string,
+		linkIdentity: string | null
+	): { hint: string; label: string; value: string }[] {
 		const options: { hint: string; label: string; value: string }[] = [];
-		if (migrateLinkIdentity) {
+		if (linkIdentity) {
 			options.push({
 				hint: t('agent.thread_migrate_to_link'),
-				label: migrateLinkIdentity,
-				value: `link:${migrateLinkIdentity}`
+				label: linkIdentity,
+				value: `link:${linkIdentity}`
 			});
 		}
 		for (const s of sessions) {
 			const value = `session:${s.id}`;
-			if (value === migrateFrom) continue;
+			if (value === fromKey) continue;
 			options.push({ hint: t('agent.thread_scope_session'), label: s.name, value });
 		}
 		return options;
-	});
+	}
+
+	const migrateToOptions = $derived(targetOptions(migrateFrom, migrateLinkIdentity));
 
 	async function onMigrateFromChange(value: string) {
 		migrateFrom = value;
@@ -645,7 +667,7 @@
 								<button
 									class="icon-btn"
 									title={t('agent.thread_move')}
-									onclick={() => (reassignThreadId = thread.id)}
+									onclick={() => void openReassign(thread)}
 								>
 									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 										<path d="M5 12h14M13 6l6 6-6 6" />
@@ -674,7 +696,7 @@
 								<button
 									class="icon-btn"
 									title={t('agent.thread_move')}
-									onclick={() => (reassignThreadId = thread.id)}
+									onclick={() => void openReassign(thread)}
 								>
 									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 										<path d="M5 12h14M13 6l6 6-6 6" />
@@ -696,23 +718,27 @@
 					{#if reassignThreadId === thread.id}
 						<div class="confirm-bar reassign-bar">
 							<span class="confirm-text">{t('agent.thread_move_to')}</span>
-							<div class="reassign-options">
-								{#each sessions as s (s.id)}
-									<button
-										class="confirm-btn"
-										class:active={thread.ownerKey === `session:${s.id}`}
-										onclick={() => void commitReassign(thread.id, `session:${s.id}`)}
-									>{s.name}</button>
-								{/each}
-								{#if !thread.ownerKey.startsWith('link:') && owningSession(thread)}
-									<button
-										class="confirm-btn"
-										onclick={() => void moveThreadToLink(thread)}
-									>{t('agent.thread_move_to_link')}</button>
-								{/if}
-								<button class="confirm-btn" onclick={() => (reassignThreadId = null)}>
+							<div class="reassign-dropdown">
+								<Dropdown
+									options={targetOptions(thread.ownerKey, reassignLinkIdentity)}
+									selected={reassignTarget}
+									placeholder={t('agent.thread_migrate_to')}
+									compact
+									onchange={(v) => (reassignTarget = v)}
+								/>
+							</div>
+							<div class="reassign-actions">
+								<Button
+									variant="primary"
+									size="sm"
+									disabled={!reassignTarget}
+									onclick={() => void commitReassign(thread)}
+								>
+									{t('common.confirm')}
+								</Button>
+								<Button variant="secondary" size="sm" onclick={closeReassign}>
 									{t('common.cancel')}
-								</button>
+								</Button>
 							</div>
 						</div>
 					{/if}
@@ -1840,7 +1866,7 @@
 		display: none;
 	}
 
-	.thread-item:not(.confirming):hover {
+	.thread-item:not(.confirming):not(.moving):hover {
 		background-color: color-mix(in srgb, var(--color-contrast) 4%, transparent);
 	}
 
@@ -1871,15 +1897,29 @@
 		row-gap: 6px;
 	}
 
-	.reassign-options {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
+	/* Dropdown sits left, right after the label; buttons stay right. */
+	.thread-item .confirm-bar.reassign-bar .confirm-text {
+		flex: none;
 	}
 
-	.confirm-btn.active {
-		border-color: var(--color-accent);
-		color: var(--color-accent);
+	/* Constrain the shared Dropdown like .migrate-dropdown does. */
+	.reassign-dropdown {
+		width: 240px;
+		min-width: 0;
+		--dropdown-item-padding: 6px 10px;
+		--dropdown-item-font-size: 0.75rem;
+	}
+
+	.reassign-dropdown :global(.dropdown) {
+		width: 100%;
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	.reassign-actions {
+		margin-left: auto;
+		display: flex;
+		gap: 8px;
 	}
 
 	.owner-label.owner-deleted {
@@ -1892,6 +1932,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		padding-left: 6px;
 	}
 
 	.thread-title {
@@ -1922,7 +1963,7 @@
 
 	.thread-actions {
 		position: absolute;
-		right: 6px;
+		right: 11px;
 		top: 50%;
 		transform: translateY(-50%);
 		display: none;
