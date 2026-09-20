@@ -269,7 +269,7 @@
 			{/if}
 		{:else if isFileTool && (expanded || pinnedDiff)}
 			{#if shownDiff}
-				<PatchView diff={shownDiff} streaming={call.status === 'streaming'} />
+				<PatchView diff={shownDiff} />
 			{:else if call.result}
 				<pre class="text-block">{call.result.llmText}</pre>
 			{:else}
@@ -329,7 +329,9 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-btn);
 		background: var(--color-bg-secondary);
-		overflow: hidden;
+		/* clip, unlike hidden, creates no scroll container — the approval
+		   bar's sticky positioning resolves against the chat scroller. */
+		overflow: clip;
 		font-size: 0.75rem;
 	}
 
@@ -504,8 +506,6 @@
 		color: var(--color-text-secondary);
 		white-space: pre-wrap;
 		word-break: break-all;
-		max-height: 320px;
-		overflow-y: auto;
 		user-select: text;
 	}
 
@@ -527,8 +527,6 @@
 		font-size: 0.75rem;
 		line-height: 1.55;
 		color: var(--color-text-primary);
-		max-height: 320px;
-		overflow-y: auto;
 		user-select: text;
 	}
 
@@ -564,13 +562,19 @@
 		font-size: 0.7rem;
 	}
 
+	/* Sticky so the actions stay reachable while reviewing a long diff: the
+	   bar pins to the bottom of the chat viewport until the card's own bottom
+	   scrolls in. Opaque background — diff lines scroll underneath it. */
 	.approval-bar {
+		position: sticky;
+		bottom: -10px;
 		border-top: 1px solid var(--color-border);
 		padding: 8px;
+		background: var(--color-bg-secondary);
 	}
 
 	.approval-bar.rejected {
-		background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+		background: color-mix(in srgb, var(--color-danger) 10%, var(--color-bg-secondary));
 	}
 
 	.warnings {

@@ -72,8 +72,24 @@
 		lastObservedTop = top;
 	}
 
+	/** Wheel/touch gestures a nested vertical scroller consumes (the xterm
+	 *  viewport past its row cap) never move the chat viewport, so they must
+	 *  not leave follow. Walks the event target's ancestors for a scroller
+	 *  that can still scroll up. */
+	function consumedByNested(e: Event): boolean {
+		let node = e.target as HTMLElement | null;
+		while (node && node !== scrollEl) {
+			if (node.scrollTop > 0 && node.scrollHeight > node.clientHeight) {
+				const overflowY = getComputedStyle(node).overflowY;
+				if (overflowY === 'auto' || overflowY === 'scroll') return true;
+			}
+			node = node.parentElement;
+		}
+		return false;
+	}
+
 	function onWheel(e: WheelEvent): void {
-		if (e.deltaY < 0) setFollowing(false);
+		if (e.deltaY < 0 && !consumedByNested(e)) setFollowing(false);
 	}
 
 	/** Scrollbar-track drags produce no wheel events; leaving follow on press
@@ -101,7 +117,8 @@
 
 	function onTouchMove(e: TouchEvent): void {
 		const y = e.touches[0]?.clientY ?? lastTouchY;
-		if (y > lastTouchY + 2) setFollowing(false); // finger swipes down: content up
+		// finger swipes down: content up
+		if (y > lastTouchY + 2 && !consumedByNested(e)) setFollowing(false);
 		lastTouchY = y;
 	}
 

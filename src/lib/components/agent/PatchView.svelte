@@ -3,7 +3,6 @@
 
 	export interface Props {
 		diff: DiffPreview;
-		streaming?: boolean;
 	}
 </script>
 
@@ -11,7 +10,7 @@
 	import { diffWordsWithSpace } from 'diff';
 	import { t } from '$lib/state/i18n.svelte';
 
-	let { diff, streaming = false }: Props = $props();
+	let { diff }: Props = $props();
 
 	interface Segment {
 		text: string;
@@ -116,18 +115,9 @@
 	}
 
 	let items = $derived(buildItems(diff));
-
-	let containerEl = $state<HTMLDivElement | null>(null);
-
-	// While streaming, keep the view stuck to the bottom as the preview grows.
-	$effect(() => {
-		if (!streaming || !containerEl) return;
-		void items;
-		containerEl.scrollTop = containerEl.scrollHeight;
-	});
 </script>
 
-<div class="patch-view" bind:this={containerEl}>
+<div class="patch-view">
 	{#each items as item (item.key)}
 		{#if item.type === 'gap'}
 			<div class="hunk-gap">
@@ -150,8 +140,6 @@
 		color: var(--color-text-primary);
 		white-space: pre-wrap;
 		word-break: break-all;
-		max-height: 320px;
-		overflow-y: auto;
 		user-select: text;
 	}
 
