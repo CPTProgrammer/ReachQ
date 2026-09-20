@@ -628,6 +628,10 @@
 	}
 
 	.approval-btn.accept {
+		color: var(--color-text-primary);
+	}
+
+	.approval-btn.accept svg {
 		color: var(--color-success);
 	}
 
@@ -637,6 +641,10 @@
 	}
 
 	.approval-btn.reject {
+		color: var(--color-text-primary);
+	}
+
+	.approval-btn.reject svg {
 		color: var(--color-danger);
 	}
 
