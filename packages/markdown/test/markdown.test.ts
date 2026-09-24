@@ -228,6 +228,60 @@ describe("equivalence rules", () => {
 	});
 });
 
+/**
+ * GFM table edge cases the spec fixtures do not cover: the spec's table
+ * examples never combine an empty cell with content in a later column of the
+ * same row, and lezer's table parser emits no TableCell node for
+ * whitespace-only cells. Columns are restored by slotting cells between the
+ * row's TableDelimiter pipes (see slotRowCells in core/render.ts).
+ */
+describe("GFM tables (empty cells)", () => {
+	const cases: { name: string; markdown: string; html: string }[] = [
+		{
+			name: "empty first column",
+			markdown: "|  | Feature | Status |\n| ----- | ------- | ------ |\n|  | Tables  | fallback (raw text) |\n",
+			html: "<table><thead><tr><th></th><th>Feature</th><th>Status</th></tr></thead>" +
+				"<tbody><tr><td></td><td>Tables</td><td>fallback (raw text)</td></tr></tbody></table>",
+		},
+		{
+			name: "empty middle column",
+			markdown: "| a |  | b |\n| - | - | - |\n| 1 |  | 2 |\n",
+			html: "<table><thead><tr><th>a</th><th></th><th>b</th></tr></thead>" +
+				"<tbody><tr><td>1</td><td></td><td>2</td></tr></tbody></table>",
+		},
+		{
+			name: "empty cells without outer pipes",
+			markdown: "a |  | b\n--- | --- | ---\n1 |  | 2\n",
+			html: "<table><thead><tr><th>a</th><th></th><th>b</th></tr></thead>" +
+				"<tbody><tr><td>1</td><td></td><td>2</td></tr></tbody></table>",
+		},
+		{
+			name: "short row is padded after an empty leading cell",
+			markdown: "| a | b | c |\n| - | - | - |\n|  | x |\n",
+			html: "<table><thead><tr><th>a</th><th>b</th><th>c</th></tr></thead>" +
+				"<tbody><tr><td></td><td>x</td><td></td></tr></tbody></table>",
+		},
+		{
+			name: "fully empty row",
+			markdown: "| a | b |\n| - | - |\n| | |\n",
+			html: "<table><thead><tr><th>a</th><th>b</th></tr></thead>" +
+				"<tbody><tr><td></td><td></td></tr></tbody></table>",
+		},
+		{
+			name: "column alignment is kept with empty cells",
+			markdown: "|  | right |\n| :- | -: |\n|  | x |\n",
+			html: "<table><thead><tr><th align=\"left\"></th><th align=\"right\">right</th></tr></thead>" +
+				"<tbody><tr><td align=\"left\"></td><td align=\"right\">x</td></tr></tbody></table>",
+		},
+	];
+	for (const { name, markdown, html } of cases) {
+		it(name, async () => {
+			const actual = await renderMarkdown(markdown);
+			expect(normalizeHtml(actual)).toBe(normalizeHtml(html));
+		});
+	}
+});
+
 // IncrementalMarkdown logs its nodes/tree on every update; keep output readable.
 beforeAll(() => {
 	vi.spyOn(console, "log").mockImplementation(() => {});

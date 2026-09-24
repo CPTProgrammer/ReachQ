@@ -91,8 +91,8 @@
 	<table>
 		<thead>
 			<tr>
-				{#each parts.headerCells as cell, i (cell.id)}
-					<th align={parts.aligns[i] ?? null}><InlineContent nodes={cell.children} /></th>
+				{#each parts.headerCells as cell, i (cell ? cell.id : -i - 1)}
+					<th align={parts.aligns[i] ?? null}>{#if cell}<InlineContent nodes={cell.children} />{/if}</th>
 				{/each}
 			</tr>
 		</thead>

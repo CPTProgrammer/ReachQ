@@ -285,7 +285,7 @@ export type TableAlign = "left" | "center" | "right" | null;
 
 export interface TableParts {
 	aligns: TableAlign[];
-	headerCells: AnyNode[];
+	headerCells: (AnyNode | null)[];
 	rows: AnyNode[];
 	colCount: number;
 }
@@ -304,20 +304,60 @@ function parseAlignRow(content: string): TableAlign[] {
 		});
 }
 
+/**
+ * Cells of one row slotted by column. The lezer table parser emits a
+ * TableCell only for cells with non-whitespace content, so an empty cell
+ * exists in the tree only as two adjacent TableDelimiter pipes (and counting
+ * TableCell children would both drop the column and shift later cells left).
+ * Walking the row and advancing the column at each pipe restores the empty
+ * slots: a cell belongs to the column after the last pipe seen. A leading
+ * pipe opens no column; a trailing pipe ends the last one.
+ */
+function slotRowCells(row: AnyNode): { cells: (AnyNode | null)[]; count: number } {
+	const cells: (AnyNode | null)[] = [];
+	let col = 0;
+	let started = false;
+	let endsWithPipe = false;
+	for (const child of row.children) {
+		if (child.name === "TableDelimiter") {
+			if (started) col++;
+			started = true;
+			endsWithPipe = true;
+		} else if (child.name === "TableCell") {
+			cells[col] = child;
+			started = true;
+			endsWithPipe = false;
+		}
+	}
+	return { cells, count: col + (endsWithPipe ? 0 : 1) };
+}
+
+/** Slots densified to the column count (holes nulled, excess dropped per GFM). */
+function normalizeCells(cells: (AnyNode | null)[], colCount: number): (AnyNode | null)[] {
+	const out: (AnyNode | null)[] = [];
+	for (let i = 0; i < colCount; i++) out.push(cells[i] ?? null);
+	return out;
+}
+
 export function tableParts(node: AnyNode): TableParts {
 	const header = node.children.find((c) => c.name === "TableHeader");
 	const delimRow = node.children.find((c) => c.name === "TableDelimiter");
 	const aligns = delimRow?.content !== undefined ? parseAlignRow(delimRow.content) : [];
-	const headerCells = header?.children.filter((c) => c.name === "TableCell") ?? [];
+	// GFM: the header row defines the column count. Slotting rather than
+	// counting TableCell children keeps empty header cells in the count.
+	const headerSlots = header ? slotRowCells(header) : { cells: [], count: 0 };
 	const rows = node.children.filter((c) => c.name === "TableRow");
-	return { aligns, headerCells, rows, colCount: headerCells.length };
+	return {
+		aligns,
+		headerCells: normalizeCells(headerSlots.cells, headerSlots.count),
+		rows,
+		colCount: headerSlots.count,
+	};
 }
 
 /** Row cells normalized to the column count (truncated/padded per GFM). */
 export function rowCells(row: AnyNode, colCount: number): (AnyNode | null)[] {
-	const cells: (AnyNode | null)[] = row.children.filter((c) => c.name === "TableCell").slice(0, colCount);
-	while (cells.length < colCount) cells.push(null);
-	return cells;
+	return normalizeCells(slotRowCells(row).cells, colCount);
 }
 
 // ---------------------------------------------------------------------------
