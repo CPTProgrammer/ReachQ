@@ -15,6 +15,7 @@
 		getInstanceModels,
 		resolveSelection,
 		setScopeSelection,
+		setThreadSelection,
 		type ComposerSelection
 	} from '$lib/state/agent-settings.svelte';
 	import { getThreads } from '$lib/state/agent-threads.svelte';
@@ -41,7 +42,7 @@
 		const key = `${scope}|${threadId ?? ''}|${groups.length}:${groups.map((g) => g.models?.length ?? 0).join(',')}`;
 		if (key === selKey) return;
 		selKey = key;
-		sel = resolveSelection(scope, summary?.model ?? null);
+		sel = resolveSelection(scope, summary?.model ?? null, threadId);
 	});
 
 	let selectedModel = $derived(sel ? findModel(sel.model) : null);
@@ -62,12 +63,14 @@
 		if (!modelMeta.supportsThinking || modelMeta.thinkingMandatory) return;
 		sel = { ...sel, thinking: !sel.thinking };
 		setScopeSelection(scope, sel);
+		if (threadId) setThreadSelection(threadId, sel);
 	}
 
 	function pickEffort(effort: string): void {
 		if (!sel) return;
 		sel = { ...sel, effort };
 		setScopeSelection(scope, sel);
+		if (threadId) setThreadSelection(threadId, sel);
 		effortOpen = false;
 	}
 
@@ -78,6 +81,7 @@
 			effort: m.defaultEffort ?? (m.thinkingEfforts.includes('medium') ? 'medium' : (m.thinkingEfforts[0] ?? null))
 		};
 		setScopeSelection(scope, sel);
+		if (threadId) setThreadSelection(threadId, sel);
 		modelOpen = false;
 	}
 

@@ -145,15 +145,32 @@ export function setScopeSelection(scope: string, sel: ComposerSelection): void {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Per-thread composer state (session memory): the picker's explicit value
+// for a thread, layered above the DB snapshot (design 05 §5). Written only
+// by explicit user picks; the backend's per-send snapshot remains the
+// cross-session record, so this map is intentionally not persisted.
+// ---------------------------------------------------------------------------
+
+let threadSelections = $state<Record<string, ComposerSelection>>({});
+
+export function setThreadSelection(threadId: string, sel: ComposerSelection): void {
+	threadSelections[threadId] = sel;
+}
+
 /**
  * Resolve the composer selection for a thread (design 05 §5 priority):
- * thread snapshot -> scope last-used -> global default (first model of
- * the first configured instance). Stale snapshots fall back silently.
+ * explicit per-thread pick (session memory) -> thread snapshot -> scope
+ * last-used -> global default (first model of the first configured
+ * instance). Stale entries fall back silently.
  */
 export function resolveSelection(
 	scope: string,
-	threadSnapshot: { model: string; thinking: boolean; effort?: string } | null | undefined
+	threadSnapshot: { model: string; thinking: boolean; effort?: string } | null | undefined,
+	threadId?: string | null
 ): ComposerSelection | null {
+	const remembered = threadId ? threadSelections[threadId] : undefined;
+	if (remembered && findModel(remembered.model)) return remembered;
 	if (threadSnapshot?.model && findModel(threadSnapshot.model)) {
 		return {
 			model: threadSnapshot.model,
@@ -188,7 +205,7 @@ export function resolveSendOpts(
 ): AgentSendOpts | null {
 	const summary = threadId ? getThreads().find((t) => t.id === threadId) : undefined;
 	const sel =
-		resolveSelection(scope, summary?.model ?? null) ??
+		resolveSelection(scope, summary?.model ?? null, threadId) ??
 		getScopeSelection(scope) ??
 		(summary?.model
 			? { model: summary.model.model, thinking: summary.model.thinking, effort: summary.model.effort ?? null }
