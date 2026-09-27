@@ -8,6 +8,7 @@
 	} from '$lib/ipc/tunnel';
 	import { addToast } from '$lib/state/toasts.svelte';
 	import { t } from '$lib/state/i18n.svelte';
+	import { TUNNEL_TYPES, tunnelTypeLabel, type TunnelTypeName } from '$lib/utils/tunnel';
 	import TunnelCard from './TunnelCard.svelte';
 	import Input from '$lib/components/shared/Input.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
@@ -23,11 +24,23 @@
 	let loading = $state(true);
 	let showForm = $state(false);
 
-	let formType = $state<'Local' | 'Remote' | 'Dynamic'>('Local');
+	let formType = $state<TunnelTypeName>('Local');
 	let formLocalPort = $state('8080');
 	let formRemoteHost = $state('localhost');
 	let formRemotePort = $state('80');
 	let creating = $state(false);
+
+	// Live mapping preview shown under the form, matching TunnelCard's rendering.
+	let mappingPreview = $derived.by(() => {
+		const source = formType === 'Remote' ? t('tunnel.server') : 'localhost';
+		const listen = formLocalPort || '?';
+		if (formType === 'Dynamic') {
+			return `${source}:${listen} → SOCKS`;
+		}
+		const host = formRemoteHost.trim() || '?';
+		const port = formRemotePort || '?';
+		return `${source}:${listen} → ${host}:${port}`;
+	});
 
 	async function loadTunnels(): Promise<void> {
 		try {
@@ -59,20 +72,24 @@
 
 		const localPort = parseInt(formLocalPort, 10);
 		const remotePort = parseInt(formRemotePort, 10);
+		const isDynamic = formType === 'Dynamic';
 
 		if (isNaN(localPort) || localPort < 1 || localPort > 65535) {
 			addToast(t('tunnel.invalid_local_port'), 'error');
 			return;
 		}
 
-		if (isNaN(remotePort) || remotePort < 1 || remotePort > 65535) {
-			addToast(t('tunnel.invalid_remote_port'), 'error');
-			return;
-		}
+		// Dynamic (SOCKS) tunnels have no fixed target host/port.
+		if (!isDynamic) {
+			if (isNaN(remotePort) || remotePort < 1 || remotePort > 65535) {
+				addToast(t('tunnel.invalid_remote_port'), 'error');
+				return;
+			}
 
-		if (!formRemoteHost.trim()) {
-			addToast(t('tunnel.remote_host_required'), 'error');
-			return;
+			if (!formRemoteHost.trim()) {
+				addToast(t('tunnel.remote_host_required'), 'error');
+				return;
+			}
 		}
 
 		try {
@@ -80,8 +97,8 @@
 			const tunnel = await tunnelCreate(
 				formType,
 				localPort,
-				formRemoteHost.trim(),
-				remotePort,
+				isDynamic ? '' : formRemoteHost.trim(),
+				isDynamic ? 0 : remotePort,
 				connectionId
 			);
 			tunnels.push(tunnel);
@@ -159,23 +176,33 @@
 
 			<div class="form-body">
 				<div class="type-selector">
-					{#each ['Local', 'Remote', 'Dynamic'] as tunnelType}
+					{#each TUNNEL_TYPES as tunnelType (tunnelType)}
 						<button
 							class="type-option"
 							class:selected={formType === tunnelType}
-							onclick={() => (formType = tunnelType as 'Local' | 'Remote' | 'Dynamic')}
+							onclick={() => (formType = tunnelType)}
 						>
-							{tunnelType}
+							{tunnelTypeLabel(tunnelType)}
 						</button>
 					{/each}
 				</div>
 
 				<Input label={t('tunnel.local_port')} bind:value={formLocalPort} type="number" placeholder="8080" />
-				<Input label={t('tunnel.remote_host')} bind:value={formRemoteHost} placeholder="localhost" />
 
 				{#if formType !== 'Dynamic'}
+					<Input
+						label={t('tunnel.remote_host')}
+						bind:value={formRemoteHost}
+						placeholder="localhost"
+						hint={t('tunnel.target_host_hint')}
+					/>
 					<Input label={t('tunnel.remote_port')} bind:value={formRemotePort} type="number" placeholder="80" />
 				{/if}
+
+				<div class="mapping-preview">
+					<span class="preview-label">{t('tunnel.preview')}</span>
+					<code class="preview-mapping">{mappingPreview}</code>
+				</div>
 
 				<div class="form-actions">
 					<Button variant="ghost" size="sm" onclick={handleCancelForm}>{t('common.cancel')}</Button>
@@ -350,6 +377,30 @@
 		justify-content: flex-end;
 		gap: 6px;
 		padding-top: 4px;
+	}
+
+	.mapping-preview {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 8px;
+		border-radius: var(--radius-btn);
+		background-color: color-mix(in srgb, var(--color-contrast) 3%, transparent);
+	}
+
+	.preview-label {
+		flex-shrink: 0;
+		font-size: 0.6875rem;
+		color: var(--color-text-secondary);
+	}
+
+	.preview-mapping {
+		font-family: var(--font-mono, monospace);
+		font-size: 0.75rem;
+		color: var(--color-text-primary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.divider {

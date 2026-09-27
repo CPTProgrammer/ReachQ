@@ -4,6 +4,7 @@
 		value?: string;
 		type?: 'text' | 'password' | 'number';
 		placeholder?: string;
+		hint?: string;
 		disabled?: boolean;
 		oninput?: (e: Event & { currentTarget: HTMLInputElement }) => void;
 	}
@@ -13,6 +14,7 @@
 		value = $bindable(''),
 		type = 'text',
 		placeholder = '',
+		hint = '',
 		disabled = false,
 		oninput
 	}: Props = $props();
@@ -23,38 +25,48 @@
 	let floated = $derived(focused || (value !== '' && value !== null && !Number.isNaN(value)));
 </script>
 
-<div class="input-wrapper" class:disabled>
-	{#if label}
-		<label class="input-label" class:floated for={inputId}>
-			{label}
-		</label>
+<div class="input-container" class:disabled>
+	<div class="input-wrapper">
+		{#if label}
+			<label class="input-label" class:floated for={inputId}>
+				{label}
+			</label>
+		{/if}
+
+		<input
+			id={inputId}
+			class="input-field"
+			class:has-label={!!label}
+			{type}
+			placeholder={label && !focused ? '' : placeholder}
+			{disabled}
+			bind:value
+			{oninput}
+			onfocus={() => (focused = true)}
+			onblur={() => (focused = false)}
+		/>
+
+		<div class="input-border" class:focused></div>
+	</div>
+
+	{#if hint}
+		<p class="input-hint">{hint}</p>
 	{/if}
-
-	<input
-		id={inputId}
-		class="input-field"
-		class:has-label={!!label}
-		{type}
-		placeholder={label && !focused ? '' : placeholder}
-		{disabled}
-		bind:value
-		{oninput}
-		onfocus={() => (focused = true)}
-		onblur={() => (focused = false)}
-	/>
-
-	<div class="input-border" class:focused></div>
 </div>
 
 <style>
-	.input-wrapper {
-		position: relative;
+	.input-container {
 		width: 100%;
 	}
 
-	.input-wrapper.disabled {
+	.input-container.disabled {
 		opacity: 0.4;
 		pointer-events: none;
+	}
+
+	.input-wrapper {
+		position: relative;
+		width: 100%;
 	}
 
 	.input-label {
@@ -127,5 +139,12 @@
 
 	.input-border.focused {
 		border-color: var(--color-accent);
+	}
+
+	.input-hint {
+		margin: 4px 2px 0;
+		font-size: 0.6875rem;
+		color: var(--color-text-secondary);
+		opacity: 0.8;
 	}
 </style>

@@ -19,10 +19,12 @@ Local forwarding is the only type that actually works right now. Remote and Dyna
 
 Open the Tunnels panel in the sidebar (the chain-link icon). Click **New Tunnel**. A form appears with:
 
-- **Type** — three buttons: Local, Remote, Dynamic. Selected type is highlighted in accent color.
-- **Local Port** — the port on your machine to listen on (e.g., `8080`). Must be 1-65535.
-- **Remote Host** — where the traffic goes on the other end (e.g., `localhost`, `10.0.0.5`). Can't be empty.
-- **Remote Port** — the port on the remote host (e.g., `3306`). Must be 1-65535. This field is hidden for Dynamic type.
+- **Type** — three buttons: Local Forward, Remote Forward, Dynamic (SOCKS). Selected type is highlighted in accent color.
+- **Listen Port** — the port to listen on (e.g., `8080`). Must be 1-65535. Local and Dynamic tunnels bind it on your machine; Remote tunnels bind it on the server.
+- **Target Host** — where the traffic goes on the other end, as seen from the SSH server (e.g., `localhost`, `10.0.0.5`). Can't be empty. Hidden for Dynamic type, which has no fixed target.
+- **Target Port** — the port on the target host (e.g., `3306`). Must be 1-65535. Also hidden for Dynamic type.
+
+A live preview at the bottom of the form shows the resulting mapping (e.g. `localhost:8080 → 10.0.0.5:3306`; Dynamic shows `localhost:1080 → SOCKS`).
 
 Hit **Create**. The tunnel gets created but doesn't start automatically — it's inactive by default. You'll see a toast confirming creation with the port number.
 
@@ -45,7 +47,7 @@ When you start a local tunnel, Reach binds a TCP listener on `127.0.0.1:{local_p
 Each card shows:
 
 - **Type badge** — a colored letter: **L** (blue) for Local, **R** (orange) for Remote, **D** (green) for Dynamic
-- **Mapping** — `localhost:{local_port} → {remote_host}:{remote_port}` in monospace
+- **Mapping** — the forwarding mapping in monospace: `localhost:{listen_port} → {target_host}:{target_port}` for Local, `server:{listen_port} → {target_host}:{target_port}` for Remote, and `localhost:{listen_port} → SOCKS` for Dynamic
 - **Status dot** — gray or green
 
 The trash icon on the right deletes the tunnel.
@@ -54,9 +56,9 @@ The trash icon on the right deletes the tunnel.
 
 Say there's a MySQL server on `10.0.0.5:3306` that's only reachable from your SSH host. Create a local tunnel:
 
-- Local Port: `3306`
-- Remote Host: `10.0.0.5`
-- Remote Port: `3306`
+- Listen Port: `3306`
+- Target Host: `10.0.0.5`
+- Target Port: `3306`
 
 Start it. Now point your database client at `localhost:3306` and traffic goes through the SSH tunnel. Same thing as `ssh -L 3306:10.0.0.5:3306`, just with a UI.
 

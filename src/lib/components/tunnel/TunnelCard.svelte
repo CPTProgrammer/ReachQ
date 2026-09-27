@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/state/i18n.svelte';
+	import { tunnelTypeLabel } from '$lib/utils/tunnel';
 	import type { TunnelConfig } from '$lib/ipc/tunnel';
 
 	interface Props {
@@ -33,20 +34,28 @@
 			class="type-badge"
 			style:color={typeColor}
 			style:border-color={typeColor}
-			title={t('tunnel.type_title', { type: tunnel.tunnel_type })}
+			title={tunnelTypeLabel(tunnel.tunnel_type)}
 		>
 			{typeLabel}
 		</span>
 
 		<div class="tunnel-info">
 			<span class="tunnel-mapping">
-				localhost:{tunnel.local_port}
+				{#if tunnel.tunnel_type === 'Remote'}
+					{t('tunnel.server')}:{tunnel.local_port}
+				{:else}
+					localhost:{tunnel.local_port}
+				{/if}
 				<svg class="arrow-icon" width="14" height="14" viewBox="0 0 24 24" fill="none">
 					<path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
 				</svg>
-				{tunnel.remote_host}:{tunnel.remote_port}
+				{#if tunnel.tunnel_type === 'Dynamic'}
+					SOCKS
+				{:else}
+					{tunnel.remote_host}:{tunnel.remote_port}
+				{/if}
 			</span>
-			<span class="tunnel-type">{t('tunnel.type_tunnel', { type: tunnel.tunnel_type })}</span>
+			<span class="tunnel-type">{tunnelTypeLabel(tunnel.tunnel_type)}</span>
 		</div>
 
 		<div class="tunnel-status">
