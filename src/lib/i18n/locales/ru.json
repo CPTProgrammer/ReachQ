@@ -179,6 +179,8 @@
   "tunnel.target_host_hint": "Адрес, доступный с SSH-сервера",
   "tunnel.preview": "Предпросмотр",
   "tunnel.server": "сервер",
+  "tunnel.local_machine": "локальный",
+  "tunnel.any_destination": "Любое назначение",
   "explorer.upload": "Загрузить",
   "explorer.download": "Скачать",
   "explorer.delete": "Удалить",

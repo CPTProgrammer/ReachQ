@@ -185,6 +185,8 @@
   "tunnel.target_host_hint": "Адрес, достъпен от SSH сървъра",
   "tunnel.preview": "Преглед",
   "tunnel.server": "сървър",
+  "tunnel.local_machine": "локален",
+  "tunnel.any_destination": "Всяка дестинация",
 
   "explorer.upload": "Качи",
   "explorer.download": "Изтегли",

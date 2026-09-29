@@ -12,6 +12,7 @@
 	import { listen } from '@tauri-apps/api/event';
 	import { TUNNEL_TYPES, tunnelTypeLabel, type TunnelTypeName } from '$lib/utils/tunnel';
 	import TunnelCard from './TunnelCard.svelte';
+	import TunnelFlowIcon from './TunnelFlowIcon.svelte';
 	import Input from '$lib/components/shared/Input.svelte';
 	import Button from '$lib/components/shared/Button.svelte';
 	import { untrack } from 'svelte';
@@ -46,14 +47,27 @@
 
 	// Live mapping preview shown under the form, matching TunnelCard's rendering.
 	let mappingPreview = $derived.by(() => {
-		const source = formType === 'Remote' ? t('tunnel.server') : 'localhost';
+		const server = t('tunnel.server');
+		const local = t('tunnel.local_machine');
 		const listen = formLocalPort || '?';
-		if (formType === 'Dynamic') {
-			return `${source}:${listen} → SOCKS`;
-		}
 		const host = formRemoteHost.trim() || '?';
 		const port = formRemotePort || '?';
-		return `${source}:${listen} → ${host}:${port}`;
+		if (formType === 'Dynamic') {
+			return {
+				serverSide: `${server} ${t('tunnel.any_destination')}`,
+				localSide: `${local} localhost:${listen}`
+			};
+		}
+		if (formType === 'Remote') {
+			return {
+				serverSide: `${server} localhost:${listen}`,
+				localSide: `${local} ${host}:${port}`
+			};
+		}
+		return {
+			serverSide: `${server} ${host}:${port}`,
+			localSide: `${local} localhost:${listen}`
+		};
 	});
 
 	async function loadTunnels(): Promise<void> {
@@ -242,7 +256,13 @@
 
 				<div class="mapping-preview">
 					<span class="preview-label">{t('tunnel.preview')}</span>
-					<code class="preview-mapping">{mappingPreview}</code>
+					<code class="preview-mapping">
+						<span class="preview-row">
+							<TunnelFlowIcon type={formType} />
+							<span>{mappingPreview.serverSide}</span>
+						</span>
+						<span>{mappingPreview.localSide}</span>
+					</code>
 				</div>
 
 				<div class="form-actions">
@@ -267,25 +287,12 @@
 			<div class="divider"></div>
 			<div class="tunnels-scroll">
 				{#each visibleTunnels as tunnel (tunnel.id)}
-					<div class="tunnel-row">
-						<TunnelCard
-							{tunnel}
-							onstart={() => handleStart(tunnel)}
-							onstop={() => handleStop(tunnel)}
-						/>
-						<button
-							class="delete-btn"
-							onclick={() => handleDelete(tunnel)}
-							title={t('tunnel.remove')}
-							aria-label={t('tunnel.remove')}
-						>
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M3 6h18" />
-								<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-								<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-							</svg>
-						</button>
-					</div>
+					<TunnelCard
+						{tunnel}
+						onstart={() => handleStart(tunnel)}
+						onstop={() => handleStop(tunnel)}
+						ondelete={() => handleDelete(tunnel)}
+					/>
 				{/each}
 			</div>
 		{/if}
@@ -436,12 +443,20 @@
 	}
 
 	.preview-mapping {
+		display: flex;
+		flex-direction: column;
 		font-family: var(--font-mono, monospace);
 		font-size: 0.75rem;
 		color: var(--color-text-primary);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.preview-row {
+		display: flex;
+		align-items: center;
+		gap: 4px;
 	}
 
 	.divider {
@@ -456,48 +471,6 @@
 		flex-direction: column;
 		gap: 2px;
 		overflow-y: auto;
-	}
-
-	.tunnel-row {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-	}
-
-	.tunnel-row :global(.tunnel-card) {
-		flex: 1;
-	}
-
-	.delete-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
-		padding: 0;
-		border: none;
-		border-radius: 4px;
-		background: transparent;
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		opacity: 0;
-		transition:
-			background-color var(--duration-default) var(--ease-default),
-			color var(--duration-default) var(--ease-default),
-			opacity var(--duration-default) var(--ease-default);
-	}
-
-	.tunnel-row:hover .delete-btn {
-		opacity: 1;
-	}
-
-	.delete-btn:hover {
-		background-color: color-mix(in srgb, var(--color-contrast) 8%, transparent);
-		color: var(--color-danger);
-	}
-
-	.delete-btn:active {
-		transform: scale(0.92);
 	}
 
 	.loading-state {

@@ -185,6 +185,8 @@
   "tunnel.target_host_hint": "Διεύθυνση προσβάσιμη από τον διακομιστή SSH",
   "tunnel.preview": "Προεπισκόπηση",
   "tunnel.server": "διακομιστής",
+  "tunnel.local_machine": "τοπικός",
+  "tunnel.any_destination": "Οποιοσδήποτε προορισμός",
 
   "explorer.upload": "Μεταφόρτωση",
   "explorer.download": "Λήψη",

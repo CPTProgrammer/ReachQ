@@ -185,6 +185,8 @@
   "tunnel.target_host_hint": "Address reachable from the SSH server",
   "tunnel.preview": "Preview",
   "tunnel.server": "server",
+  "tunnel.local_machine": "local",
+  "tunnel.any_destination": "Any destination",
 
   "explorer.upload": "Upload",
   "explorer.download": "Download",

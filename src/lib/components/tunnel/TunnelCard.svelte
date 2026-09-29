@@ -2,14 +2,16 @@
 	import { t } from '$lib/state/i18n.svelte';
 	import { tunnelTypeLabel } from '$lib/utils/tunnel';
 	import type { TunnelConfig } from '$lib/ipc/tunnel';
+	import TunnelFlowIcon from './TunnelFlowIcon.svelte';
 
 	interface Props {
 		tunnel: TunnelConfig;
 		onstart: () => void;
 		onstop: () => void;
+		ondelete: () => void;
 	}
 
-	let { tunnel, onstart, onstop }: Props = $props();
+	let { tunnel, onstart, onstop, ondelete }: Props = $props();
 
 	let typeLabel = $derived(
 		tunnel.tunnel_type === 'Local'
@@ -40,22 +42,29 @@
 		</span>
 
 		<div class="tunnel-info">
-			<span class="tunnel-mapping">
-				{#if tunnel.tunnel_type === 'Remote'}
-					{t('tunnel.server')}:{tunnel.local_port}
-				{:else}
-					localhost:{tunnel.local_port}
-				{/if}
-				<svg class="arrow-icon" width="14" height="14" viewBox="0 0 24 24" fill="none">
-					<path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-				</svg>
-				{#if tunnel.tunnel_type === 'Dynamic'}
-					SOCKS
-				{:else}
-					{tunnel.remote_host}:{tunnel.remote_port}
-				{/if}
+			<span class="tunnel-row" class:listen={tunnel.tunnel_type === 'Remote'}>
+				<TunnelFlowIcon type={tunnel.tunnel_type} />
+				<span class="side-badge">{t('tunnel.server')}</span>
+				<span class="addr">
+					{#if tunnel.tunnel_type === 'Dynamic'}
+						{t('tunnel.any_destination')}
+					{:else if tunnel.tunnel_type === 'Remote'}
+						localhost:{tunnel.local_port}
+					{:else}
+						{tunnel.remote_host}:{tunnel.remote_port}
+					{/if}
+				</span>
 			</span>
-			<span class="tunnel-type">{tunnelTypeLabel(tunnel.tunnel_type)}</span>
+			<span class="tunnel-row" class:listen={tunnel.tunnel_type !== 'Remote'}>
+				<span class="side-badge">{t('tunnel.local_machine')}</span>
+				<span class="addr">
+					{#if tunnel.tunnel_type === 'Remote'}
+						{tunnel.remote_host}:{tunnel.remote_port}
+					{:else}
+						localhost:{tunnel.local_port}
+					{/if}
+				</span>
+			</span>
 		</div>
 
 		<div class="tunnel-status">
@@ -81,6 +90,13 @@
 				</svg>
 			</button>
 		{/if}
+		<button class="action-btn delete-btn" onclick={ondelete} title={t('tunnel.remove')} aria-label={t('tunnel.remove')}>
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M3 6h18" />
+				<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+				<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+			</svg>
+		</button>
 	</div>
 </div>
 
@@ -128,27 +144,33 @@
 		gap: 2px;
 	}
 
-	.tunnel-mapping {
-		display: inline-flex;
+	.tunnel-row {
+		display: flex;
 		align-items: center;
 		gap: 4px;
 		font-size: 0.75rem;
 		font-family: var(--font-mono, monospace);
-		color: var(--color-text-primary);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.arrow-icon {
-		flex-shrink: 0;
 		color: var(--color-text-secondary);
-		opacity: 0.6;
+		white-space: nowrap;
 	}
 
-	.tunnel-type {
+	.tunnel-row.listen {
+		color: var(--color-text-primary);
+	}
+
+	.side-badge {
+		flex-shrink: 0;
+		padding: 0 3px;
+		border-radius: 3px;
 		font-size: 0.625rem;
 		color: var(--color-text-secondary);
+		background-color: color-mix(in srgb, var(--color-contrast) 6%, transparent);
+	}
+
+	.addr {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.tunnel-status {
@@ -177,12 +199,6 @@
 		display: flex;
 		align-items: center;
 		gap: 2px;
-		opacity: 0;
-		transition: opacity var(--duration-default) var(--ease-default);
-	}
-
-	.tunnel-card:hover .tunnel-actions {
-		opacity: 1;
 	}
 
 	.action-btn {
@@ -216,6 +232,10 @@
 	}
 
 	.stop-btn:hover {
+		color: var(--color-danger);
+	}
+
+	.delete-btn:hover {
 		color: var(--color-danger);
 	}
 </style>

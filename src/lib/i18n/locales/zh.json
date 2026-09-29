@@ -185,6 +185,8 @@
   "tunnel.target_host_hint": "从 SSH 服务器可达的地址",
   "tunnel.preview": "预览",
   "tunnel.server": "服务器",
+  "tunnel.local_machine": "本机",
+  "tunnel.any_destination": "任意目标",
 
   "explorer.upload": "上传",
   "explorer.download": "下载",
