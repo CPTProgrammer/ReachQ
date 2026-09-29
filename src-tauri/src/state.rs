@@ -122,6 +122,11 @@ pub struct Folder {
 }
 
 /// Configuration for a port-forwarding tunnel.
+///
+/// Persistent tunnels carry a `session_id` and are stored encrypted in the
+/// vault (`__tunnels__` internal vault). Ephemeral tunnels created from a
+/// quick connect carry only a runtime `connection_id` and live in
+/// `AppState.tunnels` for the app's lifetime.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TunnelConfig {
     pub id: String,
@@ -129,7 +134,15 @@ pub struct TunnelConfig {
     pub local_port: u16,
     pub remote_host: String,
     pub remote_port: u16,
-    pub connection_id: String,
+    /// Saved session this tunnel belongs to (persistent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Runtime connection binding (ephemeral tunnels only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
+    /// Runtime-only flag, derived from the forwarder task registry at list
+    /// time. Never meaningfully persisted.
+    #[serde(default)]
     pub active: bool,
 }
 

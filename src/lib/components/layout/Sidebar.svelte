@@ -11,9 +11,10 @@
 
 	interface Props {
 		connectionId?: string;
+		sessionId?: string;
 	}
 
-	let { connectionId }: Props = $props();
+	let { connectionId, sessionId }: Props = $props();
 
 	let activeSection = $state<Section>('sessions');
 	let dragging = $state(false);
@@ -130,7 +131,7 @@
 				{:else if activeSection === 'explorer'}
 					<FileExplorer {connectionId} />
 				{:else if activeSection === 'tunnels'}
-					<TunnelManager {connectionId} />
+					<TunnelManager {connectionId} {sessionId} />
 				{:else if activeSection === 'snippets'}
 					<SnippetPanel {connectionId} />
 				{:else if activeSection === 'plugins'}

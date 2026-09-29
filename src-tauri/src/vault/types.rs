@@ -113,6 +113,7 @@ pub enum SecretCategory {
     Folder,
     Playbook,
     Setting,
+    Tunnel,
     Custom(String),
 }
 
@@ -129,6 +130,7 @@ impl fmt::Display for SecretCategory {
             SecretCategory::Folder => write!(f, "folder"),
             SecretCategory::Playbook => write!(f, "playbook"),
             SecretCategory::Setting => write!(f, "setting"),
+            SecretCategory::Tunnel => write!(f, "tunnel"),
             SecretCategory::Custom(s) => write!(f, "custom:{}", s),
         }
     }
@@ -149,6 +151,7 @@ impl std::str::FromStr for SecretCategory {
             "folder" => Ok(SecretCategory::Folder),
             "playbook" => Ok(SecretCategory::Playbook),
             "setting" => Ok(SecretCategory::Setting),
+            "tunnel" => Ok(SecretCategory::Tunnel),
             s if s.starts_with("custom:") => Ok(SecretCategory::Custom(s[7..].to_string())),
             _ => Err(format!("Unknown category: {}", s)),
         }

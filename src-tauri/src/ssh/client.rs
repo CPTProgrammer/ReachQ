@@ -873,25 +873,30 @@ impl SshManager {
     /// while an agent tool call holds a lease, mark the connection
     /// pending-close instead of tearing it down; the last lease release
     /// performs the real disconnect.
-    pub fn disconnect(&mut self, id: &str) -> Result<(), SshError> {
+    ///
+    /// Returns true when no leases block the teardown — the caller must run
+    /// `teardown_connection`, which owns registry removal and transport
+    /// shutdown. The connection stays registered until then.
+    pub fn disconnect(&mut self, id: &str) -> Result<bool, SshError> {
         let conn = self.connections.get_mut(id)
             .ok_or_else(|| SshError::NotFound(id.to_string()))?;
         if conn.lease_count > 0 {
             conn.pending_close = true;
             tracing::info!("SSH pending close (leased by agent): {}", id);
-            return Ok(());
+            return Ok(false);
         }
-        self.force_disconnect(id)
+        Ok(true)
     }
 
-    /// Unconditional disconnect: explicit user action (SessionList) or
-    /// dead-connection cleanup.
-    pub fn force_disconnect(&mut self, id: &str) -> Result<(), SshError> {
+    /// Unconditional removal from the registry: notifies the session task
+    /// and returns the removed connection so the caller can shut down the
+    /// transport via `Handle::disconnect`. Used by `teardown_connection`.
+    fn force_disconnect(&mut self, id: &str) -> Result<ActiveConnection, SshError> {
         let conn = self.connections.remove(id)
             .ok_or_else(|| SshError::NotFound(id.to_string()))?;
         let _ = conn.cmd_tx.send(SessionCommand::Close);
         tracing::info!("SSH disconnected: {}", id);
-        Ok(())
+        Ok(conn)
     }
 
     /// Acquire a tool-call lease on a connection.
@@ -902,19 +907,16 @@ impl SshManager {
         Ok(())
     }
 
-    /// Release a lease. Returns true when this release triggered the real
-    /// disconnect of a pending-close connection (caller should invalidate
-    /// caches and notify the frontend).
+    /// Release a lease. Returns true when this release left a pending-close
+    /// connection with zero leases — the caller must run
+    /// `teardown_connection` (it owns registry removal, dependent-subsystem
+    /// cleanup and transport shutdown).
     pub fn release_lease(&mut self, id: &str) -> bool {
         let Some(conn) = self.connections.get_mut(id) else {
             return false;
         };
         conn.lease_count = conn.lease_count.saturating_sub(1);
-        if conn.lease_count == 0 && conn.pending_close {
-            let _ = self.force_disconnect(id);
-            return true;
-        }
-        false
+        conn.lease_count == 0 && conn.pending_close
     }
 
     /// Find a live connection id for an agent owner scope, preferring
@@ -1346,17 +1348,17 @@ async fn ssh_session_task(
                     Some(ChannelMsg::ExitStatus { exit_status }) => {
                         tracing::info!("SSH '{}' exited with status {}", connection_id, exit_status);
                         let _ = app_handle.emit(&exit_event, exit_status);
-                        cleanup_dead_connection(&app_handle, &connection_id).await;
+                        teardown_connection(&app_handle, &connection_id).await;
                         break;
                     }
                     Some(ChannelMsg::Eof) => {
                         tracing::info!("SSH '{}' received EOF", connection_id);
-                        cleanup_dead_connection(&app_handle, &connection_id).await;
+                        teardown_connection(&app_handle, &connection_id).await;
                         break;
                     }
                     None => {
                         tracing::info!("SSH '{}' channel closed", connection_id);
-                        cleanup_dead_connection(&app_handle, &connection_id).await;
+                        teardown_connection(&app_handle, &connection_id).await;
                         break;
                     }
                     _ => {}
@@ -1402,13 +1404,19 @@ async fn ssh_session_task(
     tracing::info!("SSH '{}' session task exiting", connection_id);
 }
 
-/// Clean up a connection that died unexpectedly (network drop, server
-/// timeout, etc.). Stops monitoring and removes the connection from the
-/// manager so the monitoring loop doesn't keep retrying on a dead handle.
-async fn cleanup_dead_connection(app_handle: &tauri::AppHandle, connection_id: &str) {
+/// Full connection teardown. Idempotent and safe on half-dead connections.
+///
+/// Stops dependent subsystems first (monitoring, cached SFTP session,
+/// tunnels), then removes the connection from the registry and shuts the
+/// transport down for real. The explicit `Handle::disconnect` matters:
+/// russh's session loop runs until every Handle/Channel sender is dropped,
+/// so a handle cloned into a tunnel (or a cached SFTP channel) would
+/// otherwise keep the TCP/SSH transport — and any in-flight agent tool
+/// calls riding it — alive forever.
+pub(crate) async fn teardown_connection(app_handle: &tauri::AppHandle, connection_id: &str) {
     let state = app_handle.state::<crate::state::AppState>();
 
-    // Stop the monitoring task first — it depends on the SSH handle.
+    // Monitoring polls over the connection.
     {
         let mut collector = state.monitoring_collector.lock().await;
         collector.stop(connection_id);
@@ -1418,8 +1426,38 @@ async fn cleanup_dead_connection(app_handle: &tauri::AppHandle, connection_id: &
         monitoring.remove(connection_id);
     }
 
-    // Remove the dead connection from SshManager. Unconditional: leases
-    // cannot ride a dead channel; the next tool call re-resolves.
-    let mut manager = state.ssh_manager.lock().await;
-    let _ = manager.force_disconnect(connection_id);
+    // A cached SFTP protocol session holds a russh Channel — dropping it
+    // releases one of the senders keeping the transport alive.
+    {
+        let mut backends = state.sftp_backend_manager.lock().await;
+        backends.invalidate(connection_id);
+    }
+
+    // Tunnels die with their connection (tunnels follow tabs).
+    let stopped_tunnels = {
+        let mut tunnel_manager = state.tunnel_manager.lock().await;
+        tunnel_manager.stop_tunnels_for_connection(connection_id).await
+    };
+    if !stopped_tunnels.is_empty() {
+        let _ = app_handle.emit("tunnel-changed", ());
+    }
+
+    // Registry removal, then the real transport shutdown.
+    let removed = {
+        let mut manager = state.ssh_manager.lock().await;
+        manager.force_disconnect(connection_id).ok()
+    };
+    if let Some(conn) = removed {
+        let handle = conn.handle.clone();
+        let id = connection_id.to_string();
+        tokio::spawn(async move {
+            let guard = handle.lock().await;
+            if let Err(e) = guard
+                .disconnect(russh::Disconnect::ByApplication, "connection closed", "en")
+                .await
+            {
+                tracing::debug!("Transport disconnect for {}: {}", id, e);
+            }
+        });
+    }
 }

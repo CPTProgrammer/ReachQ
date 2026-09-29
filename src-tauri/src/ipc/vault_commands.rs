@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use secrecy::SecretBox;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::state::AppState;
 use crate::vault::{
@@ -21,13 +21,20 @@ pub async fn vault_init_identity(
 }
 
 #[tauri::command]
-#[tracing::instrument(skip(password, state))]
+#[tracing::instrument(skip(password, state, app))]
 pub async fn vault_unlock(
     password: String,
     state: State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<bool, String> {
     let mut manager = state.vault_manager.lock().await;
-    manager.unlock(&password).await.map_err(|e| e.to_string())
+    let unlocked = manager.unlock(&password).await.map_err(|e| e.to_string())?;
+    if unlocked {
+        // Panels that loaded while the vault was locked (e.g. persistent
+        // tunnels) refresh on this event.
+        let _ = app.emit("vault-unlocked", ());
+    }
+    Ok(unlocked)
 }
 
 #[tauri::command]
@@ -54,10 +61,14 @@ pub async fn vault_has_identity(state: State<'_, AppState>) -> Result<bool, Stri
 
 /// Auto-unlock using OS keychain (TLS-style, no password needed).
 #[tauri::command]
-#[tracing::instrument(skip(state))]
-pub async fn vault_auto_unlock(state: State<'_, AppState>) -> Result<bool, String> {
+#[tracing::instrument(skip(state, app))]
+pub async fn vault_auto_unlock(state: State<'_, AppState>, app: AppHandle) -> Result<bool, String> {
     let mut manager = state.vault_manager.lock().await;
-    manager.auto_unlock().await.map_err(|e| e.to_string())
+    let unlocked = manager.auto_unlock().await.map_err(|e| e.to_string())?;
+    if unlocked {
+        let _ = app.emit("vault-unlocked", ());
+    }
+    Ok(unlocked)
 }
 
 /// Reset vault - delete all local data and start fresh.

@@ -28,6 +28,18 @@ A live preview at the bottom of the form shows the resulting mapping (e.g. `loca
 
 Hit **Create**. The tunnel gets created but doesn't start automatically — it's inactive by default. You'll see a toast confirming creation with the port number.
 
+## Persistence
+
+Tunnels created while a **saved session** tab is active are stored encrypted in the vault, bound to that session, and survive app restarts. Starting one only requires that *some* connection of that session is live — by default the connection of the tab you're looking at. If the session isn't connected, starting fails with a "session not connected" error.
+
+Tunnels created from a **quick connect** (no saved session) are ephemeral: they live only for the app's lifetime and disappear on exit.
+
+The panel is scoped to the active tab (like the file explorer): session-bound tunnels appear on any tab of their session, quick-connect tunnels only on the tab that created them.
+
+## Tunnel Lifecycle
+
+A tunnel rides one specific SSH connection and **stops when that connection closes** — whether you close the tab, disconnect, or the network drops. The tunnel configuration persists; reconnect the session and start it again. Closing a tab also shuts the SSH transport down for real, so no orphaned background connections linger.
+
 ## Starting and Stopping
 
 Each tunnel shows up as a card with a status dot:
@@ -83,7 +95,6 @@ Plugins get notified about tunnel events:
 
 ## Limitations
 
-- Tunnels don't persist across app restarts. You'll need to recreate them.
 - Remote and Dynamic forwarding are defined in the type system but not implemented yet.
-- If the SSH connection drops, the tunnel dies with it.
+- Tunnels don't outlive their connection — see Tunnel Lifecycle above.
 - Port conflicts (another process already using the local port) are caught and reported as errors.

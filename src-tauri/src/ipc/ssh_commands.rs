@@ -194,10 +194,13 @@ pub async fn ssh_resize(
     manager.resize(&connection_id, cols, rows).map_err(|e| e.to_string())
 }
 
-/// Disconnect a connection. `force` (SessionList's explicit disconnect)
-/// bypasses agent leases; without it, a leased connection is marked
-/// pending-close and torn down when the last lease releases (design 02 §3.1).
+/// Disconnect a connection. `force` bypasses agent leases; without it, a
+/// leased connection is marked pending-close and torn down when the last
+/// lease releases (design 02 §3.1).
 /// Returns true when the connection was actually torn down now.
+///
+/// Actual teardown (registry removal, dependent subsystems, real transport
+/// shutdown) runs in `teardown_connection`.
 #[tauri::command]
 pub async fn ssh_disconnect(
     app: tauri::AppHandle,
@@ -205,23 +208,21 @@ pub async fn ssh_disconnect(
     connection_id: String,
     force: Option<bool>,
 ) -> Result<bool, String> {
-    let actually_disconnected = {
+    let can_teardown = {
         let mut manager = state.ssh_manager.lock().await;
         if force.unwrap_or(false) {
-            manager.force_disconnect(&connection_id).map_err(|e| e.to_string())?;
-            true
+            // Unconditional: skip the lease check entirely.
+            manager.is_connected(&connection_id)
         } else {
-            manager.disconnect(&connection_id).map_err(|e| e.to_string())?;
-            !manager.is_connected(&connection_id)
+            manager.disconnect(&connection_id).map_err(|e| e.to_string())?
         }
     };
 
-    if !actually_disconnected {
+    if !can_teardown {
         return Ok(false); // pending close, leased by the agent
     }
 
-    // Release the cached SFTP backend (closes the SFTP session if any).
-    state.sftp_backend_manager.lock().await.invalidate(&connection_id);
+    crate::ssh::client::teardown_connection(&app, &connection_id).await;
 
     // Fire-and-forget hook dispatch (see ssh_connect for rationale).
     let hook = hooks::session_disconnected(&connection_id);

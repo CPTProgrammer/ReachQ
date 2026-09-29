@@ -12,6 +12,7 @@ pub mod types;
 pub use error::VaultError;
 pub use manager::{
     VaultManager, CREDENTIALS_VAULT, FOLDERS_VAULT, PLAYBOOKS_VAULT, SESSIONS_VAULT, SETTINGS_VAULT,
+    TUNNELS_VAULT,
 };
 pub use types::{
     AppSettings, InviteInfo, MemberInfo, MemberRole, ReceivedShare, SecretCategory, SecretMetadata,

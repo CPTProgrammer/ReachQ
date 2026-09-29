@@ -181,8 +181,13 @@ impl ConnectionLease {
                     })
                 }
                 Err(_) => {
-                    let mut manager = ssh_manager.lock().await;
-                    manager.release_lease(&connection_id);
+                    let needs_teardown = {
+                        let mut manager = ssh_manager.lock().await;
+                        manager.release_lease(&connection_id)
+                    };
+                    if needs_teardown {
+                        crate::ssh::client::teardown_connection(&app, &connection_id).await;
+                    }
                     if attempt == 0 {
                         excluded = Some(connection_id);
                         continue;
@@ -198,19 +203,17 @@ impl ConnectionLease {
 impl Drop for ConnectionLease {
     fn drop(&mut self) {
         let ssh_manager = self.ssh_manager.clone();
-        let sftp_backends = self.sftp_backends.clone();
         let app = self.app.clone();
         let connection_id = self.connection_id.clone();
         tokio::spawn(async move {
-            let closed = {
+            let needs_teardown = {
                 let mut manager = ssh_manager.lock().await;
                 manager.release_lease(&connection_id)
             };
-            if closed {
-                {
-                    let mut backends = sftp_backends.lock().await;
-                    backends.invalidate(&connection_id);
-                }
+            if needs_teardown {
+                // Registry removal, SFTP cache invalidation, tunnel stop and
+                // the real transport shutdown all live in teardown_connection.
+                crate::ssh::client::teardown_connection(&app, &connection_id).await;
                 // Frontend closes the pending-close tab on this event.
                 let _ = app.emit(
                     &format!("ssh-pending-close-done-{}", connection_id),
@@ -239,7 +242,7 @@ impl AgentRemoteFs {
     ) -> Result<Self, SftpBrowserError> {
         let lease =
             ConnectionLease::acquire(ssh_manager, sftp_backends, app, scope, hint).await?;
-        let fs = RemoteFs::connect(ssh_manager, sftp_backends, &lease.connection_id)
+        let fs = RemoteFs::connect(ssh_manager, &lease.sftp_backends, &lease.connection_id)
             .await
             .map_err(|e| {
                 // Drop of `lease` releases it; surface the original error.

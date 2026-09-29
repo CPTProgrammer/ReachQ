@@ -28,6 +28,7 @@
 
 	let activeTab = $derived(getActiveTab());
 	let activeConnectionId = $derived(activeTab?.connectionId);
+	let activeSessionId = $derived(activeTab?.sshConnectParams?.sessionId);
 </script>
 
 <div class="app-shell">
@@ -35,7 +36,7 @@
 	<TabBar />
 
 	<div class="app-body">
-		<Sidebar connectionId={activeConnectionId} />
+		<Sidebar connectionId={activeConnectionId} sessionId={activeSessionId} />
 		<main class="main-content">
 			{@render children()}
 		</main>

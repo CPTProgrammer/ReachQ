@@ -31,6 +31,23 @@ pub const SETTINGS_VAULT: &str = "__settings__";
 pub const TOFU_PROJECTS_VAULT: &str = "__tofu_projects__";
 pub const ANSIBLE_PROJECTS_VAULT: &str = "__ansible_projects__";
 pub const SNIPPETS_VAULT: &str = "__snippets__";
+pub const TUNNELS_VAULT: &str = "__tunnels__";
+
+/// Every internal vault. These are opened/unlocked together at unlock time
+/// (and mapped onto the unified `__personal__` vault when sync is enabled),
+/// so any internal vault name MUST be listed here — otherwise its name→id
+/// mapping is never rebuilt after a restart and its data becomes unreadable.
+pub const INTERNAL_VAULT_NAMES: [&str; 9] = [
+    SESSIONS_VAULT,
+    CREDENTIALS_VAULT,
+    FOLDERS_VAULT,
+    PLAYBOOKS_VAULT,
+    SETTINGS_VAULT,
+    TOFU_PROJECTS_VAULT,
+    ANSIBLE_PROJECTS_VAULT,
+    SNIPPETS_VAULT,
+    TUNNELS_VAULT,
+];
 
 /// Vault connection state.
 pub struct VaultConnection {
@@ -437,8 +454,7 @@ impl VaultManager {
 
             // Ensure we're unlocked to decrypt local secrets
             let _ = self.kek.as_ref().ok_or(VaultError::Locked)?;
-            let internal_names =
-                [SESSIONS_VAULT, CREDENTIALS_VAULT, FOLDERS_VAULT, PLAYBOOKS_VAULT, SETTINGS_VAULT, TOFU_PROJECTS_VAULT, ANSIBLE_PROJECTS_VAULT, SNIPPETS_VAULT];
+            let internal_names = INTERNAL_VAULT_NAMES;
 
             // Step 1: Read and decrypt all secrets from local vaults
             let mut all_secrets: Vec<(String, String, SecretCategory, SecretBox<Vec<u8>>)> =
@@ -597,16 +613,7 @@ impl VaultManager {
                     vault_id
                 );
                 // Map all internal vault names to this unified vault
-                for name in [
-                    SESSIONS_VAULT,
-                    CREDENTIALS_VAULT,
-                    FOLDERS_VAULT,
-                    PLAYBOOKS_VAULT,
-                    SETTINGS_VAULT,
-                    TOFU_PROJECTS_VAULT,
-                    ANSIBLE_PROJECTS_VAULT,
-                    SNIPPETS_VAULT,
-                ] {
+                for name in INTERNAL_VAULT_NAMES {
                     self.vault_names.insert(name.to_string(), vault_id.clone());
                 }
                 // Verify vault is unlocked
@@ -680,16 +687,7 @@ impl VaultManager {
                 "Mapping all internal vault names to unified vault: {}",
                 unified_id
             );
-            for name in [
-                SESSIONS_VAULT,
-                CREDENTIALS_VAULT,
-                FOLDERS_VAULT,
-                PLAYBOOKS_VAULT,
-                SETTINGS_VAULT,
-                TOFU_PROJECTS_VAULT,
-                ANSIBLE_PROJECTS_VAULT,
-                SNIPPETS_VAULT,
-            ] {
+            for name in INTERNAL_VAULT_NAMES {
                 self.vault_names.insert(name.to_string(), unified_id.clone());
             }
             tracing::info!(
@@ -703,16 +701,7 @@ impl VaultManager {
         // Local-only mode: each internal vault is separate
         let mut ids_changed = false;
 
-        for name in [
-            SESSIONS_VAULT,
-            CREDENTIALS_VAULT,
-            FOLDERS_VAULT,
-            PLAYBOOKS_VAULT,
-            SETTINGS_VAULT,
-            TOFU_PROJECTS_VAULT,
-            ANSIBLE_PROJECTS_VAULT,
-            SNIPPETS_VAULT,
-        ] {
+        for name in INTERNAL_VAULT_NAMES {
             if self.vault_names.get(name).is_some() {
                 continue; // Already open
             }
@@ -2268,16 +2257,7 @@ impl VaultManager {
         }
         // If backup had unified vault, map all internal names to it
         if let Some(ref uid) = unified_vault_id {
-            for name in [
-                SESSIONS_VAULT,
-                CREDENTIALS_VAULT,
-                FOLDERS_VAULT,
-                PLAYBOOKS_VAULT,
-                SETTINGS_VAULT,
-                TOFU_PROJECTS_VAULT,
-                ANSIBLE_PROJECTS_VAULT,
-                SNIPPETS_VAULT,
-            ] {
+            for name in INTERNAL_VAULT_NAMES {
                 internal_vault_ids.insert(name.to_string(), uid.clone());
             }
         }

@@ -3,11 +3,13 @@
 		tunnelCreate,
 		tunnelStart,
 		tunnelStop,
+		tunnelDelete,
 		tunnelList,
 		type TunnelConfig
 	} from '$lib/ipc/tunnel';
 	import { addToast } from '$lib/state/toasts.svelte';
 	import { t } from '$lib/state/i18n.svelte';
+	import { listen } from '@tauri-apps/api/event';
 	import { TUNNEL_TYPES, tunnelTypeLabel, type TunnelTypeName } from '$lib/utils/tunnel';
 	import TunnelCard from './TunnelCard.svelte';
 	import Input from '$lib/components/shared/Input.svelte';
@@ -16,13 +18,25 @@
 
 	interface Props {
 		connectionId?: string;
+		sessionId?: string;
 	}
 
-	let { connectionId }: Props = $props();
+	let { connectionId, sessionId }: Props = $props();
 
 	let tunnels = $state<TunnelConfig[]>([]);
 	let loading = $state(true);
 	let showForm = $state(false);
+
+	// Scope the panel to the active tab, like the file explorer:
+	// session-bound tunnels show on any tab of their session, ephemeral
+	// (quick-connect) tunnels only on the connection that created them.
+	let visibleTunnels = $derived(
+		tunnels.filter(
+			(t) =>
+				(sessionId !== undefined && t.session_id === sessionId) ||
+				(connectionId !== undefined && t.connection_id === connectionId)
+		)
+	);
 
 	let formType = $state<TunnelTypeName>('Local');
 	let formLocalPort = $state('8080');
@@ -65,7 +79,9 @@
 	}
 
 	async function handleCreateTunnel(): Promise<void> {
-		if (!connectionId) {
+		// Session-bound tunnels persist in the vault; quick-connect tunnels
+		// are ephemeral and bound to the runtime connection.
+		if (!sessionId && !connectionId) {
 			addToast(t('tunnel.no_connection'), 'error');
 			return;
 		}
@@ -99,7 +115,8 @@
 				localPort,
 				isDynamic ? '' : formRemoteHost.trim(),
 				isDynamic ? 0 : remotePort,
-				connectionId
+				sessionId ? null : (connectionId ?? null),
+				sessionId ?? null
 			);
 			tunnels.push(tunnel);
 			tunnels = tunnels;
@@ -114,7 +131,7 @@
 
 	async function handleStart(tunnel: TunnelConfig): Promise<void> {
 		try {
-			await tunnelStart(tunnel.id);
+			await tunnelStart(tunnel.id, connectionId ?? null);
 			const idx = tunnels.findIndex((t) => t.id === tunnel.id);
 			if (idx >= 0) {
 				tunnels[idx] = { ...tunnels[idx], active: true };
@@ -138,13 +155,37 @@
 		}
 	}
 
-	function handleDelete(tunnel: TunnelConfig): void {
-		tunnels = tunnels.filter((t) => t.id !== tunnel.id);
-		addToast(t('tunnel.removed_toast'), 'info');
+	async function handleDelete(tunnel: TunnelConfig): Promise<void> {
+		try {
+			await tunnelDelete(tunnel.id);
+			tunnels = tunnels.filter((t) => t.id !== tunnel.id);
+			addToast(t('tunnel.removed_toast'), 'info');
+		} catch (err) {
+			addToast(`Failed to remove tunnel: ${err}`, 'error');
+		}
 	}
 
 	$effect(() => {
 		untrack(() => loadTunnels());
+
+		// Backend-initiated stops (connection teardown kills its tunnels)
+		// arrive as 'tunnel-changed'; 'vault-unlocked' covers the case where
+		// this panel listed tunnels before the vault finished unlocking —
+		// persistent tunnels live in the vault and read as empty while locked.
+		const unlisteners: Array<() => void> = [];
+		let cancelled = false;
+		for (const event of ['tunnel-changed', 'vault-unlocked']) {
+			listen(event, () => {
+				loadTunnels();
+			}).then((u) => {
+				if (cancelled) u();
+				else unlisteners.push(u);
+			});
+		}
+		return () => {
+			cancelled = true;
+			for (const u of unlisteners) u();
+		};
 	});
 </script>
 
@@ -219,13 +260,13 @@
 			<span class="spinner"></span>
 			<span class="loading-text">{t('tunnel.loading')}</span>
 		</div>
-	{:else if tunnels.length === 0 && !showForm}
+	{:else if visibleTunnels.length === 0 && !showForm}
 		<p class="empty-state">{t('tunnel.no_tunnels')}</p>
 	{:else}
-		{#if tunnels.length > 0}
+		{#if visibleTunnels.length > 0}
 			<div class="divider"></div>
 			<div class="tunnels-scroll">
-				{#each tunnels as tunnel (tunnel.id)}
+				{#each visibleTunnels as tunnel (tunnel.id)}
 					<div class="tunnel-row">
 						<TunnelCard
 							{tunnel}
