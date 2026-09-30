@@ -2,7 +2,8 @@
 	import { getSettings, updateSetting } from '$lib/state/settings.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import { listSystemFonts } from '$lib/ipc/settings';
-	import { TERMINAL_THEMES, ANSI_COLORS, type ITheme } from '$lib/data/terminal-themes';
+	import { TERMINAL_THEMES, ANSI_COLORS } from '$lib/data/terminal-themes';
+    import type { ITheme } from '@xterm/xterm';
 
 	const settings = getSettings();
 	let currentFont = $derived(settings.fontFamily || 'monospace');
@@ -274,6 +275,7 @@ drwxr-xr-x  2 root root 4096 Mar 20 08:00 .
 	.setting-section {
 		padding: 12px 0;
 		border-bottom: 1px solid var(--color-border);
+		border-top: 1px solid var(--color-border);
 	}
 
 	.section-label {
@@ -324,7 +326,7 @@ drwxr-xr-x  2 root root 4096 Mar 20 08:00 .
 	}
 	.setting-row:last-child { border-bottom: none; }
 
-	.font-row { align-items: flex-start; }
+	.font-row { align-items: flex-start; border-bottom: none; padding-bottom: 0; }
 
 	.setting-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 	.setting-label { font-size: 0.875rem; font-weight: 500; color: var(--color-text-primary); }
@@ -428,7 +430,7 @@ drwxr-xr-x  2 root root 4096 Mar 20 08:00 .
 
 	/* Preview box */
 	.font-preview-box {
-		margin-top: 12px;
+		margin: 12px 0;
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		overflow: hidden;
@@ -457,7 +459,7 @@ drwxr-xr-x  2 root root 4096 Mar 20 08:00 .
 	/* Terminal theme cards */
 	.terminal-theme-cards {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 10px;
 	}
 
@@ -487,9 +489,10 @@ drwxr-xr-x  2 root root 4096 Mar 20 08:00 .
 
 	.terminal-theme-header {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
 		gap: 12px;
+		flex-direction: column;
+		flex-grow: 1;
+		justify-content: space-between;
 	}
 
 	.terminal-theme-name {
@@ -505,6 +508,7 @@ drwxr-xr-x  2 root root 4096 Mar 20 08:00 .
 		grid-template-rows: repeat(2, 1fr);
 		gap: 3px;
 		flex-shrink: 0;
+		margin-left: auto;
 	}
 
 	.color-dot {

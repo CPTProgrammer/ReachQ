@@ -1,14 +1,14 @@
-import type { TerminalThemeDef } from '../terminal-themes';
-import { DEFAULT_SELECTION } from '../theme-constants';
+import type { TerminalThemeDef } from '../terminal-themes-type';
+import { DEFAULT_CURSOR, DEFAULT_LIGHT_SELECTION } from '../theme-constants';
 
 export const theme: TerminalThemeDef = {
 	name: 'Default Light',
 	theme: {
 		background: '#ffffff',
 		foreground: '#1d1d1f',
-		cursor: '#0a84ff',
+		cursor: DEFAULT_CURSOR,
 		cursorAccent: '#ffffff',
-		selectionBackground: 'rgba(10, 132, 255, 0.2)',
+		selectionBackground: DEFAULT_LIGHT_SELECTION,
 		selectionForeground: '#1d1d1f',
 		black: '#e5e5ea',
 		red: '#c73a2e',
@@ -26,6 +26,5 @@ export const theme: TerminalThemeDef = {
 		brightMagenta: '#c16bde',
 		brightCyan: '#0096a0',
 		brightWhite: '#3a3a3c',
-		selectionInactiveBackground: DEFAULT_SELECTION,
 	},
 };

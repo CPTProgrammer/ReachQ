@@ -1,14 +1,15 @@
-import type { TerminalThemeDef } from '../terminal-themes';
+import { type TerminalThemeDef } from '../terminal-themes-type';
+import { DEFAULT_CURSOR, DEFAULT_DARK_SELECTION } from '../theme-constants';
 
 export const theme: TerminalThemeDef = {
 	name: 'Tabby Patch',
 	theme: {
 		background: '#171717',
 		foreground: '#cacaca',
-		cursor: '#0a84ff',
-	cursorAccent: '#0a0a0a',
-	selectionBackground: 'rgba(10, 132, 255, 0.3)',
-	selectionForeground: '#f5f5f7',
+		cursor: DEFAULT_CURSOR,
+		cursorAccent: '#0a0a0a',
+		selectionBackground: DEFAULT_DARK_SELECTION,
+		selectionForeground: '#f5f5f7',
 		black: '#000000',
 		red: '#ff615a',
 		green: '#b1e969',

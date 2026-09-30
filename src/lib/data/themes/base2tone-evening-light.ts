@@ -1,0 +1,30 @@
+import type { TerminalThemeDef } from '../terminal-themes-type';
+
+export const theme: TerminalThemeDef = {
+	name: 'Base2Tone Evening Light',
+	index: 1,
+	theme: {
+		background: "#fbfaf9",
+		foreground: "#545167",
+		cursor: "#9a86fd",
+		cursorAccent: "#eeebff",
+		selectionBackground: "#ebe6e0",
+		selectionForeground: "#545167",
+		black: "#2a2734",
+		red: "#8a75f5",
+		green: "#ffad5c",
+		yellow: "#ffcc99",
+		blue: "#9a86fd",
+		magenta: "#ffad5c",
+		cyan: "#afa0fe",
+		white: "#a4a1b5",
+		brightBlack: "#6c6783",
+		brightRed: "#ffb870",
+		brightGreen: "#363342",
+		brightYellow: "#545167",
+		brightBlue: "#787391",
+		brightMagenta: "#d9d2fe",
+		brightCyan: "#ffa142",
+		brightWhite: "#eeebff",
+	},
+};

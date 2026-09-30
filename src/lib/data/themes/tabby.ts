@@ -1,14 +1,14 @@
-import type { TerminalThemeDef } from '../terminal-themes';
-import { DEFAULT_BACKGROUND, DEFAULT_CURSOR, DEFAULT_SELECTION } from '../theme-constants';
+import type { TerminalThemeDef } from '../terminal-themes-type';
+import { TABBY_DEFAULT_SELECTION } from '../theme-constants';
 
 export const theme: TerminalThemeDef = {
 	name: 'Tabby',
 	theme: {
 		background: '#171717',
 		foreground: '#cacaca',
-		cursor: DEFAULT_CURSOR,
-		cursorAccent: DEFAULT_BACKGROUND,
-		selectionBackground: DEFAULT_SELECTION,
+		cursor: '#bbbbbb',
+		cursorAccent: '#171717',
+		selectionBackground: TABBY_DEFAULT_SELECTION,
 		selectionForeground: undefined,
 		black: '#000000',
 		red: '#ff615a',

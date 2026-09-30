@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Terminal } from '@xterm/xterm';
+	import { Terminal, type ITheme } from '@xterm/xterm';
 	import { FitAddon } from '@xterm/addon-fit';
 	import { WebglAddon } from '@xterm/addon-webgl';
 	import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -12,7 +12,7 @@
 	import { registerConnectionScope } from '$lib/state/agent.svelte';
 	import { registerBufferReader, unregisterBufferReader } from '$lib/state/terminal-buffer.svelte';
 	import { getSettings } from '$lib/state/settings.svelte';
-	import { getTerminalTheme, type ITheme } from '$lib/data/terminal-themes';
+	import { getTerminalTheme } from '$lib/data/terminal-themes';
 	import { trieMatch } from '$lib/state/snippets.svelte';
 	import { t } from '$lib/state/i18n.svelte';
 	import { getPendingHostKey, clearPendingHostKey } from '$lib/state/host-key.svelte';

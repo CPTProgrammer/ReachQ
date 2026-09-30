@@ -1,0 +1,30 @@
+import type { TerminalThemeDef } from '../terminal-themes-type';
+
+export const theme: TerminalThemeDef = {
+	name: 'Base2Tone Lavender Dark',
+	index: 1,
+	theme: {
+		background: "#201d2a",
+		foreground: "#9992b0",
+		cursor: "#b042ff",
+		cursorAccent: "#201d2a",
+		selectionBackground: "#2c2839",
+		selectionForeground: "#9992b0",
+		black: "#201d2a",
+		red: "#9375f5",
+		green: "#d294ff",
+		yellow: "#ecd1ff",
+		blue: "#a286fd",
+		magenta: "#d294ff",
+		cyan: "#b5a0fe",
+		white: "#9992b0",
+		brightBlack: "#625a7c",
+		brightRed: "#dba8ff",
+		brightGreen: "#2c2839",
+		brightYellow: "#4b455f",
+		brightBlue: "#6e658b",
+		brightMagenta: "#dcd2fe",
+		brightCyan: "#ca80ff",
+		brightWhite: "#efebff",
+	},
+};
