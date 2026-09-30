@@ -1,0 +1,30 @@
+import type { TerminalThemeDef } from '../terminal-themes-type';
+
+export const theme: TerminalThemeDef = {
+	name: 'Solarized Dark',
+	index: 1,
+	theme: {
+		background: "#001E27",
+		foreground: "#708284",
+		cursor: "#708284",
+		cursorAccent: "#002831",
+		selectionBackground: "#002831",
+		selectionForeground: "#819090",
+		black: "#002831",
+		red: "#D11C24",
+		green: "#738A05",
+		yellow: "#A57706",
+		blue: "#2176C7",
+		magenta: "#C61C6F",
+		cyan: "#259286",
+		white: "#EAE3CB",
+		brightBlack: "#001E27",
+		brightRed: "#BD3613",
+		brightGreen: "#475B62",
+		brightYellow: "#536870",
+		brightBlue: "#708284",
+		brightMagenta: "#5956BA",
+		brightCyan: "#819090",
+		brightWhite: "#FCF4DC",
+	},
+};
