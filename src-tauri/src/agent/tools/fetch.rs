@@ -90,6 +90,10 @@ impl AgentTool for FetchTool {
         let client = reqwest::Client::new();
         let response = client
             .get(&url)
+            .header(
+                reqwest::header::ACCEPT,
+                "text/html,application/json,text/plain,*/*",
+            )
             .send()
             .await
             .map_err(|e| err_text(format!("failed to fetch {url}: {e}")))?;
@@ -132,14 +136,18 @@ impl AgentTool for FetchTool {
             Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
         };
 
-        // Content-Type dispatch.
-        let Some(content_type) = content_type else {
-            return Err(err_text("missing Content-Type header"));
+        // Content-Type dispatch. The header is optional per RFC 9110, so when
+        // it is absent, sniff the body (HTML tag prefix, then JSON, otherwise
+        // plain text) instead of failing, mirroring browser behavior.
+        let kind = match content_type.as_deref() {
+            Some(ct) if ct.starts_with("text/plain") => BodyKind::Plain,
+            Some(ct) if ct.starts_with("application/json") => BodyKind::Json,
+            Some(_) => BodyKind::Html,
+            None => sniff_body_kind(&text),
         };
-        let text = if content_type.starts_with("text/plain") {
-            text
-        } else if content_type.starts_with("application/json") {
-            match serde_json::from_str::<Value>(&text) {
+        let text = match kind {
+            BodyKind::Plain => text,
+            BodyKind::Json => match serde_json::from_str::<Value>(&text) {
                 Ok(json) => match serde_json::to_string_pretty(&json) {
                     Ok(pretty) => format!("```json\n{pretty}\n```"),
                     Err(e) => return Err(err_text(format!("failed to format JSON: {e}"))),
@@ -152,12 +160,11 @@ impl AgentTool for FetchTool {
                 Err(e) => {
                     return Err(err_text(format!("failed to parse JSON response body: {e}")));
                 }
-            }
-        } else {
-            match markdown_from_html(&text) {
+            },
+            BodyKind::Html => match markdown_from_html(&text) {
                 Ok(markdown) => markdown,
                 Err(e) => return Err(err_text(e)),
-            }
+            },
         };
 
         if status.is_client_error() {
@@ -181,6 +188,28 @@ impl AgentTool for FetchTool {
             input.max_chars,
             download_truncated,
         )))
+    }
+}
+
+enum BodyKind {
+    Plain,
+    Json,
+    Html,
+}
+
+/// Guess the body type when the response omits Content-Type: a leading `<`
+/// means markup, a `{`/`[` prefix that parses means JSON, anything else is
+/// treated as plain text.
+fn sniff_body_kind(text: &str) -> BodyKind {
+    let trimmed = text.trim_start();
+    if trimmed.starts_with('<') {
+        BodyKind::Html
+    } else if (trimmed.starts_with('{') || trimmed.starts_with('['))
+        && serde_json::from_str::<Value>(trimmed).is_ok()
+    {
+        BodyKind::Json
+    } else {
+        BodyKind::Plain
     }
 }
 
